@@ -63,16 +63,16 @@ if __name__ == "__main__":
     print(seed)
     random.seed(seed)
     tf.random.set_seed(seed)
-    initializer = 'zeros'  # zeros, 'random_uniform', normal_uniform, 'glorot_uniform'
+    initializer = 'glorot_uniform'  # zeros, 'random_uniform', normal_uniform, 'glorot_uniform'
     BATCH_SIZE = 500
     loss = avg_ret
     RETURNS = 'returns_pct'  # 'diff'
     output_activation = 'tanh'
-    hidden_activation = 'relu'
+    hidden_activation = 'tanh'
     learning_rate = 0.01
     num_epochs = 2000
     test_size = 200
-    seq_len = 10
+    seq_len = 1
     lags = 5
 
     # generate data
