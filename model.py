@@ -16,14 +16,20 @@ def ann_model(input_dim: Tuple, initializer='zeros', hidden_activation='tanh', o
     return model
 
 
-def lstm_model(input_dim: Tuple, initializer='zeros', hidden_activation='tanh', output_activation='tanh'):
+def lstm_model(input_dim: Tuple, initializer='zeros', hidden_activation='tanh', stateful=False,
+               output_activation='tanh'):
     # Build model
-    inputs = tf.keras.layers.Input(shape=input_dim)
+    if stateful:
+        inputs = tf.keras.layers.Input(batch_shape=input_dim)
+    else:
+        inputs = tf.keras.layers.Input(shape=input_dim)
+
 
     outputs = tf.keras.layers.LSTM(1,
                                    kernel_initializer=initializer,
                                    bias_initializer=initializer,
                                    return_sequences=False,
+                                   stateful=stateful,
                                    activation=output_activation)(inputs)
     # outputs = tf.keras.layers.Dense(1,
     #                                 kernel_initializer=initializer,
