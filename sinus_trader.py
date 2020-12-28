@@ -63,7 +63,7 @@ if __name__ == "__main__":
     log_every=10
     initializer = 'normal_uniform'  # zeros, 'random_uniform', normal_uniform, 'glorot_uniform'
     BATCH_SIZE = 256
-    loss = sharpe_ratio #avg_ret
+    loss = avg_ret #avg_ret
     RETURNS = 'returns_pct'  # 'diff'
     output_activation = 'sigmoid'
     hidden_activation = 'tanh'
