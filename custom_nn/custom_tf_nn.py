@@ -1,5 +1,10 @@
 # https://www.tensorflow.org/tutorials/customization/custom_layers
 # https://github.com/tensorflow/tensorflow/blob/v2.4.0/tensorflow/python/keras/layers/recurrent.py#L1222
+
+
+# https://github.com/WANGXinyiLinda
+
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
