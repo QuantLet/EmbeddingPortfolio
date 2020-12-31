@@ -4,15 +4,15 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
 from utils.config import LOGGER
+from typing import Optional, Tuple
 
 
-def build_model(input_dim: tuple, output_dim: int, batch_size: int, cash_bias: bool = True,
-                n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(), training: bool = False):
+def build_model(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias: bool = True,
+                n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(), dropout: Optional[float] = None, training: bool = False):
     assert n_hidden > 0
     if cash_bias:
         cash_weight = tf.Variable(initial_value=cash_initializer(shape=(batch_size, 1), dtype='float32'),
                                   trainable=True)
-
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
     for i in range(n_hidden):
         if i == 0:
@@ -46,10 +46,9 @@ def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benc
     y_ = model(x, training=training)
     # take log maybe ??
     ret = tf.math.reduce_sum(returns * y_, axis=-1)
-    # print(benchmark)
-    # print(tf.reduce_mean(ret))
-    # print(tf.reduce_mean(ret) - benchmark)
-    sr = - (tf.reduce_mean(ret) - benchmark) / (tf.math.reduce_std(ret) + 10e-12)
+    sr = - tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32)) / (
+            tf.math.reduce_std(ret - tf.constant(benchmark, dtype=tf.float32)) + 10e-12)
+    # sr = tf.math.reduce_variance(ret - tf.constant(benchmark, dtype=tf.float32)) / (tf.math.square(tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32))) + 10e-12)
     return y_, sr
 
 
@@ -80,7 +79,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser("ETF FNN")
     parser.add_argument("--seq-len", type=int, default=5, help="Input sequence length")
-    parser.add_argument("--n-epochs", type=int, default=200)
+    parser.add_argument("--n-epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--log-every", type=int, default=1, help="Epoch logs frequency")
     parser.add_argument("--plot-every", type=int, default=20, help="Plots frequency")
@@ -89,14 +88,17 @@ if __name__ == '__main__':
     # parser.add_argument("--long-short", action='store_true', help="Implement a long-short portfolio stategy")
     parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum parameter in SGD")
-    parser.add_argument("--seed", type=int, default=1, help="Seed for reproducibility, if not set use default")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility, if not set use default")
     parser.add_argument("--test-size", type=int, default=300, help="Test size")
     parser.add_argument("--benchmark", type=float, default=0., help="Risk free rate for excess Sharpe Ratio")
 
     args = parser.parse_args()
 
     LOGGER.info('Set seed')
-    np.random.seed(1)
+    if args.seed is None:
+        seed = np.random.randint(0, 100)
+        np.random.seed(seed)
+    LOGGER.info(f'Seed: {seed}')
 
     LOGGER.info('Load data')
     dfdata = pd.read_pickle('data/clean_VTI_AGG_DBC.p')
