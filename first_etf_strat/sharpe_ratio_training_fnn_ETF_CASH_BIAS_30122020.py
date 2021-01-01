@@ -5,20 +5,25 @@ import pandas as pd
 from sklearn import preprocessing
 from utils.config import LOGGER
 from typing import Optional, Tuple
+from first_etf_strat.model import MLP
 
 
 def build_model(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias: bool = True,
-                n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(), dropout: Optional[float] = None, training: bool = False):
+                n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
+                dropout: Optional[float] = None, training: bool = False):
     assert n_hidden > 0
     if cash_bias:
         cash_weight = tf.Variable(initial_value=cash_initializer(shape=(batch_size, 1), dtype='float32'),
                                   trainable=True)
+
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
     for i in range(n_hidden):
         if i == 0:
             hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(input_)
         else:
             hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(hidden)
+        if dropout:
+            hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
     if cash_bias:
         output = tf.keras.layers.Dense(output_dim - 1, activation='linear', dtype=tf.float32)(hidden)
@@ -85,6 +90,7 @@ if __name__ == '__main__':
     parser.add_argument("--plot-every", type=int, default=20, help="Plots frequency")
     parser.add_argument("--no-cash", action='store_true', help="Implement a portfolio without cash")
     parser.add_argument("--n-hidden", type=int, default=2, help="Number of hidden layers")
+    parser.add_argument("--dropout", type=float, default=None, help="Dropout rate to apply after each hidden layer")
     # parser.add_argument("--long-short", action='store_true', help="Implement a long-short portfolio stategy")
     parser.add_argument("--learning-rate", type=float, default=0.01, help="Learning rate")
     parser.add_argument("--momentum", type=float, default=0.9, help="Momentum parameter in SGD")
@@ -165,15 +171,21 @@ if __name__ == '__main__':
     LOGGER.info('Create model')
     n_features = train_examples.shape[-1]
 
+
     model = build_model(input_dim=(n_features),
                         output_dim=n_assets,
                         batch_size=args.batch_size,
                         n_hidden=args.n_hidden,
+                        dropout=args.dropout,
                         cash_bias=not args.no_cash,
                         cash_initializer=tf.ones_initializer())
     LOGGER.info(model.summary())
-    optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
+    """
+    model = MLP(input_dim=(None, n_features), output_dim=n_assets, batch_size=args.batch_size, n_hidden=args.n_hidden,
+                cash_bias=not args.no_cash, cash_initializer=tf.ones_initializer(), dropout=args.dropout)
+    """
 
+    optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
     # Traning pipeline
     LOGGER.info('Create tf.data.Dataset')
     # Train
