@@ -36,7 +36,8 @@ def build_model(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias: b
     return model
 
 
-def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benchmark: float = 0.0093):
+def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benchmark: float = 0.0093,
+                 trading_fee: float = 0., initial_position=np.ndarray, cash_bias: bool = True):
     """
 
     :param model: tf model
@@ -44,6 +45,7 @@ def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benc
     :param returns: corresponding returns for next period
     :param training: is training or inference
     :param benchmark: constant: risk free rate: 10Y US treasury bond 0.93% 31.12.2020
+    :param initial_position: first position before batch without cash
     :return:
     """
     # training=training is needed only if there are layers with different
@@ -51,6 +53,12 @@ def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benc
     y_ = model(x, training=training)
     # take log maybe ??
     ret = tf.math.reduce_sum(returns * y_, axis=-1)
+    if cash_bias:
+        positions = np.concatenate([initial_position, y_[:, :-1]], 0)
+    else:
+        positions = np.concatenate([initial_position, y_], 0)
+    transaction_cost = trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1)
+    ret = ret - transaction_cost
     sr = - tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32)) / (
             tf.math.reduce_std(ret - tf.constant(benchmark, dtype=tf.float32)) + 10e-12)
     # sr = tf.math.reduce_variance(ret - tf.constant(benchmark, dtype=tf.float32)) / (tf.math.square(tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32))) + 10e-12)
@@ -97,6 +105,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility, if not set use default")
     parser.add_argument("--test-size", type=int, default=300, help="Test size")
     parser.add_argument("--benchmark", type=float, default=0., help="Risk free rate for excess Sharpe Ratio")
+    parser.add_argument("--trading-fee", type=float, default=0.0001, help="Trading fee")
 
     args = parser.parse_args()
 
@@ -123,9 +132,9 @@ if __name__ == '__main__':
     # drop last price since returns and features should be shifted by one
     data = data[:-1, :]
     # get returns for next period
-    returns = dfdata.loc[:, pd.IndexSlice[:, 'returns']].droplevel(0, 1).values
+    returns = dfdata.loc[:, pd.IndexSlice[:, 'returns']].droplevel(0, 1).values # returns at time t
     # drop first row since it is nan
-    returns = returns[1:, :]
+    returns = returns[1:, :] # returns at time t+1
     # add cash in returns
     returns = np.concatenate([returns, np.zeros(len(returns)).reshape(-1, 1)], 1)
 
@@ -171,7 +180,6 @@ if __name__ == '__main__':
     LOGGER.info('Create model')
     n_features = train_examples.shape[-1]
 
-
     model = build_model(input_dim=(n_features),
                         output_dim=n_assets,
                         batch_size=args.batch_size,
@@ -210,9 +218,19 @@ if __name__ == '__main__':
         epoch_actions = []
         counter = 0
         for features, returns in train_dataset:
+            if counter == 0:
+                if args.no_cash:
+                    initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
+                else:
+                    initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
+            else:
+                initial_position = actions[-1:, :-1]
+
             # Optimize the model
             with tf.GradientTape() as tape:
-                actions, loss_value = sharpe_ratio(model, features, returns, training=True, benchmark=args.benchmark)
+                actions, loss_value = sharpe_ratio(model, features, returns, initial_position=initial_position,
+                                                   training=True, benchmark=args.benchmark,
+                                                   trading_fee=args.trading_fee, cash_bias=not args.no_cash)
             grads = tape.gradient(loss_value, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
             weights.append([var.numpy() for var in model.trainable_variables])
@@ -232,8 +250,18 @@ if __name__ == '__main__':
         epoch_actions = np.array([i for sub in epoch_actions for i in sub])
 
         # Inference
+        counter = 0
         for features, returns in test_dataset:
-            actions, loss_value = sharpe_ratio(model, features, returns, training=False, benchmark=args.benchmark)
+            if counter == 0:
+                initial_position = epoch_actions[-1:, :]
+            else:
+                initial_position = actions[-1:, :]
+            if not args.no_cash:
+                initial_position = initial_position[-1:, :-1]
+
+            actions, loss_value = sharpe_ratio(model, features, returns, initial_position=initial_position,
+                                               training=False, benchmark=args.benchmark, trading_fee=args.trading_fee,
+                                               cash_bias=not args.no_cash)
             # Track progress
             test_epoch_stats['loss'].update_state(loss_value)
             ret_t = tf.reduce_sum(returns * actions, axis=-1)
@@ -241,6 +269,8 @@ if __name__ == '__main__':
             cum_ret = tf.reduce_sum(ret_t)
             test_epoch_stats['cum_ret'].update_state(cum_ret)
             test_epoch_stats['avg_ret'].update_state(avg_reg)
+
+            counter += 1
 
         # Update history
         train_history['loss'].append(train_epoch_stats['loss'].result())
@@ -304,8 +334,21 @@ if __name__ == '__main__':
     # Inference on train
     # TODO: parallelization
     train_predictions = []
+    counter = 0
     for features, returns in train_dataset:
-        pred, _ = sharpe_ratio(model, features, returns, training=False, benchmark=args.benchmark)
+        if counter == 0:
+            if args.no_cash:
+                initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
+            else:
+                initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
+        else:
+            initial_position = pred[-1:, :]
+            if not args.no_cash:
+                initial_position = initial_position[-1:, :-1]
+
+        pred, _ = sharpe_ratio(model, features, returns, initial_position=initial_position, training=False,
+                               benchmark=args.benchmark, trading_fee=args.trading_fee, cash_bias=not args.no_cash)
+
         train_predictions.append(pred)
     train_predictions = np.array([i for sub in train_predictions for i in sub])
 
@@ -313,7 +356,15 @@ if __name__ == '__main__':
     # TODO: parallelization
     test_predictions = []
     for features, returns in test_dataset:
-        pred, _ = sharpe_ratio(model, features, returns, training=False, benchmark=args.benchmark)
+        if counter == 0:
+            initial_position = train_predictions[-1:, :]
+        else:
+            initial_position = pred[-1:, :]
+        if not args.no_cash:
+            initial_position = initial_position[-1:, :-1]
+
+        pred, _ = sharpe_ratio(model, features, returns, initial_position=initial_position, training=False,
+                               benchmark=args.benchmark, trading_fee=args.trading_fee, cash_bias=not args.no_cash)
         test_predictions.append(pred)
     test_predictions = np.array([i for sub in test_predictions for i in sub])
 
