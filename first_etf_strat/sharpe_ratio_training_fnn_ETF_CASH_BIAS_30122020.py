@@ -39,14 +39,16 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
     n_features = data.shape[-1]
     # sequence data: (n, seq_len, n_features)
     seq_data = np.array([data[i - seq_len:i, :] for i in range(seq_len, len(data))], dtype=np.float32)
-    if not return_3d:
+
+    if return_3d:
+        data = seq_data
+    else:
         # concatenate columns: (n, seq_len * n_features)
         data = np.zeros((seq_data.shape[0], seq_len * n_features))
-        for i in range(n_features - 1):
+        data[:] = np.nan
+        for i in range(n_features):
             data[:, i * seq_len:seq_len * (i + 1)] = seq_data[:, :, i]
-    else:
-        data = seq_data
-
+        assert not any(np.isnan(data).sum(1).tolist())
     return data
 
 
@@ -96,12 +98,6 @@ if __name__ == '__main__':
 
     US_10Y_BOND = 0.0093
 
-    if args.save:
-        log_dir = create_log_dir(args.model_name, args.model_type)
-        LOGGER.info(f'Create log dir: {log_dir}')
-        config = vars(args)
-        json.dump(config, open(os.path.join(log_dir, 'config.json'), 'w'))
-
     if args.seed is None:
         seed = np.random.randint(0, 100)
         LOGGER.info(f'Set random seed {seed}')
@@ -110,6 +106,13 @@ if __name__ == '__main__':
         LOGGER.info('Set seed')
         seed = args.seed
         np.random.seed(seed)
+
+    if args.save:
+        log_dir = create_log_dir(args.model_name, args.model_type)
+        LOGGER.info(f'Create log dir: {log_dir}')
+        config = vars(args)
+        config['random_seed'] = seed
+        json.dump(config, open(os.path.join(log_dir, 'config.json'), 'w'))
 
     LOGGER.info('Load data')
     dfdata = pd.read_pickle('./first_etf_strat/data/clean_VTI_AGG_DBC.p')
@@ -134,8 +137,8 @@ if __name__ == '__main__':
     returns = returns[1:, :]  # returns at time t+1
     # add cash in returns
     returns = np.concatenate([returns, np.zeros(len(returns)).reshape(-1, 1)], 1)
-    daily_risk_free_rate = (1 + US_10Y_BOND) ** (1/3650) - 1
-    returns[:,-1] = daily_risk_free_rate
+    daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
+    returns[:, -1] = daily_risk_free_rate
 
     LOGGER.info('Preprocessing ...')
     # Preprocessing
@@ -174,8 +177,6 @@ if __name__ == '__main__':
     LOGGER.info(f'Train returns shape: {train_returns.shape}')
     LOGGER.info(f'Test data shape: {test_examples.shape}')
     LOGGER.info(f'Test returns shape: {test_returns.shape}')
-
-
 
     # Traning pipeline
     LOGGER.info('Create tf.data.Dataset')
@@ -250,6 +251,12 @@ if __name__ == '__main__':
                                                                     trading_fee=args.trading_fee,
                                                                     cash_bias=not args.no_cash)
                 loss_value = sharpe_ratio(port_return, benchmark=args.benchmark)
+
+            if np.isnan(loss_value.numpy()):
+                LOGGER.debug(f'Features is nan:{any(np.isnan(features.numpy().sum(1).tolist()))}')
+                LOGGER.debug(f'ACTION: {actions}')
+                LOGGER.debug(f'PORT RETURN: {port_return}')
+                raise ValueError('Tf returned NaN')
 
             grads = tape.gradient(loss_value, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
