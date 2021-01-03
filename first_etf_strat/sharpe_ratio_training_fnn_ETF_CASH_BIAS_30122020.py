@@ -1,3 +1,4 @@
+import json, os
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +7,25 @@ from sklearn import preprocessing
 from utils.config import LOGGER
 from first_etf_strat.model import build_etf_mlp
 from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
+from utils.utils import create_log_dir
+from typing import Dict, Optional
+
+
+def plot_train_history(train_history: Dict, test_history: Dict, save_dir: Optional[str] = None, show: bool = False):
+    fig, axs = plt.subplots(1, 3, figsize=(15, 3))
+    axs[0].plot(train_history['loss'])
+    axs[0].plot(test_history['loss'])
+    axs[0].set_title('Loss')
+    axs[1].plot(train_history['avg_ret'])
+    axs[1].plot(test_history['avg_ret'])
+    axs[1].set_title('Average return')
+    axs[2].plot(train_history['cum_ret'])
+    axs[2].plot(test_history['cum_ret'])
+    axs[2].set_title('Cum return')
+    if save_dir:
+        plt.savefig(save_dir)
+    if show:
+        plt.show()
 
 
 def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
@@ -46,6 +66,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser("ETF FNN")
     parser.add_argument("--seq-len", type=int, default=5, help="Input sequence length")
     parser.add_argument("--model-type", type=str, default="mlp")
+    parser.add_argument("--model-name", type=str, default="etf")
     parser.add_argument("--n-epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--log-every", type=int, default=1, help="Epoch logs frequency")
@@ -60,8 +81,16 @@ if __name__ == '__main__':
     parser.add_argument("--test-size", type=int, default=300, help="Test size")
     parser.add_argument("--benchmark", type=float, default=0., help="Risk free rate for excess Sharpe Ratio")
     parser.add_argument("--trading-fee", type=float, default=0.0001, help="Trading fee")
+    parser.add_argument("--load-model", type=str, default=None, help="Model checkpoint path")
+    parser.add_argument("--save", action="store_true", help="Save outputs")
 
     args = parser.parse_args()
+
+    if args.save:
+        log_dir = create_log_dir(args.model_name, args.model_type)
+        LOGGER.info(f'Create log dir: {log_dir}')
+        config = vars(args)
+        json.dump(config, open(os.path.join(log_dir, 'config.json'), 'w'))
 
     if args.seed is None:
         seed = np.random.randint(0, 100)
@@ -73,7 +102,7 @@ if __name__ == '__main__':
         np.random.seed(seed)
 
     LOGGER.info('Load data')
-    dfdata = pd.read_pickle('data/clean_VTI_AGG_DBC.p')
+    dfdata = pd.read_pickle('./first_etf_strat/data/clean_VTI_AGG_DBC.p')
     assets = np.unique(dfdata.columns.get_level_values(0)).tolist()
     if not args.no_cash:
         assets = assets + ['cash']
@@ -140,14 +169,21 @@ if __name__ == '__main__':
     if args.model_type == 'mlp':
         LOGGER.info('Build MLP model')
         model = build_etf_mlp(input_dim=(n_features),
-                                output_dim=n_assets,
-                                batch_size=args.batch_size,
-                                n_hidden=args.n_hidden,
-                                dropout=args.dropout,
-                                cash_bias=not args.no_cash,
-                                cash_initializer=tf.ones_initializer())
+                              output_dim=n_assets,
+                              batch_size=args.batch_size,
+                              n_hidden=args.n_hidden,
+                              dropout=args.dropout,
+                              cash_bias=not args.no_cash,
+                              cash_initializer=tf.ones_initializer())
+
     else:
         raise NotImplementedError()
+
+    if args.load_model:
+        path = os.path.join(log_dir, args.load_model)
+        LOGGER.info(f'Loading pretrained model from {path}')
+        model.load_weights(path)
+
     LOGGER.info(model.summary())
 
     optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
@@ -282,22 +318,17 @@ if __name__ == '__main__':
             plt.title(f'Train perf at epoch {epoch}')
             plt.show()
 
-            fig, axs = plt.subplots(1, 3, figsize=(15, 3))
-            axs[0].plot(train_history['loss'])
-            axs[0].plot(test_history['loss'])
-            axs[0].set_title('Loss')
-            axs[1].plot(train_history['avg_ret'])
-            axs[1].plot(test_history['avg_ret'])
-            axs[1].set_title('Average return')
-            axs[2].plot(train_history['cum_ret'])
-            axs[2].plot(test_history['cum_ret'])
-            axs[2].set_title('Cum return')
-            fig.suptitle(f'Epoch {epoch}')
-            plt.show()
+            plot_train_history(train_history, test_history, show=True)
+
+    # plot final history and save
+    plot_train_history(train_history, test_history, save_dir=os.path.join(log_dir, 'history.png'), show=True)
+
+    if args.save:
+        # save model
+        model.save_weights(os.path.join(log_dir, 'model'))
 
     # Inference on train
     train_predictions = model.predict(features_generator(train_dataset), verbose=1)
-
     # Inference on test
     test_predictions = model.predict(features_generator(test_dataset), verbose=1)
 
@@ -309,6 +340,8 @@ if __name__ == '__main__':
     axs[1].plot(test_predictions)
     axs[1].legend(assets)
     axs[1].set_title('Test prediction')
+    if args.save:
+        plt.savefig(os.path.join(log_dir, 'prediction.png'))
     plt.show()
 
     # Final perf
@@ -325,4 +358,6 @@ if __name__ == '__main__':
     axs[1].plot((strat_perf + 1).cumprod(), label='equally strategy')
     axs[1].legend()
     axs[1].set_title('Final test performance')
+    if args.save:
+        plt.savefig(os.path.join(log_dir, 'performance.png'))
     plt.show()

@@ -1,12 +1,13 @@
 import datetime as dt
-import os, shutil
+import os
 
+LOG_BASE_DIR = './first_etf_strat/log'
 
-def create_log_dir(config, config_file):
+def create_log_dir(model_name, model_type):
     subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d-%H%M%S')
-    log_dir = os.path.join(os.path.expanduser(config.log_base_dir), config.name, subdir)
+    log_dir = os.path.join(LOG_BASE_DIR, model_name, model_type, subdir)
     if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
         os.makedirs(log_dir)
-    shutil.copyfile(config_file, os.path.join(log_dir, 'config.py'))
+
 
     return log_dir
