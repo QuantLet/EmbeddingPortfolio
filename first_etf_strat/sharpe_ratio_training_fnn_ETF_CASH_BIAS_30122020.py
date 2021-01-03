@@ -4,65 +4,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
 from utils.config import LOGGER
-from typing import Optional, Tuple
-from first_etf_strat.model import MLP
-
-
-def build_model(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias: bool = True,
-                n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
-                dropout: Optional[float] = None, training: bool = False):
-    assert n_hidden > 0
-    if cash_bias:
-        cash_weight = tf.Variable(initial_value=cash_initializer(shape=(batch_size, 1), dtype='float32'),
-                                  trainable=True)
-
-    input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
-    for i in range(n_hidden):
-        if i == 0:
-            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(input_)
-        else:
-            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(hidden)
-        if dropout:
-            hidden = tf.keras.layers.Dropout(dropout)(hidden)
-
-    if cash_bias:
-        output = tf.keras.layers.Dense(output_dim - 1, activation='linear', dtype=tf.float32)(hidden)
-        output = tf.keras.layers.Concatenate(axis=-1)([output, cash_weight])
-        output = tf.keras.layers.Activation('softmax')(output)
-    else:
-        output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
-
-    model = tf.keras.models.Model(input_, output)
-    return model
-
-
-def sharpe_ratio(model, x: np.ndarray, returns: np.ndarray, training: bool, benchmark: float = 0.0093,
-                 trading_fee: float = 0., initial_position=np.ndarray, cash_bias: bool = True):
-    """
-
-    :param model: tf model
-    :param x: input features
-    :param returns: corresponding returns for next period
-    :param training: is training or inference
-    :param benchmark: constant: risk free rate: 10Y US treasury bond 0.93% 31.12.2020
-    :param initial_position: first position before batch without cash
-    :return:
-    """
-    # training=training is needed only if there are layers with different
-    # behavior during training versus inference (e.g. Dropout).
-    y_ = model(x, training=training)
-    # take log maybe ??
-    ret = tf.math.reduce_sum(returns * y_, axis=-1)
-    if cash_bias:
-        positions = np.concatenate([initial_position, y_[:, :-1]], 0)
-    else:
-        positions = np.concatenate([initial_position, y_], 0)
-    transaction_cost = trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1)
-    ret = ret - transaction_cost
-    sr = - tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32)) / (
-            tf.math.reduce_std(ret - tf.constant(benchmark, dtype=tf.float32)) + 10e-12)
-    # sr = tf.math.reduce_variance(ret - tf.constant(benchmark, dtype=tf.float32)) / (tf.math.square(tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32))) + 10e-12)
-    return y_, sr
+from first_etf_strat.model import build_etf_mlp
+from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
 
 
 def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
@@ -87,11 +30,22 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
     return data
 
 
+def features_generator(dataset):
+    for features, _ in dataset:
+        yield features
+
+
+def returns_generator(dataset):
+    for _, next_returns in dataset:
+        yield next_returns
+
+
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser("ETF FNN")
     parser.add_argument("--seq-len", type=int, default=5, help="Input sequence length")
+    parser.add_argument("--model-type", type=str, default="mlp")
     parser.add_argument("--n-epochs", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--log-every", type=int, default=1, help="Epoch logs frequency")
@@ -109,11 +63,14 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    LOGGER.info('Set seed')
     if args.seed is None:
         seed = np.random.randint(0, 100)
+        LOGGER.info(f'Set random seed {seed}')
         np.random.seed(seed)
-    LOGGER.info(f'Seed: {seed}')
+    else:
+        LOGGER.info('Set seed')
+        seed = args.seed
+        np.random.seed(seed)
 
     LOGGER.info('Load data')
     dfdata = pd.read_pickle('data/clean_VTI_AGG_DBC.p')
@@ -132,9 +89,9 @@ if __name__ == '__main__':
     # drop last price since returns and features should be shifted by one
     data = data[:-1, :]
     # get returns for next period
-    returns = dfdata.loc[:, pd.IndexSlice[:, 'returns']].droplevel(0, 1).values # returns at time t
+    returns = dfdata.loc[:, pd.IndexSlice[:, 'returns']].droplevel(0, 1).values  # returns at time t
     # drop first row since it is nan
-    returns = returns[1:, :] # returns at time t+1
+    returns = returns[1:, :]  # returns at time t+1
     # add cash in returns
     returns = np.concatenate([returns, np.zeros(len(returns)).reshape(-1, 1)], 1)
 
@@ -180,18 +137,18 @@ if __name__ == '__main__':
     LOGGER.info('Create model')
     n_features = train_examples.shape[-1]
 
-    model = build_model(input_dim=(n_features),
-                        output_dim=n_assets,
-                        batch_size=args.batch_size,
-                        n_hidden=args.n_hidden,
-                        dropout=args.dropout,
-                        cash_bias=not args.no_cash,
-                        cash_initializer=tf.ones_initializer())
+    if args.model_type == 'mlp':
+        LOGGER.info('Build MLP model')
+        model = build_etf_mlp(input_dim=(n_features),
+                                output_dim=n_assets,
+                                batch_size=args.batch_size,
+                                n_hidden=args.n_hidden,
+                                dropout=args.dropout,
+                                cash_bias=not args.no_cash,
+                                cash_initializer=tf.ones_initializer())
+    else:
+        raise NotImplementedError()
     LOGGER.info(model.summary())
-    """
-    model = MLP(input_dim=(None, n_features), output_dim=n_assets, batch_size=args.batch_size, n_hidden=args.n_hidden,
-                cash_bias=not args.no_cash, cash_initializer=tf.ones_initializer(), dropout=args.dropout)
-    """
 
     optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
     # Traning pipeline
@@ -208,6 +165,7 @@ if __name__ == '__main__':
     weights = []
     train_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
     test_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
+
     for epoch in range(args.n_epochs):
         train_epoch_stats = {'loss': tf.keras.metrics.Mean(), 'avg_ret': tf.keras.metrics.Mean(),
                              'cum_ret': tf.keras.metrics.Sum()}
@@ -228,9 +186,12 @@ if __name__ == '__main__':
 
             # Optimize the model
             with tf.GradientTape() as tape:
-                actions, loss_value = sharpe_ratio(model, features, returns, initial_position=initial_position,
-                                                   training=True, benchmark=args.benchmark,
-                                                   trading_fee=args.trading_fee, cash_bias=not args.no_cash)
+                actions = model(features, training=True)
+                port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
+                                                                    trading_fee=args.trading_fee,
+                                                                    cash_bias=not args.no_cash)
+                loss_value = sharpe_ratio(port_return, benchmark=args.benchmark)
+
             grads = tape.gradient(loss_value, model.trainable_variables)
             optimizer.apply_gradients(zip(grads, model.trainable_variables))
             weights.append([var.numpy() for var in model.trainable_variables])
@@ -259,9 +220,12 @@ if __name__ == '__main__':
             if not args.no_cash:
                 initial_position = initial_position[-1:, :-1]
 
-            actions, loss_value = sharpe_ratio(model, features, returns, initial_position=initial_position,
-                                               training=False, benchmark=args.benchmark, trading_fee=args.trading_fee,
-                                               cash_bias=not args.no_cash)
+            actions = model(features, training=False)
+            port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
+                                                                trading_fee=args.trading_fee,
+                                                                cash_bias=not args.no_cash)
+            loss_value = sharpe_ratio(port_return, benchmark=args.benchmark)
+
             # Track progress
             test_epoch_stats['loss'].update_state(loss_value)
             ret_t = tf.reduce_sum(returns * actions, axis=-1)
@@ -332,41 +296,10 @@ if __name__ == '__main__':
             plt.show()
 
     # Inference on train
-    # TODO: parallelization
-    train_predictions = []
-    counter = 0
-    for features, returns in train_dataset:
-        if counter == 0:
-            if args.no_cash:
-                initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
-            else:
-                initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
-        else:
-            initial_position = pred[-1:, :]
-            if not args.no_cash:
-                initial_position = initial_position[-1:, :-1]
-
-        pred, _ = sharpe_ratio(model, features, returns, initial_position=initial_position, training=False,
-                               benchmark=args.benchmark, trading_fee=args.trading_fee, cash_bias=not args.no_cash)
-
-        train_predictions.append(pred)
-    train_predictions = np.array([i for sub in train_predictions for i in sub])
+    train_predictions = model.predict(features_generator(train_dataset), verbose=1)
 
     # Inference on test
-    # TODO: parallelization
-    test_predictions = []
-    for features, returns in test_dataset:
-        if counter == 0:
-            initial_position = train_predictions[-1:, :]
-        else:
-            initial_position = pred[-1:, :]
-        if not args.no_cash:
-            initial_position = initial_position[-1:, :-1]
-
-        pred, _ = sharpe_ratio(model, features, returns, initial_position=initial_position, training=False,
-                               benchmark=args.benchmark, trading_fee=args.trading_fee, cash_bias=not args.no_cash)
-        test_predictions.append(pred)
-    test_predictions = np.array([i for sub in test_predictions for i in sub])
+    test_predictions = model.predict(features_generator(test_dataset), verbose=1)
 
     # Final prediction
     fig, axs = plt.subplots(1, 2, figsize=(15, 3))
