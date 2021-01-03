@@ -3,9 +3,27 @@ from typing import Tuple, Optional
 from utils.config import LOGGER
 
 
-def build_etf_mlp(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias: bool = True,
-                    n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
-                    dropout: Optional[float] = None, training: bool = False):
+class CashBias(tf.keras.layers.Layer):
+
+    def __init__(self, initializer):
+        super(CashBias, self).__init__()
+        self.initializer = initializer
+
+    def build(self, input_shape):
+        w_init = self.initializer
+        self.w = tf.Variable(
+            initial_value=w_init(shape=(1, 1),
+                                 dtype='float32'),
+            trainable=True)
+
+    def call(self, inputs):  # Defines the computation from inputs to outputs
+        print('input', tf.shape(inputs))
+        print('w', self.w)
+        return tf.tile(self.w, tf.shape(inputs)[0])
+
+
+def build_etf_mlp(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Optional[float] = None,
+                  training: bool = False):
     """
 
     :param input_dim:
@@ -20,11 +38,9 @@ def build_etf_mlp(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias:
     """
 
     assert n_hidden > 0
-    if cash_bias:
-        cash_weight = tf.Variable(initial_value=cash_initializer(shape=(batch_size, 1), dtype='float32'),
-                                  trainable=True)
 
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
+
     for i in range(n_hidden):
         if i == 0:
             hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(input_)
@@ -33,12 +49,44 @@ def build_etf_mlp(input_dim: Tuple, output_dim: int, batch_size: int, cash_bias:
         if dropout:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
-    if cash_bias:
-        output = tf.keras.layers.Dense(output_dim - 1, activation='linear', dtype=tf.float32)(hidden)
-        output = tf.keras.layers.Concatenate(axis=-1)([output, cash_weight])
-        output = tf.keras.layers.Activation('softmax')(output)
-    else:
-        output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
+    output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
+    model = tf.keras.models.Model(input_, output)
+    return model
+
+
+def build_etf_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
+                                 n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
+                                 dropout: Optional[float] = None, training: bool = False):
+    """
+
+    :param input_dim:
+    :param output_dim:
+    :param batch_size:
+    :param cash_bias:
+    :param n_hidden:
+    :param cash_initializer:
+    :param dropout:
+    :param training: to control dropout layer behavior during inference
+    :return:
+    """
+
+    assert n_hidden > 0
+
+    input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
+    cash_weight = tf.Variable(initial_value=cash_initializer(shape=(batch_size, 1), dtype='float32'),
+                              trainable=True)
+
+    for i in range(n_hidden):
+        if i == 0:
+            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(input_)
+        else:
+            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(hidden)
+        if dropout:
+            hidden = tf.keras.layers.Dropout(dropout)(hidden)
+
+    output = tf.keras.layers.Dense(output_dim - 1, activation='linear', dtype=tf.float32)(hidden)
+    output = tf.keras.layers.Concatenate(axis=-1)([output, cash_weight])
+    output = tf.keras.layers.Activation('softmax')(output)
 
     model = tf.keras.models.Model(input_, output)
     return model

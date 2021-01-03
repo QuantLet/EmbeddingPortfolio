@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
 from utils.config import LOGGER
-from first_etf_strat.model import build_etf_mlp
+from first_etf_strat.model import build_etf_mlp, build_etf_mlp_with_cash_bias
 from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
 from utils.utils import create_log_dir
 from typing import Dict, Optional
@@ -61,6 +61,15 @@ def returns_generator(dataset):
 
 
 if __name__ == '__main__':
+
+    # def make_variables(k, initializer):
+    #     return (tf.Variable(initializer(shape=[None, k], dtype=tf.float32)),
+    #             tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
+    #
+    # v1, v2 = make_variables(3, tf.ones_initializer())
+    # print(v1, v2)
+    # exit()
+
     import argparse
 
     parser = argparse.ArgumentParser("ETF FNN")
@@ -104,6 +113,7 @@ if __name__ == '__main__':
     LOGGER.info('Load data')
     dfdata = pd.read_pickle('./first_etf_strat/data/clean_VTI_AGG_DBC.p')
     assets = np.unique(dfdata.columns.get_level_values(0)).tolist()
+    dates = dfdata.index
     if not args.no_cash:
         assets = assets + ['cash']
     n_assets = len(assets)
@@ -167,15 +177,18 @@ if __name__ == '__main__':
     n_features = train_examples.shape[-1]
 
     if args.model_type == 'mlp':
-        LOGGER.info('Build MLP model')
+        LOGGER.info(f'Build {args.model_type} model')
         model = build_etf_mlp(input_dim=(n_features),
                               output_dim=n_assets,
-                              batch_size=args.batch_size,
                               n_hidden=args.n_hidden,
-                              dropout=args.dropout,
-                              cash_bias=not args.no_cash,
-                              cash_initializer=tf.ones_initializer())
-
+                              dropout=args.dropout)
+    elif args.model_type == 'mlp-cash-bias':
+        LOGGER.info(f'Build {args.model_type} model')
+        model = build_etf_mlp_with_cash_bias(input_dim=(n_features),
+                                             output_dim=n_assets,
+                                             batch_size=args.batch_size,
+                                             n_hidden=args.n_hidden,
+                                             dropout=args.dropout)
     else:
         raise NotImplementedError()
 
@@ -190,11 +203,16 @@ if __name__ == '__main__':
     # Traning pipeline
     LOGGER.info('Create tf.data.Dataset')
     # Train
+    nb_batch = len(train_examples) // args.batch_size
+    drop_first = np.remainder(len(train_examples), args.batch_size)
+    train_examples = train_examples[drop_first:, :]
+    train_returns = train_returns[drop_first:, :]
+
     train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
-    train_dataset = train_dataset.batch(args.batch_size, drop_remainder=True)
+    train_dataset = train_dataset.batch(args.batch_size, drop_remainder=False)
     # Test
     test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
-    test_dataset = test_dataset.batch(args.batch_size, drop_remainder=True)
+    test_dataset = test_dataset.batch(args.batch_size, drop_remainder=args.model_type == 'mlp-cash-bias')
 
     # Training loop
     LOGGER.info('Start training ...')
