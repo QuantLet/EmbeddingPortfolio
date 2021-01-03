@@ -92,8 +92,9 @@ if __name__ == '__main__':
     parser.add_argument("--trading-fee", type=float, default=0.0001, help="Trading fee")
     parser.add_argument("--load-model", type=str, default=None, help="Model checkpoint path")
     parser.add_argument("--save", action="store_true", help="Save outputs")
-
     args = parser.parse_args()
+
+    US_10Y_BOND = 0.0093
 
     if args.save:
         log_dir = create_log_dir(args.model_name, args.model_type)
@@ -133,6 +134,8 @@ if __name__ == '__main__':
     returns = returns[1:, :]  # returns at time t+1
     # add cash in returns
     returns = np.concatenate([returns, np.zeros(len(returns)).reshape(-1, 1)], 1)
+    daily_risk_free_rate = (1 + US_10Y_BOND) ** (1/3650) - 1
+    returns[:,-1] = daily_risk_free_rate
 
     LOGGER.info('Preprocessing ...')
     # Preprocessing
@@ -172,10 +175,25 @@ if __name__ == '__main__':
     LOGGER.info(f'Test data shape: {test_examples.shape}')
     LOGGER.info(f'Test returns shape: {test_returns.shape}')
 
+
+
+    # Traning pipeline
+    LOGGER.info('Create tf.data.Dataset')
+    # Train
+    nb_batch = len(train_examples) // args.batch_size
+    drop_first = np.remainder(len(train_examples), args.batch_size)
+    train_examples = train_examples[drop_first:, :]
+    n_features = train_examples.shape[-1]
+    train_returns = train_returns[drop_first:, :]
+
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
+    train_dataset = train_dataset.batch(args.batch_size, drop_remainder=False)
+    # Test
+    test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
+    test_dataset = test_dataset.batch(args.batch_size, drop_remainder=args.model_type == 'mlp-cash-bias')
+
     # model
     LOGGER.info('Create model')
-    n_features = train_examples.shape[-1]
-
     if args.model_type == 'mlp':
         LOGGER.info(f'Build {args.model_type} model')
         model = build_etf_mlp(input_dim=(n_features),
@@ -200,19 +218,6 @@ if __name__ == '__main__':
     LOGGER.info(model.summary())
 
     optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
-    # Traning pipeline
-    LOGGER.info('Create tf.data.Dataset')
-    # Train
-    nb_batch = len(train_examples) // args.batch_size
-    drop_first = np.remainder(len(train_examples), args.batch_size)
-    train_examples = train_examples[drop_first:, :]
-    train_returns = train_returns[drop_first:, :]
-
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
-    train_dataset = train_dataset.batch(args.batch_size, drop_remainder=False)
-    # Test
-    test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
-    test_dataset = test_dataset.batch(args.batch_size, drop_remainder=args.model_type == 'mlp-cash-bias')
 
     # Training loop
     LOGGER.info('Start training ...')
