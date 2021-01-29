@@ -2,7 +2,8 @@ import tensorflow as tf
 import numpy as np
 
 
-def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_position: tf.Tensor, trading_fee: float = 0.,
+def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_position: tf.Tensor,
+                      trading_fee: float = 0.,
                       cash_bias: bool = True):
     ret = tf.math.reduce_sum(next_returns * prediction, axis=-1)
     if cash_bias:
@@ -13,9 +14,14 @@ def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_po
     return ret, ret - transaction_cost
 
 
-def sharpe_ratio(port_returns: tf.Tensor, benchmark: float = 0.0093):
+def sharpe_ratio(port_returns: tf.Tensor, benchmark: float = 0.0093, annual_period: float = 250):
     # take log maybe ??
-    sr = - tf.reduce_mean(port_returns - tf.constant(benchmark, dtype=tf.float32)) / (
-            tf.math.reduce_std(port_returns - tf.constant(benchmark, dtype=tf.float32)) + 10e-12)
+    sr = - (annual_period / np.sqrt(annual_period)) * tf.reduce_mean(
+        port_returns - tf.constant(benchmark, dtype=tf.float32)) / (
+                 tf.math.reduce_std(port_returns - tf.constant(benchmark, dtype=tf.float32)) + 1e-12)
     # sr = tf.math.reduce_variance(ret - tf.constant(benchmark, dtype=tf.float32)) / (tf.math.square(tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32))) + 10e-12)
     return sr
+
+
+def diff_sr(prev_A, prev_B, ret):
+    return (prev_B * (ret - prev_A) - 0.5 * prev_A * (ret ** 2 - prev_B)) / ((prev_B - prev_A ** 2) ** (3 / 2))

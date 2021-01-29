@@ -50,8 +50,8 @@ def build_etf_mlp(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
     output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
-    model = tf.keras.models.Model(input_, output)
-    return model
+
+    return tf.keras.models.Model(input_, output)
 
 
 def build_etf_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
