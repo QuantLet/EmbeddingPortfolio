@@ -137,8 +137,8 @@ if __name__ == '__main__':
     returns = returns[1:, :]  # returns at time t+1
     # add cash in returns
     returns = np.concatenate([returns, np.zeros(len(returns)).reshape(-1, 1)], 1)
-    daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
-    returns[:, -1] = daily_risk_free_rate
+    # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
+    # returns[:, -1] = daily_risk_free_rate
 
     LOGGER.info('Preprocessing ...')
     # Preprocessing
@@ -351,7 +351,10 @@ if __name__ == '__main__':
             plot_train_history(train_history, test_history, show=True)
 
     # plot final history and save
-    plot_train_history(train_history, test_history, save_dir=os.path.join(log_dir, 'history.png'), show=True)
+    if args.save:
+        plot_train_history(train_history, test_history, save_dir=os.path.join(log_dir, 'history.png'), show=True)
+    else:
+        plot_train_history(train_history, test_history, show=True)
 
     if args.save:
         # save model
