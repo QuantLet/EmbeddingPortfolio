@@ -3,19 +3,37 @@ import numpy as np
 from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
 from utils.config import LOGGER
 import matplotlib.pyplot as plt
-from typing import List
+from typing import List, Union
 from first_etf_strat.evaluate import plot_train_history
 
 
-def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, learning_rate: float, momentum: float,
+def set_learning_rate(epoch, lr_scheduler):
+    learning_rate_strategy = 'step'
+    if learning_rate_strategy == 'step':
+        max_step = -1
+        learning_rate = 0.0
+        for step, lr in lr_scheduler.items():
+            if epoch >= step > max_step:
+                learning_rate = lr
+                max_step = step
+        if max_step == -1:
+            raise ValueError('cannot find learning rate for step %d' % epoch)
+    elif learning_rate_strategy == 'cosine':
+        raise NotImplementedError()
+    return learning_rate
+
+
+def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, learning_rate: Union[float, dict], momentum: float,
           n_epochs: int, assets: List[str], benchmark: float, annual_period: int, trading_fee: float,
           log_every: int, plot_every: int, no_cash: bool = False, clip_value: float = None, train_returns=None):
     n_assets = len(assets)
 
+    if isinstance(learning_rate, dict):
+        initial_lr = learning_rate[0]
     if clip_value is not None:
-        optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum, clipvalue=5)
+        optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum, clipvalue=clipvalue)
     else:
-        optimizer = tf.keras.optimizers.SGD(learning_rate=learning_rate, momentum=momentum, clipvalue=5)
+        optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum)
 
     train_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
     test_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
@@ -25,6 +43,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                              'cum_ret': tf.keras.metrics.Sum()}
         test_epoch_stats = {'loss': tf.keras.metrics.Mean(), 'avg_ret': tf.keras.metrics.Mean(),
                             'cum_ret': tf.keras.metrics.Sum()}
+        # Get learning rate
+        optimizer.lr = set_learning_rate(epoch, learning_rate)
+        if epoch in learning_rate.keys():
+            LOGGER.info(f'Setting learning rate to: {optimizer.lr.numpy()}')
 
         # Training loop
         epoch_actions = []
@@ -141,7 +163,6 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
             )
 
         if epoch % plot_every == 0:
-            fig, axs = plt.subplots(1, 3, figsize=(15, 3))
             plt.plot(epoch_actions)
             plt.legend(assets)
             plt.title('prediction')
