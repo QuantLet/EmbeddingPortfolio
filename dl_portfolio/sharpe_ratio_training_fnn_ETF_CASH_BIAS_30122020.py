@@ -97,7 +97,7 @@ if __name__ == '__main__':
     LOGGER.info(f'Test data shape: {test_examples.shape}')
     LOGGER.info(f'Test returns shape: {test_returns.shape}')
 
-    # Traning pipeline
+    # Training pipeline
     LOGGER.info('Create tf.data.Dataset')
     # Train
     nb_batch = len(train_examples) // config.batch_size

@@ -1,4 +1,218 @@
 import numpy as np
+from typing import List, Dict
+import pandas as pd
+import datetime as dt
+from dl_portfolio.logger import LOGGER
+
+BASE_FREQ = 1800
+BASE_COLUMNS = ['open', 'high', 'low', 'close', 'volume', 'quoteVolume']
+RESAMPLE_DICT = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
+                 'quoteVolume': 'sum'}
+
+
+def one_month_from_freq(freq):
+    hour = BASE_FREQ * 2
+    if freq == hour:
+        month = 24 * 30
+    elif freq == hour * 2:
+        month = 12 * 30
+    elif freq == hour * 4:
+        month = 6 * 30
+    elif freq == hour * 24:
+        month = 30
+    return month
+
+
+def data_to_freq(data, freq):
+    assert freq in [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8,
+                    BASE_FREQ * 48], 'Specified freq must be higher than 30sec'
+    assert data.index.freq == '30T', 'Data must have BASE_FREQ'
+    if freq != BASE_FREQ:
+        if freq == BASE_FREQ * 2:
+            freq = '1H'
+        elif freq == BASE_FREQ * 4:
+            freq = '2H'
+        elif freq == BASE_FREQ * 8:
+            freq = '4H'
+        elif freq == BASE_FREQ * 48:
+            freq = '1D'
+
+        re_data = pd.DataFrame()
+        assets = np.unique(list(data.columns.get_level_values(0))).tolist()
+        for asset in assets:
+            re_data = pd.concat([re_data, data[asset].resample(freq,
+                                                               closed='right',
+                                                               label='right').agg(RESAMPLE_DICT)], 1)
+        re_data.columns = pd.MultiIndex.from_product([assets, BASE_COLUMNS])
+
+        return re_data
+
+
+def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
+    if feature_name in BASE_COLUMNS:
+        feature = data[feature_name]
+    elif feature_name == 'returns':
+        time_period = kwargs.get('time_period', 1)
+        feature = data['close'].pct_change(time_period)
+    elif feature_name == 'log_returns':
+        time_period = kwargs.get('time_period', 1)
+        feature = np.log(data['close'].pct_change(time_period) + 1)
+
+    return feature
+
+
+class DataLoader(object):
+    def __init__(self, features: List, freq: int = 3600, path: str = 'crypto_data/clean_data_1800.p',
+                 pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
+                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False):
+        self._freq = freq
+        self._features = features
+        self._n_features = len(features)
+        self._features_name = [f['name'] for f in self._features]
+        self._pairs = pairs
+        self._nb_folds = nb_folds
+        self._val_size = val_size
+
+        if not no_cash:
+            self._assets = self._pairs + ['cash']
+        else:
+            self._assets = self._pairs
+        self._n_assets = len(self._assets)
+        LOGGER.info(f'Creating data_loader for {self._n_assets} assets : {self._assets}')
+
+        # load data
+        self.df_data = pd.read_pickle(path)
+        self.df_data = self.df_data.astype(np.float32)
+        # resample
+        self.df_data = data_to_freq(self.df_data, freq)
+        # Get returns
+        self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
+        if not no_cash:
+            # Add cash column
+            self.df_returns['cash'] = 0.
+        self.df_returns = self.df_returns.astype(np.float32)
+        # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
+        # returns[:, -1] = daily_risk_free_rate
+
+        # dropna
+        before_drop = len(self.df_data)
+        has_nan = np.sum(self.df_data.isna().sum()) > 0
+        if has_nan:
+            LOGGER.info('They are NaNs in original dataframe, dropping...')
+        self.df_data = self.df_data.dropna()
+        after_drop = len(self.df_data)
+        if has_nan:
+            LOGGER.info(f'Dropped {before_drop - after_drop} NaNs')
+
+        # get last feature index
+        last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
+        self.df_data = self.df_data.loc[:last_ind]
+
+        # Build features
+        LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
+        self.df_features = self.build_features()
+        self._lookback = np.max(self.df_features.isna().sum())
+        LOGGER.info(f'Lookback is {self._lookback}')
+        before_drop = len(self.df_features)
+        # drop na
+        self.df_features.dropna(inplace=True)
+        after_drop = len(self.df_features)
+        if self._lookback != before_drop - after_drop:
+            raise ValueError(f'Problem with NaNs count:\n{self.df_features.isna().sum()}')
+
+        # Get corresponding returns
+        dates = self.df_features.index
+        return_dates = dates + dt.timedelta(seconds=freq)
+        self.df_returns = self.df_returns.reindex(return_dates)
+        if np.sum(self.df_returns.isna().sum()) != 0:
+            raise NotImplementedError(
+                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
+        assert len(self.df_features) == len(self.df_returns)
+        assert np.sum(self.df_features.index != self.df_returns.index - dt.timedelta(seconds=freq)) == 0
+
+        # Train / Test split
+        LOGGER.info('Train / test split')
+        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
+
+    def build_features(self):
+        df_features = pd.DataFrame()
+
+        for pair in self._pairs:
+            pair_feature = pd.DataFrame()
+            for feature_spec in self._features:
+                params = feature_spec.get('params')
+                if params is not None:
+                    feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
+                else:
+                    feature = get_feature(feature_spec['name'], self.df_data[pair])
+                pair_feature = pd.concat([pair_feature, feature], 1)
+            df_features = pd.concat([df_features, pair_feature], 1)
+
+        df_features.columns = pd.MultiIndex.from_product([self._pairs, self._features_name])
+
+        return df_features
+
+    def cv_folds(self, nb_folds: int = 1, n_months: int = 6, type='incremental'):
+        """
+
+        :param nb_folds:
+        :param val_size:
+        :param type:
+        :return:
+        """
+        if type != 'incremental':
+            raise NotImplementedError()
+
+        n_samples = len(self.df_features)
+        indices = list(range(n_samples))
+        month = one_month_from_freq(self._freq)
+        val_size = n_months * month
+        cv_indices = {}
+        for i in range(nb_folds, 0, -1):
+            if i > 1:
+                cv_indices[nb_folds - i] = {
+                    'train': indices[:-val_size * i],
+                    'test': indices[- val_size * i:- val_size * (i - 1)]
+                }
+            else:
+                cv_indices[nb_folds - i] = {
+                    'train': indices[:-val_size * i],
+                    'test': indices[- val_size:]
+                }
+
+        return cv_indices
+
+    @property
+    def cv_indices(self):
+        return self._cv_indices
+
+    @property
+    def assets(self):
+        return self._assets
+
+    @property
+    def n_assets(self):
+        return self._n_assets
+
+    @property
+    def pairs(self):
+        return self._pairs
+
+    @property
+    def n_pairs(self):
+        return len(self._pairs)
+
+    @property
+    def n_features(self):
+        return self._n_features
+
+    @property
+    def input_data(self):
+        return self.df_features.values
+
+    @property
+    def returns(self):
+        return self.df_returns.values
 
 
 def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
