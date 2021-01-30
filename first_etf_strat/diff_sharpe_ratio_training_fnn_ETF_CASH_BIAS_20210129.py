@@ -4,10 +4,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
-from utils.config import LOGGER
+from first_etf_strat.logger import LOGGER
 from first_etf_strat.model import build_etf_mlp, build_etf_mlp_with_cash_bias
 from first_etf_strat.metrics import portfolio_returns, diff_sr
-from utils.utils import create_log_dir
+from first_etf_strat.utils import create_log_dir
 from typing import Dict, Optional
 
 

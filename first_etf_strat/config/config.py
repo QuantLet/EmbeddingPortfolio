@@ -34,4 +34,4 @@ annual_period = 252
 trading_fee = 0.0001
 
 # Output
-save = True
+save = False

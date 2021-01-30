@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
-from utils.config import LOGGER
+from first_etf_strat.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
 from first_etf_strat.evaluate import plot_train_history

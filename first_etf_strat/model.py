@@ -1,6 +1,6 @@
 import tensorflow as tf
 from typing import Tuple, Optional
-from utils.config import LOGGER
+from first_etf_strat.logger import LOGGER
 
 
 class CashBias(tf.keras.layers.Layer):

@@ -4,9 +4,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
-from utils.config import LOGGER
+from first_etf_strat.logger import LOGGER
 from first_etf_strat.model import build_etf_mlp, build_etf_mlp_with_cash_bias
-from utils.utils import create_log_dir
+from first_etf_strat.utils import create_log_dir
 from first_etf_strat.data import build_delayed_window, features_generator
 from first_etf_strat.evaluate import plot_train_history
 from first_etf_strat.train import train
