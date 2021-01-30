@@ -6,72 +6,12 @@ import pandas as pd
 from sklearn import preprocessing
 from utils.config import LOGGER
 from first_etf_strat.model import build_etf_mlp, build_etf_mlp_with_cash_bias
-from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
 from utils.utils import create_log_dir
-from typing import Dict, Optional
-
-
-def plot_train_history(train_history: Dict, test_history: Dict, save_dir: Optional[str] = None, show: bool = False):
-    fig, axs = plt.subplots(1, 3, figsize=(15, 3))
-    axs[0].plot(train_history['loss'])
-    axs[0].plot(test_history['loss'])
-    axs[0].set_title('Loss')
-    axs[1].plot(train_history['avg_ret'])
-    axs[1].plot(test_history['avg_ret'])
-    axs[1].set_title('Average return')
-    axs[2].plot(train_history['cum_ret'])
-    axs[2].plot(test_history['cum_ret'])
-    axs[2].set_title('Cum return')
-    if save_dir:
-        plt.savefig(save_dir)
-    if show:
-        plt.show()
-
-
-def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
-    """
-
-    :param data: data
-    :param seq_len: length of past window
-    :param return_3d: if True then return  (n, seq_len, n_features)
-    :return:
-    """
-    n_features = data.shape[-1]
-    # sequence data: (n, seq_len, n_features)
-    seq_data = np.array([data[i - seq_len:i, :] for i in range(seq_len, len(data))], dtype=np.float32)
-
-    if return_3d:
-        data = seq_data
-    else:
-        # concatenate columns: (n, seq_len * n_features)
-        data = np.zeros((seq_data.shape[0], seq_len * n_features))
-        data[:] = np.nan
-        for i in range(n_features):
-            data[:, i * seq_len:seq_len * (i + 1)] = seq_data[:, :, i]
-        assert not any(np.isnan(data).sum(1).tolist())
-    return data
-
-
-def features_generator(dataset):
-    for features, _ in dataset:
-        yield features
-
-
-def returns_generator(dataset):
-    for _, next_returns in dataset:
-        yield next_returns
-
+from first_etf_strat.data import build_delayed_window, features_generator
+from first_etf_strat.evaluate import plot_train_history
+from first_etf_strat.train import train
 
 if __name__ == '__main__':
-
-    # def make_variables(k, initializer):
-    #     return (tf.Variable(initializer(shape=[None, k], dtype=tf.float32)),
-    #             tf.Variable(initializer(shape=[k, k], dtype=tf.float32)))
-    #
-    # v1, v2 = make_variables(3, tf.ones_initializer())
-    # print(v1, v2)
-    # exit()
-
     import argparse
 
     parser = argparse.ArgumentParser("ETF FNN")
@@ -91,6 +31,7 @@ if __name__ == '__main__':
     parser.add_argument("--seed", type=int, default=None, help="Seed for reproducibility, if not set use default")
     parser.add_argument("--test-size", type=int, default=300, help="Test size")
     parser.add_argument("--benchmark", type=float, default=0., help="Risk free rate for excess Sharpe Ratio")
+    parser.add_argument("--annual-period", type=float, default=0., help="Period to annualize sharpe ratio")
     parser.add_argument("--trading-fee", type=float, default=0.0001, help="Trading fee")
     parser.add_argument("--load-model", type=str, default=None, help="Model checkpoint path")
     parser.add_argument("--save", action="store_true", help="Save outputs")
@@ -217,138 +158,15 @@ if __name__ == '__main__':
         model.load_weights(path)
 
     LOGGER.info(model.summary())
-
-    optimizer = tf.keras.optimizers.SGD(learning_rate=args.learning_rate, momentum=args.momentum)
-
     # Training loop
     LOGGER.info('Start training ...')
-    weights = []
-    train_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
-    test_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
+    # for debugging
+    # tf.debugging.enable_check_numerics()
 
-    for epoch in range(args.n_epochs):
-        train_epoch_stats = {'loss': tf.keras.metrics.Mean(), 'avg_ret': tf.keras.metrics.Mean(),
-                             'cum_ret': tf.keras.metrics.Sum()}
-        test_epoch_stats = {'loss': tf.keras.metrics.Mean(), 'avg_ret': tf.keras.metrics.Mean(),
-                            'cum_ret': tf.keras.metrics.Sum()}
-
-        # Training loop
-        epoch_actions = []
-        counter = 0
-        for features, returns in train_dataset:
-            if counter == 0:
-                if args.no_cash:
-                    initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
-                else:
-                    initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
-            else:
-                initial_position = actions[-1:, :-1]
-
-            # Optimize the model
-            with tf.GradientTape() as tape:
-                actions = model(features, training=True)
-                port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
-                                                                    trading_fee=args.trading_fee,
-                                                                    cash_bias=not args.no_cash)
-                loss_value = sharpe_ratio(port_return, benchmark=args.benchmark)
-
-            if np.isnan(loss_value.numpy()):
-                LOGGER.debug(f'Features is nan:{any(np.isnan(features.numpy().sum(1).tolist()))}')
-                LOGGER.debug(f'ACTION: {actions}')
-                LOGGER.debug(f'PORT RETURN: {port_return}')
-                raise ValueError('Tf returned NaN')
-
-            grads = tape.gradient(loss_value, model.trainable_variables)
-            optimizer.apply_gradients(zip(grads, model.trainable_variables))
-            weights.append([var.numpy() for var in model.trainable_variables])
-
-            # Track progress
-            ret_t = tf.reduce_sum(returns * actions, axis=-1)
-            avg_reg = tf.reduce_mean(ret_t)
-            cum_ret = tf.reduce_sum(ret_t)
-            train_epoch_stats['loss'].update_state(loss_value)  # Add current batch loss
-            train_epoch_stats['cum_ret'].update_state(cum_ret)
-            train_epoch_stats['avg_ret'].update_state(avg_reg)
-
-            # update actions
-            epoch_actions.append(actions.numpy())
-            counter += 1
-
-        epoch_actions = np.array([i for sub in epoch_actions for i in sub])
-
-        # Inference
-        counter = 0
-        for features, returns in test_dataset:
-            if counter == 0:
-                initial_position = epoch_actions[-1:, :]
-            else:
-                initial_position = actions[-1:, :]
-            if not args.no_cash:
-                initial_position = initial_position[-1:, :-1]
-
-            actions = model(features, training=False)
-            port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
-                                                                trading_fee=args.trading_fee,
-                                                                cash_bias=not args.no_cash)
-            loss_value = sharpe_ratio(port_return, benchmark=args.benchmark)
-
-            # Track progress
-            test_epoch_stats['loss'].update_state(loss_value)
-            ret_t = tf.reduce_sum(returns * actions, axis=-1)
-            avg_reg = tf.reduce_mean(ret_t)
-            cum_ret = tf.reduce_sum(ret_t)
-            test_epoch_stats['cum_ret'].update_state(cum_ret)
-            test_epoch_stats['avg_ret'].update_state(avg_reg)
-
-            counter += 1
-
-        # Update history
-        train_history['loss'].append(train_epoch_stats['loss'].result())
-        train_history['avg_ret'].append(train_epoch_stats['avg_ret'].result())
-        train_history['cum_ret'].append(train_epoch_stats['cum_ret'].result())
-        test_history['loss'].append(test_epoch_stats['loss'].result())
-        test_history['avg_ret'].append(test_epoch_stats['avg_ret'].result())
-        test_history['cum_ret'].append(test_epoch_stats['cum_ret'].result())
-
-        if epoch % args.log_every == 0:
-            LOGGER.info(
-                "Epoch {:03d}: Loss: {:.6f}, Returns: {:.6f}, Cum Returns: {:.6f}, Test Loss: {:.6f}, Test Returns: {:.6f}, Test Cum Returns: {:.6f}".format(
-                    epoch,
-                    train_epoch_stats[
-                        'loss'].result(),
-                    train_epoch_stats[
-                        'avg_ret'].result(),
-                    train_epoch_stats[
-                        'cum_ret'].result(),
-                    test_epoch_stats[
-                        'loss'].result(),
-                    test_epoch_stats[
-                        'avg_ret'].result(),
-                    test_epoch_stats[
-                        'cum_ret'].result())
-            )
-
-        if epoch % args.plot_every == 0:
-            fig, axs = plt.subplots(1, 3, figsize=(15, 3))
-            axs[0].plot([w[0][:, 0] for w in weights])
-            axs[0].set_title('weight 0')
-            axs[1].plot([w[1][0] for w in weights])
-            axs[1].set_title('weight 1')
-            axs[2].plot(epoch_actions)
-            axs[2].legend(assets)
-            axs[2].set_title('prediction')
-            fig.suptitle(f'Epoch {epoch}')
-            plt.show()
-
-            strat_perf = (train_returns[:len(epoch_actions), :] * epoch_actions).sum(1)
-            eq_port = train_returns[:len(epoch_actions), :].mean(1)
-            plt.plot((eq_port + 1).cumprod(), label='equally weighted')
-            plt.plot((strat_perf + 1).cumprod(), label='strategy')
-            plt.legend()
-            plt.title(f'Train perf at epoch {epoch}')
-            plt.show()
-
-            plot_train_history(train_history, test_history, show=True)
+    model, train_history, test_history = train(train_dataset, test_dataset, model, args.learning_rate, args.momentum,
+                                               args.n_epochs, assets, args.benchmark, args.annual_period,
+                                               args.trading_fee, args.log_every, args.plot_every, no_cash=args.no_cash,
+                                               clip_value=None, train_returns=train_returns)
 
     # plot final history and save
     if args.save:
