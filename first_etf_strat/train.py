@@ -80,7 +80,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 else:
                     print(actions)
                     print(loss_value)
-                exit()
+
                 nans = np.isnan(features.numpy()).tolist()
                 nans = [i for sub in nans for i in sub]
                 LOGGER.debug(f'Features is nan: {any(nans)}')
