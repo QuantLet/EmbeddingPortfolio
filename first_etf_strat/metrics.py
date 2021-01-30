@@ -14,11 +14,16 @@ def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_po
     return ret, ret - transaction_cost
 
 
-def sharpe_ratio(port_returns: tf.Tensor, benchmark: float = 0.0093, annual_period: float = 250):
+def sharpe_ratio(port_returns: tf.Tensor, benchmark: tf.constant(0.0093, dtype=tf.float32), annual_period: tf.constant = tf.constant(0, dtype=tf.float32)):
     # take log maybe ??
-    sr = - (annual_period / np.sqrt(annual_period)) * tf.reduce_mean(
-        port_returns - tf.constant(benchmark, dtype=tf.float32)) / (
-                 tf.math.reduce_std(port_returns - tf.constant(benchmark, dtype=tf.float32)) + 1e-12)
+    if annual_period != 0:
+        sr = - annual_period / np.sqrt(annual_period) * tf.reduce_mean(
+            tf.math.log((port_returns - benchmark) + 1.)) / (
+                     tf.math.reduce_std((port_returns - benchmark) + 1.) + 1e-12)
+    else:
+        sr = - tf.reduce_mean(
+            tf.math.log((port_returns - benchmark) + 1.)) / (
+                     tf.math.reduce_std((port_returns - benchmark) + 1.) + 1e-12)
     # sr = tf.math.reduce_variance(ret - tf.constant(benchmark, dtype=tf.float32)) / (tf.math.square(tf.reduce_mean(ret - tf.constant(benchmark, dtype=tf.float32))) + 10e-12)
     return sr
 
