@@ -19,4 +19,4 @@ def get_logger(name_logger):
     return logger_to_ret
 
 
-LOGGER = get_logger("DL-Portfolio-Logger")
+LOGGER = get_logger("First-Etf-Strat-Logger")
