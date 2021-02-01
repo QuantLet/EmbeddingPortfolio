@@ -3,11 +3,7 @@ from typing import List, Dict
 import pandas as pd
 import datetime as dt
 from dl_portfolio.logger import LOGGER
-
-BASE_FREQ = 1800
-BASE_COLUMNS = ['open', 'high', 'low', 'close', 'volume', 'quoteVolume']
-RESAMPLE_DICT = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
-                 'quoteVolume': 'sum'}
+from dl_portfolio.constant import BASE_FREQ, BASE_COLUMNS, RESAMPLE_DICT
 
 
 def one_month_from_freq(freq):
@@ -61,11 +57,38 @@ def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
     return feature
 
 
+def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
+    """
+
+    :param data: data
+    :param seq_len: length of window
+    :param return_3d: if True then return  (n, seq_len, n_features)
+    :return:
+    """
+    n = len(data)
+    n_features = data.shape[-1]
+    # sequence data: (n, seq_len, n_features)
+    seq_data = np.zeros((n, seq_len, n_features))
+    seq_data[:] = np.nan
+    seq_data[seq_len:, :, :] = np.array([data[i - seq_len:i, :] for i in range(seq_len, n)], dtype=np.float32)
+
+    if return_3d:
+        data = seq_data
+    else:
+        # concatenate columns: (n, seq_len * n_features)
+        data = np.zeros((n, seq_len * n_features))
+        data[:] = np.nan
+        for i in range(n_features):
+            data[:, i * seq_len:seq_len * (i + 1)] = seq_data[:, :, i]
+    return data
+
+
 class DataLoader(object):
-    def __init__(self, features: List, freq: int = 3600, path: str = 'crypto_data/clean_data_1800.p',
+    def __init__(self, features: List, freq: int = 3600, path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False):
+                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False, window: int = 1):
         self._freq = freq
+        self._window = window
         self._features = features
         self._n_features = len(features)
         self._features_name = [f['name'] for f in self._features]
@@ -111,7 +134,14 @@ class DataLoader(object):
         # Build features
         LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
         self.df_features = self.build_features()
+        if self._window > 1:
+            self.df_features = pd.DataFrame(build_delayed_window(self.df_features.values, self._window),
+                                            index=self.df_features.index)
         self._lookback = np.max(self.df_features.isna().sum())
+        assert self._lookback == np.max(
+            [f['params'].get('time_period') for f in self._features if 'params' in f]) + self._window * int(
+            self._window > 1)
+
         LOGGER.info(f'Lookback is {self._lookback}')
         before_drop = len(self.df_features)
         # drop na
@@ -132,6 +162,11 @@ class DataLoader(object):
 
         # Train / Test split
         LOGGER.info('Train / test split')
+
+        n_samples = len(self.df_features)
+        self._indices = list(range(n_samples))
+        self._dates = self.df_features.index
+
         self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
 
     def build_features(self):
@@ -163,21 +198,19 @@ class DataLoader(object):
         if type != 'incremental':
             raise NotImplementedError()
 
-        n_samples = len(self.df_features)
-        indices = list(range(n_samples))
         month = one_month_from_freq(self._freq)
         val_size = n_months * month
         cv_indices = {}
         for i in range(nb_folds, 0, -1):
             if i > 1:
                 cv_indices[nb_folds - i] = {
-                    'train': indices[:-val_size * i],
-                    'test': indices[- val_size * i:- val_size * (i - 1)]
+                    'train': self._indices[:-val_size * i],
+                    'test': self._indices[- val_size * i:- val_size * (i - 1)]
                 }
             else:
                 cv_indices[nb_folds - i] = {
-                    'train': indices[:-val_size * i],
-                    'test': indices[- val_size:]
+                    'train': self._indices[:-val_size * i],
+                    'test': self._indices[- val_size:]
                 }
 
         return cv_indices
@@ -214,29 +247,9 @@ class DataLoader(object):
     def returns(self):
         return self.df_returns.values
 
-
-def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
-    """
-
-    :param data: data
-    :param seq_len: length of past window
-    :param return_3d: if True then return  (n, seq_len, n_features)
-    :return:
-    """
-    n_features = data.shape[-1]
-    # sequence data: (n, seq_len, n_features)
-    seq_data = np.array([data[i - seq_len:i, :] for i in range(seq_len, len(data))], dtype=np.float32)
-
-    if return_3d:
-        data = seq_data
-    else:
-        # concatenate columns: (n, seq_len * n_features)
-        data = np.zeros((seq_data.shape[0], seq_len * n_features))
-        data[:] = np.nan
-        for i in range(n_features):
-            data[:, i * seq_len:seq_len * (i + 1)] = seq_data[:, :, i]
-        assert not any(np.isnan(data).sum(1).tolist())
-    return data
+    @property
+    def dates(self):
+        return self._dates
 
 
 def features_generator(dataset):

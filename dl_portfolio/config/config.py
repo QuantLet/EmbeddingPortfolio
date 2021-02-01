@@ -16,12 +16,12 @@ learning_rate = 0.001
 
 lr_scheduler = {
     0: 0.01,
-    5: 0.001,
-    40: 0.0001
+    100: 0.001,
+    140: 0.0001
 }
 
 momentum = 0.8
-n_epochs = 150
+n_epochs = 100
 batch_size = 64
 log_every = 1
 plot_every = 20
