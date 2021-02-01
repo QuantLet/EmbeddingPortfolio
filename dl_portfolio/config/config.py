@@ -28,10 +28,11 @@ plot_every = 20
 test_size = 300
 
 # Strategy, loss function
+freq=3600
 no_cash = False
 benchmark = 0.
-annual_period = 252
-trading_fee = 0.0001
+annual_period = 1
+trading_fee = 0.0075
 
 # Output
-save = False
+save = True

@@ -1,10 +1,10 @@
 import tensorflow as tf
 import numpy as np
-from first_etf_strat.metrics import portfolio_returns, sharpe_ratio
-from first_etf_strat.logger import LOGGER
+from dl_portfolio.metrics import portfolio_returns, sharpe_ratio
+from dl_portfolio.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
-from first_etf_strat.evaluate import plot_train_history
+from dl_portfolio.evaluate import plot_train_history
 
 
 def set_learning_rate(epoch, lr_scheduler):
@@ -23,7 +23,8 @@ def set_learning_rate(epoch, lr_scheduler):
     return learning_rate
 
 
-def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, learning_rate: Union[float, dict], momentum: float,
+def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, learning_rate: Union[float, dict],
+          momentum: float,
           n_epochs: int, assets: List[str], benchmark: float, annual_period: int, trading_fee: float,
           log_every: int, plot_every: int, no_cash: bool = False, clip_value: float = None, train_returns=None):
     n_assets = len(assets)
@@ -31,7 +32,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
     if isinstance(learning_rate, dict):
         initial_lr = learning_rate[0]
     if clip_value is not None:
-        optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum, clipvalue=clipvalue)
+        optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum, clipvalue=clip_value)
     else:
         optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum)
 
@@ -69,6 +70,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
                                                                     trading_fee=trading_fee,
                                                                     cash_bias=not no_cash)
+                # print(port_return_no_fee - port_return)
                 loss_value = sharpe_ratio(port_return, benchmark=tf.constant(benchmark, dtype=tf.float32),
                                           annual_period=tf.constant(annual_period, dtype=tf.float32))
 
@@ -165,10 +167,17 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         if epoch % plot_every == 0:
             plt.plot(epoch_actions)
             plt.legend(assets)
-            plt.title('prediction')
+            plt.title(f'prediction at epoch {epoch}')
             plt.show()
 
-            strat_perf = (train_returns[:len(epoch_actions), :] * epoch_actions).sum(1)
+            if no_cash:
+                initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
+            else:
+                initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
+            strat_perf_no_fee, strat_perf = portfolio_returns(tf.Variable(epoch_actions), tf.Variable(train_returns),
+                                           initial_position, trading_fee=trading_fee, cash_bias=not no_cash)
+
+            strat_perf = strat_perf.numpy()
             eq_port = train_returns[:len(epoch_actions), :].mean(1)
             plt.plot((eq_port + 1).cumprod(), label='equally weighted')
             plt.plot((strat_perf + 1).cumprod(), label='strategy')

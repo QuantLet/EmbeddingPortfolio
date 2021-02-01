@@ -11,7 +11,7 @@ from dl_portfolio.data import build_delayed_window, features_generator, DataLoad
 from dl_portfolio.evaluate import plot_train_history
 from dl_portfolio.train import train
 from dl_portfolio.config import config
-import logging
+import logging, pickle
 from shutil import copyfile
 
 US_10Y_BOND = 0.0093
@@ -36,7 +36,7 @@ if __name__ == '__main__':
     features = [{'name': 'close'}, {'name': 'returns', 'params': {'time_period': 1}}]
 
     # initialize data_loader
-    data_loader = DataLoader(features, freq=3600)
+    data_loader = DataLoader(features, freq=config.freq)
 
     # create model
     LOGGER.info('Create model')
@@ -141,6 +141,9 @@ if __name__ == '__main__':
         train_predictions = model.predict(features_generator(train_dataset), verbose=1)
         # Inference on test
         test_predictions = model.predict(features_generator(test_dataset), verbose=1)
+
+        if config.save:
+            pickle.dump(test_predictions, open(os.path.join(log_dir, 'test_prediction.p'), 'wb'))
 
         # Final prediction
         fig, axs = plt.subplots(1, 2, figsize=(15, 3))
