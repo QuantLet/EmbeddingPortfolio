@@ -3,15 +3,19 @@ import numpy as np
 
 
 def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_position: tf.Tensor,
-                      trading_fee: float = 0.,
-                      cash_bias: bool = True):
+                      trading_fee: float = 0., cash_bias: bool = True):
     ret = tf.math.reduce_sum(next_returns * prediction, axis=-1)
     if cash_bias:
         positions = tf.concat([initial_position, prediction[:, :-1]], 0)
     else:
         positions = tf.concat([initial_position, prediction], 0)
-    transaction_cost = trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1)
-    return ret, ret - transaction_cost
+
+    # Moody et al (1998) https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.87.8437&rep=rep1&type=pdf
+    ret_fee = tf.math.reduce_sum((next_returns + 1) * prediction, axis=-1) * (
+                1 - trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1))
+    ret_fee = ret_fee - 1
+
+    return ret, ret_fee
 
 
 def sharpe_ratio(port_returns: tf.Tensor, benchmark: tf.constant(0.0093, dtype=tf.float32),
