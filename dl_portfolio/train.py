@@ -23,7 +23,7 @@ def set_learning_rate(epoch, lr_scheduler):
     return learning_rate
 
 
-def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, learning_rate: Union[float, dict],
+def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, model_type:str, learning_rate: Union[float, dict],
           momentum: float,
           n_epochs: int, assets: List[str], benchmark: float, annual_period: int, trading_fee: float,
           log_every: int, plot_every: int, no_cash: bool = False, clip_value: float = None, train_returns=None):
@@ -55,6 +55,8 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         epoch_grads = []
         counter = 0
         for features, returns in train_dataset:
+            if model_type == "EIIE":
+                features = tf.transpose(features, [0, 1, 2, 3])
             if counter == 0:
                 if no_cash:
                     initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
@@ -82,7 +84,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 else:
                     print(actions)
                     print(loss_value)
-                exit()
+
                 nans = np.isnan(features.numpy()).tolist()
                 nans = [i for sub in nans for i in sub]
                 LOGGER.debug(f'Features is nan: {any(nans)}')

@@ -83,11 +83,64 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
     return data
 
 
+def reshape_to_2d_data(data: np.ndarray, n_features: int, seq_len: int):
+    """
+
+    :param data: array with shape (n, seq_len * n_features). Columns are organised as (x^1_t-k-1, ..., x^1_t, x^2_t-k-1,
+     ..., x^2_t, ..., x^f_t-k-1, ..., x^f_t)
+    :param n_features:
+    :param seq_len:
+    :return:
+    """
+    seq_data = np.zeros((len(data), seq_len, n_features))
+    seq_data[:] = np.nan
+    for i in range(n_features):
+        seq_data[:, :, i] = data[:, i * seq_len:seq_len * (i + 1)]
+    assert np.isnan(seq_data).sum() == 0
+    return seq_data
+
+
+def min_max_scaler(X: np.ndarray, feature_range: tuple, minX: float = None, maxX: float = None):
+    """
+
+    :param X: data
+    :param feature_range: (min, max)
+    :param minX: min from train set to apply transformation on unseen data
+    :param maxX: max from train set to apply transformation on unseen data
+    :return:
+    """
+    if minX is None and maxX is None:
+        minX = X.min(axis=0)
+        maxX = X.max(axis=0)
+
+    X_std = (X - minX) / (maxX - minX)
+    X_scaled = X_std * (feature_range[1] - feature_range[0]) + feature_range[0]
+
+    return X_scaled, minX, maxX
+
+
+def normalize_2d(data):
+    """
+
+    :param data: (n, seq_len, n_features)
+    :return:
+    """
+
+    raise NotImplementedError()
+
+def drop_remainder(indices, batch_size, last=False):
+    drop = np.remainder(len(indices), batch_size)
+    if last:
+        indices = indices[:drop]
+    else:
+        indices = indices[drop:]
+    return indices
+
 class DataLoader(object):
     def __init__(self, model_type: str, features: List, freq: int = 3600,
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False, window: int = 1):
+                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32):
         self._freq = freq
         self._window = window
         self._features = features
@@ -97,6 +150,7 @@ class DataLoader(object):
         self._nb_folds = nb_folds
         self._val_size = val_size
         self._model_type = model_type
+        self._batch_size = batch_size
 
         if not no_cash:
             self._assets = self._pairs + ['cash']
@@ -133,6 +187,8 @@ class DataLoader(object):
         last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
         self.df_data = self.df_data.loc[:last_ind]
 
+
+        # TODO: move this into cv fold generation
         # Build features, returns and corresponding base index
         LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
         if self._model_type == 'EIIE_model':
@@ -202,8 +258,14 @@ class DataLoader(object):
 
     def build_features_EIIE(self):
         pairs_features = {}
-        df_features, df_returns, indices, dates = self.build_features_2d_and_returns()
+        df_features, df_returns, indices, dates = self.build_1d_features_and_returns()
 
+        """for pair in self._pairs:
+            pairs_features[pair] = reshape_to_2d_data(df_features[pair].values, n_features=self._n_features,
+                                                      seq_len=self._window)
+        assert np.sum(
+            np.unique([pairs_features[k].shape for k in pairs_features.keys()]) != [self._n_features, self._window,
+                                                                                    len(dates)]) == 0"""
         for pair in self._pairs:
             pairs_features[pair] = df_features[pair]
 
@@ -226,16 +288,35 @@ class DataLoader(object):
         for i in range(nb_folds, 0, -1):
             if i > 1:
                 cv_indices[nb_folds - i] = {
-                    'train': self._indices[:-val_size * i],
-                    'test': self._indices[- val_size * i:- val_size * (i - 1)]
+                    'train': drop_remainder(self._indices[:-val_size * i], self._batch_size, last=False),
+                    'test': drop_remainder(self._indices[- val_size * i:- val_size * (i - 1)], self._batch_size, last=True)
                 }
             else:
                 cv_indices[nb_folds - i] = {
-                    'train': self._indices[:-val_size * i],
-                    'test': self._indices[- val_size:]
+                    'train': drop_remainder(self._indices[:-val_size * i], self._batch_size, last=False),
+                    'test': drop_remainder(self._indices[- val_size:], self._batch_size, last=True)
                 }
 
         return cv_indices
+
+    def cv_split(self, cv):
+        raise ValueError('No need for that, drop_remainder has been implemented')
+        LOGGER.info('Train / test split')
+        train_indices = self._cv_indices[cv]['train']
+        train_nb_batch = len(train_indices) // self._batch_size
+        LOGGER.info(f'nb_batch in training: {train_nb_batch}')
+        drop_first = np.remainder(len(train_indices), self._batch_size)
+        LOGGER.info(f'Drop first {drop_first} in train set')
+        self._train_indices = train_indices[drop_first:]
+        self._train_dates = self._dates[train_indices]
+
+        test_indices = self._cv_indices[cv]['test']
+        test_nb_batch = len(test_indices) // self._batch_size
+        LOGGER.info(f'nb_batch in test: {test_nb_batch}')
+        drop_first = np.remainder(len(test_indices), self._batch_size)
+        LOGGER.info(f'Drop first {drop_first} in train set')
+        self._test_indices = test_indices[drop_first:]
+        self._test_dates = self._dates[test_indices]
 
     @property
     def cv_indices(self):
@@ -272,6 +353,26 @@ class DataLoader(object):
     @property
     def dates(self):
         return self._dates
+
+    @property
+    def window(self):
+        return self._window
+
+    @property
+    def train_indices(self):
+        return self._train_indices
+
+    @property
+    def train_dates(self):
+        return self._train_dates
+
+    @property
+    def test_indices(self):
+        return self._test_indices
+
+    @property
+    def test_dates(self):
+        return self._test_dates
 
 
 def features_generator(dataset):

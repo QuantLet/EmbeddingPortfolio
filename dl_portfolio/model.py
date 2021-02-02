@@ -166,7 +166,6 @@ class MLP(tf.keras.Model):
             else:
                 self.hidden_layers[f"hidden_{i}"] = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)
             if self.dropout:
-                exit()
                 LOGGER.info(f'Adding dropout layer {i}')
                 self.dropout_layers[f"dropout_{i}"] = tf.keras.layers.Dropout(self.dropout)
 
@@ -187,7 +186,6 @@ class MLP(tf.keras.Model):
             else:
                 network = self.hidden_layers[f"hidden_{i}"](network)
             if training and self.dropout:
-                exit()
                 network = self.dropout_layers[f"dropout_{i}"](network, training=training)
 
         if self.cash_bias:

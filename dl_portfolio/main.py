@@ -5,9 +5,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn import preprocessing
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.model import build_etf_mlp, build_etf_mlp_with_cash_bias
+from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model
 from dl_portfolio.utils import create_log_dir
-from dl_portfolio.data import build_delayed_window, features_generator, DataLoader
+from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, reshape_to_2d_data
 from dl_portfolio.evaluate import plot_train_history
 from dl_portfolio.train import train
 from dl_portfolio.config import config
@@ -40,24 +40,29 @@ if __name__ == '__main__':
     features = [{'name': 'close'}, {'name': 'returns', 'params': {'time_period': 1}}]
 
     # initialize data_loader
-    if config.model_type in ANN:
-        data_loader = DataLoader(features, freq=config.freq, window=config.seq_len)
+    # if config.model_type in ANN:
+    data_loader = DataLoader(config.model_type, features, freq=config.freq, window=config.seq_len,
+                             batch_size=config.batch_size)
 
     # create model
     LOGGER.info('Create model')
     if config.model_type == 'mlp':
         LOGGER.info(f'Build {config.model_type} model')
-        model = build_etf_mlp(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
-                              output_dim=data_loader.n_assets,
-                              n_hidden=config.n_hidden,
-                              dropout=config.dropout)
+        model = build_mlp(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
+                          layers=config.layers, output_dim=data_loader.n_assets, dropout=config.dropout)
     elif config.model_type == 'mlp-cash-bias':
         LOGGER.info(f'Build {config.model_type} model')
-        model = build_etf_mlp_with_cash_bias(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
-                                             output_dim=data_loader.n_assets,
-                                             batch_size=config.batch_size,
-                                             n_hidden=config.n_hidden,
-                                             dropout=config.dropout)
+        model = build_mlp_with_cash_bias(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
+                                         output_dim=data_loader.n_assets,
+                                         batch_size=config.batch_size,
+                                         n_hidden=config.n_hidden,
+                                         dropout=config.dropout)
+    elif config.model_type == 'EIIE_model':
+        LOGGER.info(f'Build {config.model_type} model')
+        model = EIIE_model(input_dim=(data_loader.n_pairs, config.seq_len, data_loader.n_features),
+                           output_dim=data_loader.n_assets,
+                           n_hidden=config.n_hidden,
+                           dropout=config.dropout)
     else:
         raise NotImplementedError()
 
@@ -70,37 +75,48 @@ if __name__ == '__main__':
 
     # Start cross-validation loop
     LOGGER.info('Start CV loop ...')
+
+    # TODO: Build original cv indices, do train / val split, build features for train and test, get dates and returns, normalize features and train
     for cv in data_loader.cv_indices:
         LOGGER.info(f'CV {cv}')
-        LOGGER.info('Train / test split')
+        data_loader.cv_split(cv)
+
         train_indices = data_loader.cv_indices[cv]['train']
-        train_nb_batch = len(train_indices) // config.batch_size
-        LOGGER.info(f'nb_batch in training: {train_nb_batch}')
-        drop_first = np.remainder(len(train_indices), config.batch_size)
-        LOGGER.info(f'Drop first {drop_first} in train set')
-        train_indices = train_indices[drop_first:]
-        train_dates = data_loader.dates[train_indices]
-
         test_indices = data_loader.cv_indices[cv]['test']
-        test_nb_batch = len(test_indices) // config.batch_size
-        LOGGER.info(f'nb_batch in test: {test_nb_batch}')
-        drop_first = np.remainder(len(test_indices), config.batch_size)
-        LOGGER.info(f'Drop first {drop_first} in train set')
-        test_indices = test_indices[drop_first:]
-        test_dates = data_loader.dates[test_indices]
 
+        # Input
+        if config.model_type == 'EIIE_model':
+            train_examples = np.array([data_loader.input_data[k].values[train_indices] for k in data_loader.input_data])
+            test_examples = np.array([data_loader.input_data[k].values[test_indices] for k in data_loader.input_data])
+        else:
+            train_examples = data_loader.input_data.values[train_indices]
+            test_examples = data_loader.input_data.values[test_indices]
+
+        # Returns
         train_returns = data_loader.returns[train_indices]
-        train_examples = data_loader.input_data[train_indices]
         test_returns = data_loader.returns[test_indices]
-        test_examples = data_loader.input_data[test_indices]
 
         LOGGER.info('Preprocessing ...')
         scaler = preprocessing.MinMaxScaler([-1, 1])
-        LOGGER.info('Fit to train set and transform')
-        scaler.fit(train_examples)
-        train_examples = scaler.transform(train_examples)
-        LOGGER.info('Transform test set')
-        test_examples = scaler.transform(test_examples)
+        if config.model_type == 'EIIE_model':
+            for i in range(train_examples.shape[0]):
+                LOGGER.info('Fit to train set and transform')
+                scaler.fit(train_examples[i])
+                train_examples[i] = scaler.transform(train_examples[i])
+                LOGGER.info('Transform test set')
+                test_examples[i] = scaler.transform(test_examples[i])
+                LOGGER.info('Reshape to sequential data')
+                train_examples[i] = reshape_to_2d_data(train_examples[i], n_features=data_loader.n_features,
+                                                       seq_len=data_loader.window)
+                test_examples[i] = reshape_to_2d_data(test_examples[i], n_features=data_loader.n_features,
+                                                      seq_len=data_loader.window)
+
+        else:
+            LOGGER.info('Fit to train set and transform')
+            scaler.fit(train_examples)
+            train_examples = scaler.transform(train_examples)
+            LOGGER.info('Transform test set')
+            test_examples = scaler.transform(test_examples)
 
         # LOGGER.info('Build delayed input sequence and corresponding returns')
         # Train set
@@ -123,21 +139,22 @@ if __name__ == '__main__':
         # Training pipeline
         LOGGER.info('Create tf.data.Dataset')
         # Train
-        train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
+        if config.model_type == 'EIIE_model':
+            train_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(train_examples, (1, 2, 0)), train_returns))
+            test_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(test_examples, (1, 2, 0)), test_returns))
+        else:
+            train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
+            test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
         train_dataset = train_dataset.batch(config.batch_size, drop_remainder=False)
-        # Test
-        test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
         test_dataset = test_dataset.batch(config.batch_size, drop_remainder=False)
 
         # Training loop
         LOGGER.info('Start training loop ...')
-        model, train_history, test_history = train(train_dataset, test_dataset, model, config.lr_scheduler,
-                                                   config.momentum,
-                                                   config.n_epochs, data_loader.assets, config.benchmark,
-                                                   config.annual_period,
+        model, train_history, test_history = train(train_dataset, test_dataset, model, config.model_type,
+                                                   config.lr_scheduler, config.momentum, config.n_epochs,
+                                                   data_loader.assets, config.benchmark, config.annual_period,
                                                    config.trading_fee, config.log_every, config.plot_every,
-                                                   no_cash=config.no_cash,
-                                                   clip_value=None, train_returns=train_returns)
+                                                   no_cash=config.no_cash, clip_value=None, train_returns=train_returns)
 
         # plot final history and save
         if config.save:
@@ -185,7 +202,7 @@ if __name__ == '__main__':
 
         strat_perf = (test_returns * test_predictions).sum(1)
         test_returns = pd.DataFrame(test_returns, index=test_predictions.index,
-                                     columns=train_predictions.columns)
+                                    columns=train_predictions.columns)
         benchmark_returns, benchmark_value = market_cap_returns(test_returns, config.freq)
         axs[1].plot(benchmark_value, label='benchmark')
         axs[1].plot((strat_perf + 1).cumprod(), label='strategy')
