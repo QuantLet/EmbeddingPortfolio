@@ -84,7 +84,8 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
 
 
 class DataLoader(object):
-    def __init__(self, features: List, freq: int = 3600, path: str = 'crypto_data/price/train_data_1800.p',
+    def __init__(self, model_type: str, features: List, freq: int = 3600,
+                 path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  nb_folds: int = 1, val_size: int = 6, no_cash: bool = False, window: int = 1):
         self._freq = freq
@@ -95,6 +96,7 @@ class DataLoader(object):
         self._pairs = pairs
         self._nb_folds = nb_folds
         self._val_size = val_size
+        self._model_type = model_type
 
         if not no_cash:
             self._assets = self._pairs + ['cash']
@@ -131,61 +133,82 @@ class DataLoader(object):
         last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
         self.df_data = self.df_data.loc[:last_ind]
 
-        # Build features
+        # Build features, returns and corresponding base index
         LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
-        self.df_features = self.build_features()
+        if self._model_type == 'EIIE_model':
+            self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
+        else:
+            self._input_data, self.df_returns, self._indices, self._dates = self.build_features_2d_and_returns()
+
+        # Train / Test split
+        LOGGER.info('Train / test split')
+        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
+
+    def build_pair_features(self, pair):
+        df_features = pd.DataFrame()
+        for feature_spec in self._features:
+            params = feature_spec.get('params')
+            if params is not None:
+                feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
+            else:
+                feature = get_feature(feature_spec['name'], self.df_data[pair])
+            df_features = pd.concat([df_features, feature], 1)
+
+        df_features.columns = self._features_name
+
         if self._window > 1:
-            self.df_features = pd.DataFrame(build_delayed_window(self.df_features.values, self._window),
-                                            index=self.df_features.index)
-        self._lookback = np.max(self.df_features.isna().sum())
+            df_features = pd.DataFrame(build_delayed_window(df_features.values, self._window),
+                                       index=df_features.index)
+        self._lookback = np.max(df_features.isna().sum())
         assert self._lookback == np.max(
             [f['params'].get('time_period') for f in self._features if 'params' in f]) + self._window * int(
             self._window > 1)
 
         LOGGER.info(f'Lookback is {self._lookback}')
-        before_drop = len(self.df_features)
+        before_drop = len(df_features)
         # drop na
-        self.df_features.dropna(inplace=True)
-        after_drop = len(self.df_features)
+        df_features.dropna(inplace=True)
+        after_drop = len(df_features)
         if self._lookback != before_drop - after_drop:
-            raise ValueError(f'Problem with NaNs count:\n{self.df_features.isna().sum()}')
-
-        # Get corresponding returns
-        dates = self.df_features.index
-        return_dates = dates + dt.timedelta(seconds=freq)
-        self.df_returns = self.df_returns.reindex(return_dates)
-        if np.sum(self.df_returns.isna().sum()) != 0:
-            raise NotImplementedError(
-                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
-        assert len(self.df_features) == len(self.df_returns)
-        assert np.sum(self.df_features.index != self.df_returns.index - dt.timedelta(seconds=freq)) == 0
-
-        # Train / Test split
-        LOGGER.info('Train / test split')
-
-        n_samples = len(self.df_features)
-        self._indices = list(range(n_samples))
-        self._dates = self.df_features.index
-
-        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
-
-    def build_features(self):
-        df_features = pd.DataFrame()
-
-        for pair in self._pairs:
-            pair_feature = pd.DataFrame()
-            for feature_spec in self._features:
-                params = feature_spec.get('params')
-                if params is not None:
-                    feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
-                else:
-                    feature = get_feature(feature_spec['name'], self.df_data[pair])
-                pair_feature = pd.concat([pair_feature, feature], 1)
-            df_features = pd.concat([df_features, pair_feature], 1)
-
-        df_features.columns = pd.MultiIndex.from_product([self._pairs, self._features_name])
+            raise ValueError(f'Problem with NaNs count:\n{df_features.isna().sum()}')
 
         return df_features
+
+    def build_features_2d_and_returns(self):
+        df_features = pd.DataFrame()
+        for pair in self._pairs:
+            pair_feature = self.build_pair_features(pair)
+            df_features = pd.concat([df_features, pair_feature], 1)
+        df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
+        assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
+
+        # Get corresponding returns
+        dates = df_features.index
+        return_dates = dates + dt.timedelta(seconds=self._freq)
+        df_returns = self.df_returns.reindex(return_dates)
+        if np.sum(df_returns.isna().sum()) != 0:
+            raise NotImplementedError(
+                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
+        assert len(df_features) == len(df_returns)
+        assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
+
+        # Base index
+        n_samples = len(df_features)
+        indices = list(range(n_samples))
+        dates = df_features.index
+        # Convert to float32
+        df_features, df_returns = df_features.astype(np.float32), df_returns.astype(np.float32)
+
+        return df_features, df_returns, indices, dates
+
+    def build_features_EIIE(self):
+        pairs_features = {}
+        df_features, df_returns, indices, dates = self.build_features_2d_and_returns()
+
+        for pair in self._pairs:
+            pairs_features[pair] = df_features[pair]
+
+        return pairs_features, df_returns, indices, dates
 
     def cv_folds(self, nb_folds: int = 1, n_months: int = 6, type='incremental'):
         """
@@ -241,7 +264,7 @@ class DataLoader(object):
 
     @property
     def input_data(self):
-        return self.df_features.values
+        return self._input_data
 
     @property
     def returns(self):
