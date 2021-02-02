@@ -70,7 +70,7 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
     # sequence data: (n, seq_len, n_features)
     seq_data = np.zeros((n, seq_len, n_features))
     seq_data[:] = np.nan
-    seq_data[seq_len:, :, :] = np.array([data[i - seq_len:i, :] for i in range(seq_len, n)], dtype=np.float32)
+    seq_data[seq_len - 1:, :] = np.array([data[i - seq_len:i] for i in range(seq_len, n + 1)], dtype=np.float32)
 
     if return_3d:
         data = seq_data
@@ -138,13 +138,13 @@ class DataLoader(object):
         if self._model_type == 'EIIE_model':
             self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
         else:
-            self._input_data, self.df_returns, self._indices, self._dates = self.build_features_2d_and_returns()
+            self._input_data, self.df_returns, self._indices, self._dates = self.build_1d_features_and_returns()
 
         # Train / Test split
         LOGGER.info('Train / test split')
         self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
 
-    def build_pair_features(self, pair):
+    def build_1d_pair_features(self, pair):
         df_features = pd.DataFrame()
         for feature_spec in self._features:
             params = feature_spec.get('params')
@@ -160,11 +160,10 @@ class DataLoader(object):
             df_features = pd.DataFrame(build_delayed_window(df_features.values, self._window),
                                        index=df_features.index)
         self._lookback = np.max(df_features.isna().sum())
-        assert self._lookback == np.max(
-            [f['params'].get('time_period') for f in self._features if 'params' in f]) + self._window * int(
-            self._window > 1)
-
+        max_feature_lookback = np.max([f['params'].get('time_period') for f in self._features if 'params' in f])
+        assert self._lookback == max_feature_lookback + self._window - 1
         LOGGER.info(f'Lookback is {self._lookback}')
+
         before_drop = len(df_features)
         # drop na
         df_features.dropna(inplace=True)
@@ -174,10 +173,10 @@ class DataLoader(object):
 
         return df_features
 
-    def build_features_2d_and_returns(self):
+    def build_1d_features_and_returns(self):
         df_features = pd.DataFrame()
         for pair in self._pairs:
-            pair_feature = self.build_pair_features(pair)
+            pair_feature = self.build_1d_pair_features(pair)
             df_features = pd.concat([df_features, pair_feature], 1)
         df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
         assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'

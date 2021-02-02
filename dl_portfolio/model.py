@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Tuple, Optional
+from typing import Tuple, Optional, List, Dict
 from dl_portfolio.logger import LOGGER
 
 
@@ -22,8 +22,8 @@ class CashBias(tf.keras.layers.Layer):
         return tf.tile(self.w, tf.shape(inputs)[0])
 
 
-def build_etf_mlp(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Optional[float] = None,
-                  training: bool = False):
+def build_mlp(input_dim: Tuple, layers: List[Dict], output_dim: int, dropout: Optional[float] = None,
+              training: bool = False):
     """
 
     :param input_dim:
@@ -36,18 +36,13 @@ def build_etf_mlp(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout:
     :param training: to control dropout layer behavior during inference
     :return:
     """
-
-    assert n_hidden > 0
-
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
 
-    for i in range(n_hidden):
+    for i, layer in enumerate(layers):
         if i == 0:
-            hidden = tf.keras.layers.Dense(12, activation='tanh', kernel_regularizer=tf.keras.regularizers.L2(0.1),
-                                           dtype=tf.float32)(input_)
+            hidden = tf.keras.layers.Dense(layer['neurons'], **layer['params'], dtype=tf.float32)(input_)
         else:
-            hidden = tf.keras.layers.Dense(12, activation='tanh', kernel_regularizer=tf.keras.regularizers.L2(0.1),
-                                           dtype=tf.float32)(hidden)
+            hidden = tf.keras.layers.Dense(layer['neurons'], **layer['params'], dtype=tf.float32)(hidden)
         if dropout:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
@@ -100,10 +95,9 @@ def EIIE_model(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Op
     return tf.keras.models.Model(input_, output)
 
 
-
-def build_etf_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
-                                 n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
-                                 dropout: Optional[float] = None, training: bool = False):
+def build_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
+                             n_hidden: int = 1, cash_initializer: tf.initializers = tf.ones_initializer(),
+                             dropout: Optional[float] = None, training: bool = False):
     """
 
     :param input_dim:
