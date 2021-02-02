@@ -43,15 +43,62 @@ def build_etf_mlp(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout:
 
     for i in range(n_hidden):
         if i == 0:
-            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(input_)
+            hidden = tf.keras.layers.Dense(12, activation='tanh', kernel_regularizer=tf.keras.regularizers.L2(0.1),
+                                           dtype=tf.float32)(input_)
         else:
-            hidden = tf.keras.layers.Dense(64, activation='tanh', dtype=tf.float32)(hidden)
+            hidden = tf.keras.layers.Dense(12, activation='tanh', kernel_regularizer=tf.keras.regularizers.L2(0.1),
+                                           dtype=tf.float32)(hidden)
         if dropout:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
     output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
 
     return tf.keras.models.Model(input_, output)
+
+
+def EIIE_model(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Optional[float] = None,
+               training: bool = False):
+    """
+
+    :param input_dim: [assets, window, features]
+    :param output_dim:
+    :param batch_size:
+    :param cash_bias:
+    :param n_hidden:
+    :param cash_initializer:
+    :param dropout:
+    :param training: to control dropout layer behavior during inference
+    :return:
+    """
+    assert len(input_dim) == 3
+    assert n_hidden > 0
+
+    input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
+    width = input_dim[1]  # window
+    for i in range(n_hidden):
+        if i == 0:
+            # from pgportfolio
+            hidden = tf.keras.layers.Conv2D(12, [1, width], strides=(1, 1), padding='valid',
+                                            data_format=None, dilation_rate=(1, 1), groups=1, activation='tanh',
+                                            use_bias=True, kernel_initializer='glorot_uniform',
+                                            bias_initializer='zeros', kernel_regularizer=None,
+                                            bias_regularizer=None, activity_regularizer=None, kernel_constraint=None,
+                                            bias_constraint=None)(input_)
+        else:
+            hidden = tf.keras.layers.Conv2D(12, [1, width], strides=(1, 1), padding='valid',
+                                            data_format=None, dilation_rate=(1, 1), groups=1, activation='tanh',
+                                            use_bias=True, kernel_initializer='glorot_uniform',
+                                            bias_initializer='zeros', kernel_regularizer=None,
+                                            bias_regularizer=None, activity_regularizer=None,
+                                            kernel_constraint=None,
+                                            bias_constraint=None)(hidden)
+        if dropout:
+            hidden = tf.keras.layers.Dropout(dropout)(hidden)
+
+    output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
+
+    return tf.keras.models.Model(input_, output)
+
 
 
 def build_etf_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
