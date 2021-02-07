@@ -51,7 +51,26 @@ def build_mlp(input_dim: Tuple, layers: List[Dict], output_dim: int, dropout: Op
     return tf.keras.models.Model(input_, output)
 
 
-def EIIE_model(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Optional[float] = None,
+def build_layer(config: Dict, **kwargs):
+    if config['type'] == 'conv':
+        layer = tf.keras.layers.Conv2D(config['filters'], config['kernel_size'], **config['params'])
+
+        # strides = layer['strides'], padding = 'valid',
+        # data_format = None, dilation_rate = (1, 1), groups = 1, activation = 'tanh',
+        # use_bias = True, kernel_initializer = 'glorot_uniform',
+        # bias_initializer = 'zeros', kernel_regularizer = None,
+        # bias_regularizer = None, activity_regularizer = None, kernel_constraint = None,
+        # bias_constraint = None)(input_)
+
+    elif config['type'] == 'EIIE_dense':
+        # from pgportfolio
+        width = kwargs.get('width')
+        layer = tf.keras.layers.Conv2D(config['filters'], [1, width], strides=(1, 1),
+                                       **config['params'])
+    return layer
+
+
+def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: Optional[float] = None,
                training: bool = False):
     """
 
@@ -66,30 +85,28 @@ def EIIE_model(input_dim: Tuple, output_dim: int, n_hidden: int = 1, dropout: Op
     :return:
     """
     assert len(input_dim) == 3
-    assert n_hidden > 0
-
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32)
-    width = input_dim[1]  # window
-    for i in range(n_hidden):
-        if i == 0:
-            # from pgportfolio
-            hidden = tf.keras.layers.Conv2D(12, [1, width], strides=(1, 1), padding='valid',
-                                            data_format=None, dilation_rate=(1, 1), groups=1, activation='tanh',
-                                            use_bias=True, kernel_initializer='glorot_uniform',
-                                            bias_initializer='zeros', kernel_regularizer=None,
-                                            bias_regularizer=None, activity_regularizer=None, kernel_constraint=None,
-                                            bias_constraint=None)(input_)
+    for i, layer in enumerate(layers):
+
+        if layer['type'] == 'EIIE_dense':
+            width = hidden.get_shape()[2]
+            layer = build_layer(layer, width=width)
         else:
-            hidden = tf.keras.layers.Conv2D(12, [1, width], strides=(1, 1), padding='valid',
-                                            data_format=None, dilation_rate=(1, 1), groups=1, activation='tanh',
-                                            use_bias=True, kernel_initializer='glorot_uniform',
-                                            bias_initializer='zeros', kernel_regularizer=None,
-                                            bias_regularizer=None, activity_regularizer=None,
-                                            kernel_constraint=None,
-                                            bias_constraint=None)(hidden)
+            layer = build_layer(layer)
+        if i == 0:
+            hidden = layer(input_)
+        else:
+            hidden = layer(hidden)
         if dropout:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
+    width = hidden.get_shape()[2]
+    hidden = tf.keras.layers.Conv2D(1, [1, width], padding="valid", kernel_regularizer=None)(hidden)
+    hidden = hidden[:, :, 0, 0]
+    # btc_bias = tf.ones((1,1))
+    # hidden = tf.concat([hidden, btc_bias], 1)
+    # output = tf.keras.layers.Activation(hidden, activation="softmax")
+    #
     output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
 
     return tf.keras.models.Model(input_, output)

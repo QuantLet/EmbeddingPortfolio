@@ -37,17 +37,16 @@ if __name__ == '__main__':
         seed = config.seed
         np.random.seed(seed)
 
-    features = [{'name': 'close'}, {'name': 'returns', 'params': {'time_period': 1}}]
-
     # initialize data_loader
     # if config.model_type in ANN:
     if config.model_type == 'EIIE':
-        data_loader = SeqDataLoader('EIIE', features, freq=config.freq, seq_len=config.seq_len,
-                                    batch_size=config.batch_size, nb_folds=config.nb_folds)
+        data_loader = SeqDataLoader('EIIE', config.features, freq=config.freq, seq_len=config.seq_len,
+                                    preprocess_param=config.preprocess, batch_size=config.batch_size,
+                                    nb_folds=config.nb_folds)
     else:
         raise NotImplementedError()
-        data_loader = DataLoader(config.model_type, features, freq=config.freq, window=config.seq_len,
-                                 batch_size=config.batch_size)
+        data_loader = DataLoader(config.model_type, config.features, freq=config.freq, window=config.seq_len,
+                                 preprocess_param=config.preprocess, batch_size=config.batch_size)
 
     # create model
     LOGGER.info('Create model')
@@ -66,7 +65,7 @@ if __name__ == '__main__':
         LOGGER.info(f'Build {config.model_type} model')
         model = EIIE_model(input_dim=(data_loader.n_pairs, config.seq_len, data_loader.n_features),
                            output_dim=data_loader.n_assets,
-                           n_hidden=config.n_hidden,
+                           layers=config.layers,
                            dropout=config.dropout)
     else:
         raise NotImplementedError()
@@ -81,7 +80,6 @@ if __name__ == '__main__':
     # Start cross-validation loop
     LOGGER.info('Start CV loop ...')
 
-    # TODO: Build original cv indices, do train / val split, build features for train and test, get dates and returns, normalize features and train
     for cv in range(config.nb_folds):
         LOGGER.info(f'CV {cv}')
         train_examples, test_examples = data_loader.get_cv_data(cv)

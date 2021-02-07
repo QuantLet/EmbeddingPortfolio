@@ -5,25 +5,37 @@ seed = None
 
 # Data
 seq_len = 24
+features = [
+    {'name': 'close'},
+    {'name': 'returns', 'params': {'time_period': 1}}
+]
+preprocess = {
+    'close': {'method': 'minmax', 'feature_range': [-1, 1]}
+}
 
 # Model
 model_type = "EIIE"
 layers = [
     {
-        'neurons': 12,
+        'type': 'conv',
+        'filters': 2,
+        'kernel_size': [1, 3],
         'params': {
-               'activation': 'tanh' #, 'kernel_regularizer': tf.keras.regularizers.L2(0.1)
+            'strides': (1, 1),
+            'activation': 'tanh'
         }
     },
     {
-        'neurons': 12,
+        'type': 'EIIE_dense',
+        'filters': 10,
         'params': {
-               'activation': 'tanh'# , 'kernel_regularizer': tf.keras.regularizers.L2(0.1)
+            'activation': 'tanh',
+            'kernel_regularizer': tf.keras.regularizers.L2(5e-9)
         }
-    }
+    },
 ]
 
-model_name = "mlp_working_maybe"
+model_name = "first_EIIE"
 n_hidden = 1
 dropout = 0
 
@@ -46,7 +58,7 @@ nb_folds = 5
 test_size = 300
 
 # Strategy, loss function
-freq = 3600
+freq = 14400 # 4h
 no_cash = False
 benchmark = 0.
 annual_period = 1

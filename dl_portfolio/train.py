@@ -5,7 +5,7 @@ from dl_portfolio.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
 from dl_portfolio.evaluate import plot_train_history
-
+import pandas as pd
 
 def set_learning_rate(epoch, lr_scheduler):
     learning_rate_strategy = 'step'
@@ -28,7 +28,6 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
           n_epochs: int, assets: List[str], benchmark: float, annual_period: int, trading_fee: float,
           log_every: int, plot_every: int, no_cash: bool = False, clip_value: float = None, train_returns=None):
     n_assets = len(assets)
-
     if isinstance(learning_rate, dict):
         initial_lr = learning_rate[0]
     if clip_value is not None:
@@ -56,7 +55,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         counter = 0
         for features, returns in train_dataset:
             if model_type == "EIIE":
-                features = tf.transpose(features, [0, 1, 2, 3])
+                features = tf.transpose(features, [0, 3, 1, 2])
             if counter == 0:
                 if no_cash:
                     initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
@@ -116,6 +115,9 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         # Inference
         counter = 0
         for features, returns in test_dataset:
+            if model_type == "EIIE":
+                features = tf.transpose(features, [0, 3, 1, 2])
+
             if counter == 0:
                 initial_position = epoch_actions[-1:, :]
             else:
@@ -176,11 +178,16 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
             else:
                 initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
-            strat_perf_no_fee, strat_perf = portfolio_returns(tf.Variable(epoch_actions), tf.Variable(train_returns),
+            strat_perf_no_fee, strat_perf = portfolio_returns(tf.Variable(epoch_actions), tf.Variable(train_returns.values),
                                            initial_position, trading_fee=trading_fee, cash_bias=not no_cash)
 
             strat_perf = strat_perf.numpy()
-            eq_port = train_returns[:len(epoch_actions), :].mean(1)
+            strat_perf = pd.Series(strat_perf, index = train_returns.index)
+            if not no_cash:
+                eq_port = train_returns.drop('cash', 1)
+            else:
+                eq_port = train_returns.copy()
+            eq_port = eq_port.mean(1)
             plt.plot((eq_port + 1).cumprod(), label='equally weighted')
             plt.plot((strat_perf + 1).cumprod(), label='strategy')
             plt.legend()
