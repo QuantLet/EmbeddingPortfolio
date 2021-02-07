@@ -7,7 +7,7 @@ from sklearn import preprocessing
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model
 from dl_portfolio.utils import create_log_dir
-from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, reshape_to_2d_data
+from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data
 from dl_portfolio.evaluate import plot_train_history
 from dl_portfolio.train import train
 from dl_portfolio.config import config
@@ -41,8 +41,13 @@ if __name__ == '__main__':
 
     # initialize data_loader
     # if config.model_type in ANN:
-    data_loader = DataLoader(config.model_type, features, freq=config.freq, window=config.seq_len,
-                             batch_size=config.batch_size)
+    if config.model_type == 'EIIE':
+        data_loader = SeqDataLoader('EIIE', features, freq=config.freq, seq_len=config.seq_len,
+                                    batch_size=config.batch_size, nb_folds=config.nb_folds)
+    else:
+        raise NotImplementedError()
+        data_loader = DataLoader(config.model_type, features, freq=config.freq, window=config.seq_len,
+                                 batch_size=config.batch_size)
 
     # create model
     LOGGER.info('Create model')
@@ -57,7 +62,7 @@ if __name__ == '__main__':
                                          batch_size=config.batch_size,
                                          n_hidden=config.n_hidden,
                                          dropout=config.dropout)
-    elif config.model_type == 'EIIE_model':
+    elif config.model_type == 'EIIE':
         LOGGER.info(f'Build {config.model_type} model')
         model = EIIE_model(input_dim=(data_loader.n_pairs, config.seq_len, data_loader.n_features),
                            output_dim=data_loader.n_assets,
@@ -77,59 +82,17 @@ if __name__ == '__main__':
     LOGGER.info('Start CV loop ...')
 
     # TODO: Build original cv indices, do train / val split, build features for train and test, get dates and returns, normalize features and train
-    for cv in data_loader.cv_indices:
+    for cv in range(config.nb_folds):
         LOGGER.info(f'CV {cv}')
-        data_loader.cv_split(cv)
-
-        train_indices = data_loader.cv_indices[cv]['train']
-        test_indices = data_loader.cv_indices[cv]['test']
-
+        train_examples, test_examples = data_loader.get_cv_data(cv)
         # Input
-        if config.model_type == 'EIIE_model':
-            train_examples = np.array([data_loader.input_data[k].values[train_indices] for k in data_loader.input_data])
-            test_examples = np.array([data_loader.input_data[k].values[test_indices] for k in data_loader.input_data])
-        else:
+        if config.model_type != 'EIIE':
             train_examples = data_loader.input_data.values[train_indices]
             test_examples = data_loader.input_data.values[test_indices]
 
         # Returns
-        train_returns = data_loader.returns[train_indices]
-        test_returns = data_loader.returns[test_indices]
-
-        LOGGER.info('Preprocessing ...')
-        scaler = preprocessing.MinMaxScaler([-1, 1])
-        if config.model_type == 'EIIE_model':
-            for i in range(train_examples.shape[0]):
-                LOGGER.info('Fit to train set and transform')
-                scaler.fit(train_examples[i])
-                train_examples[i] = scaler.transform(train_examples[i])
-                LOGGER.info('Transform test set')
-                test_examples[i] = scaler.transform(test_examples[i])
-                LOGGER.info('Reshape to sequential data')
-                train_examples[i] = reshape_to_2d_data(train_examples[i], n_features=data_loader.n_features,
-                                                       seq_len=data_loader.window)
-                test_examples[i] = reshape_to_2d_data(test_examples[i], n_features=data_loader.n_features,
-                                                      seq_len=data_loader.window)
-
-        else:
-            LOGGER.info('Fit to train set and transform')
-            scaler.fit(train_examples)
-            train_examples = scaler.transform(train_examples)
-            LOGGER.info('Transform test set')
-            test_examples = scaler.transform(test_examples)
-
-        # LOGGER.info('Build delayed input sequence and corresponding returns')
-        # Train set
-        # train_examples = build_delayed_window(train_examples, seq_len=config.seq_len, return_3d=False)
-        # train_returns = build_delayed_window(train_returns, seq_len=config.seq_len, return_3d=True)
-        # Returns correspond to last value of sequence
-        # train_returns = train_returns[:, -1, :]
-
-        # Test set
-        # test_examples = build_delayed_window(test_examples, seq_len=config.seq_len, return_3d=False)
-        # test_returns = build_delayed_window(test_returns, seq_len=config.seq_len, return_3d=True)
-        # Train returns correspond to last value of sequence
-        # test_returns = test_returns[:, -1, :]
+        train_returns = data_loader.train_returns
+        test_returns = data_loader.test_returns
 
         LOGGER.info(f'Train data shape: {train_examples.shape}')
         LOGGER.info(f'Train returns shape: {train_returns.shape}')
@@ -139,9 +102,10 @@ if __name__ == '__main__':
         # Training pipeline
         LOGGER.info('Create tf.data.Dataset')
         # Train
-        if config.model_type == 'EIIE_model':
-            train_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(train_examples, (1, 2, 0)), train_returns))
-            test_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(test_examples, (1, 2, 0)), test_returns))
+        if config.model_type == 'EIIE':
+            train_dataset = tf.data.Dataset.from_tensor_slices(
+                (np.transpose(train_examples, (1, 2, 3, 0)), train_returns))
+            test_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(test_examples, (1, 2, 3, 0)), test_returns))
         else:
             train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
             test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))

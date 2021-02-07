@@ -7,7 +7,7 @@ seed = None
 seq_len = 24
 
 # Model
-model_type = "mlp"
+model_type = "EIIE"
 layers = [
     {
         'neurons': 12,
@@ -42,6 +42,7 @@ n_epochs = 100
 batch_size = 64
 log_every = 1
 plot_every = 20
+nb_folds = 5
 test_size = 300
 
 # Strategy, loss function

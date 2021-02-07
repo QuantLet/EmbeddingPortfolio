@@ -4,6 +4,7 @@ import pandas as pd
 import datetime as dt
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FREQ, BASE_COLUMNS, RESAMPLE_DICT
+from sklearn import preprocessing
 
 
 def one_month_from_freq(freq):
@@ -17,6 +18,12 @@ def one_month_from_freq(freq):
     elif freq == hour * 24:
         month = 30
     return month
+
+
+def build_seq(data, seq_len):
+    data = np.array(
+        [data[i - seq_len:i] for i in range(seq_len, len(data) + 1)])
+    return data
 
 
 def data_to_freq(data, freq):
@@ -57,12 +64,12 @@ def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
     return feature
 
 
-def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False):
+def build_delayed_window(data: np.ndarray, seq_len: int, return_2d: bool = False):
     """
 
     :param data: data
     :param seq_len: length of window
-    :param return_3d: if True then return  (n, seq_len, n_features)
+    :param return_2d: if True then return  (n, seq_len, n_features)
     :return:
     """
     n = len(data)
@@ -72,7 +79,7 @@ def build_delayed_window(data: np.ndarray, seq_len: int, return_3d: bool = False
     seq_data[:] = np.nan
     seq_data[seq_len - 1:, :] = np.array([data[i - seq_len:i] for i in range(seq_len, n + 1)], dtype=np.float32)
 
-    if return_3d:
+    if return_2d:
         data = seq_data
     else:
         # concatenate columns: (n, seq_len * n_features)
@@ -131,10 +138,11 @@ def normalize_2d(data):
 
 def drop_remainder(indices, batch_size, last=False):
     drop = np.remainder(len(indices), batch_size)
-    if last:
-        indices = indices[:drop]
-    else:
-        indices = indices[drop:]
+    if drop > 0:
+        if last:
+            indices = indices[:drop]
+        else:
+            indices = indices[drop:]
     return indices
 
 
@@ -142,7 +150,7 @@ class DataLoader(object):
     def __init__(self, model_type: str, features: List, freq: int = 3600,
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 nb_folds: int = 1, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32):
+                 nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32):
         self._freq = freq
         self._window = window
         self._features = features
@@ -192,7 +200,7 @@ class DataLoader(object):
         # TODO: move this into cv fold generation
         # Build features, returns and corresponding base index
         LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
-        if self._model_type == 'EIIE_model':
+        if self._model_type == 'EIIE':
             self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
         else:
             self._input_data, self.df_returns, self._indices, self._dates = self.build_1d_features_and_returns()
@@ -201,7 +209,10 @@ class DataLoader(object):
         LOGGER.info('Train / test split')
         self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
 
-    def build_1d_pair_features(self, pair):
+    def build_1d_pair_features(self, pair, window=None):
+        if window is None:
+            window = self._window
+
         df_features = pd.DataFrame()
         for feature_spec in self._features:
             params = feature_spec.get('params')
@@ -213,12 +224,12 @@ class DataLoader(object):
 
         df_features.columns = self._features_name
 
-        if self._window > 1:
-            df_features = pd.DataFrame(build_delayed_window(df_features.values, self._window),
+        if window > 1:
+            df_features = pd.DataFrame(build_delayed_window(df_features.values, window),
                                        index=df_features.index)
         self._lookback = np.max(df_features.isna().sum())
         max_feature_lookback = np.max([f['params'].get('time_period') for f in self._features if 'params' in f])
-        assert self._lookback == max_feature_lookback + self._window - 1
+        assert self._lookback == max_feature_lookback + window - 1
         LOGGER.info(f'Lookback is {self._lookback}')
 
         before_drop = len(df_features)
@@ -230,10 +241,10 @@ class DataLoader(object):
 
         return df_features
 
-    def build_1d_features_and_returns(self):
+    def build_1d_features_and_returns(self, **kwargs):
         df_features = pd.DataFrame()
         for pair in self._pairs:
-            pair_feature = self.build_1d_pair_features(pair)
+            pair_feature = self.build_1d_pair_features(pair, **kwargs)
             df_features = pd.concat([df_features, pair_feature], 1)
         df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
         assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
@@ -259,7 +270,7 @@ class DataLoader(object):
 
     def build_features_EIIE(self):
         pairs_features = {}
-        df_features, df_returns, indices, dates = self.build_1d_features_and_returns()
+        df_features, df_returns, indices, dates = self.build_1d_features_and_returns(window=1)
 
         """for pair in self._pairs:
             pairs_features[pair] = reshape_to_2d_data(df_features[pair].values, n_features=self._n_features,
@@ -375,6 +386,253 @@ class DataLoader(object):
     @property
     def test_dates(self):
         return self._test_dates
+
+
+class SeqDataLoader(object):
+    def __init__(self, model_type: str, features: List, freq: int = 3600,
+                 path: str = 'crypto_data/price/train_data_1800.p',
+                 pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
+                 preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
+                 seq_len: int = 1, batch_size: int = 32):
+        self._preprocess_param = preprocess_param
+        self._freq = freq
+        self._seq_len = seq_len
+        self._features = features
+        self._n_features = len(features)
+        self._features_name = [f['name'] for f in self._features]
+        self._pairs = pairs
+        self._nb_folds = nb_folds
+        self._val_size = val_size
+        self._model_type = model_type
+        self._batch_size = batch_size
+
+        if not no_cash:
+            self._assets = self._pairs + ['cash']
+        else:
+            self._assets = self._pairs
+        self._n_assets = len(self._assets)
+        LOGGER.info(f'Creating data_loader for {self._n_assets} assets : {self._assets}')
+
+        # load data
+        self.df_data = pd.read_pickle(path)
+        self.df_data = self.df_data.astype(np.float32)
+        # resample
+        self.df_data = data_to_freq(self.df_data, freq)
+        # Get returns
+        self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
+        if not no_cash:
+            # Add cash column
+            self.df_returns['cash'] = 0.
+        self.df_returns = self.df_returns.astype(np.float32)
+        # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
+        # returns[:, -1] = daily_risk_free_rate
+
+        # dropna
+        before_drop = len(self.df_data)
+        has_nan = np.sum(self.df_data.isna().sum()) > 0
+        if has_nan:
+            LOGGER.info('They are NaNs in original dataframe, dropping...')
+        self.df_data = self.df_data.dropna()
+        after_drop = len(self.df_data)
+        if has_nan:
+            LOGGER.info(f'Dropped {before_drop - after_drop} NaNs')
+
+        # get last feature index
+        last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
+        self.df_data = self.df_data.loc[:last_ind]
+
+        # Build features, returns and corresponding base index
+        LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
+        self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
+
+        # Train / Test split
+        LOGGER.info('Train / test split')
+        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
+
+    def build_1d_pair_features(self, pair):
+        df_features = pd.DataFrame()
+        for feature_spec in self._features:
+            params = feature_spec.get('params')
+            if params is not None:
+                feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
+            else:
+                feature = get_feature(feature_spec['name'], self.df_data[pair])
+            df_features = pd.concat([df_features, feature], 1)
+
+        df_features.columns = self._features_name
+        self._lookback = np.max(df_features.isna().sum())
+        max_feature_lookback = np.max([f['params'].get('time_period') for f in self._features if 'params' in f])
+        assert self._lookback == max_feature_lookback
+        LOGGER.info(f'Lookback is {self._lookback}')
+        before_drop = len(df_features)
+        # drop na
+        df_features.dropna(inplace=True)
+        after_drop = len(df_features)
+        if self._lookback != before_drop - after_drop:
+            raise ValueError(f'Problem with NaNs count:\n{df_features.isna().sum()}')
+        return df_features
+
+    def build_1d_features_and_returns(self):
+        df_features = pd.DataFrame()
+        for pair in self._pairs:
+            pair_feature = self.build_1d_pair_features(pair)
+            df_features = pd.concat([df_features, pair_feature], 1)
+        df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
+        assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
+
+        # Get corresponding returns
+        dates = df_features.index
+        return_dates = dates + dt.timedelta(seconds=self._freq)
+        df_returns = self.df_returns.reindex(return_dates)
+        if np.sum(df_returns.isna().sum()) != 0:
+            raise NotImplementedError(
+                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
+        assert len(df_features) == len(df_returns)
+        assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
+
+        # Base index
+        n_samples = len(df_features)
+        indices = list(range(n_samples))
+        dates = df_features.index
+        # Convert to float32
+        df_features, df_returns = df_features.astype(np.float32), df_returns.astype(np.float32)
+
+        return df_features, df_returns, indices, dates
+
+    def build_features_EIIE(self):
+        pairs_features = {}
+        df_features, df_returns, indices, dates = self.build_1d_features_and_returns()
+
+        for pair in self._pairs:
+            pairs_features[pair] = df_features[pair]
+
+        return pairs_features, df_returns, indices, dates
+
+    def cv_folds(self, nb_folds: int = 1, n_months: int = 6, type='incremental'):
+        """
+
+        :param nb_folds:
+        :param val_size:
+        :param type:
+        :return:
+        """
+        if type != 'incremental':
+            raise NotImplementedError()
+
+        month = one_month_from_freq(self._freq)
+        val_size = n_months * month
+        cv_indices = {}
+        for i in range(nb_folds, 0, -1):
+            if i > 1:
+                cv_indices[nb_folds - i] = {
+                    'train': self._indices[:-val_size * i],
+                    'test': self._indices[- val_size * i:- val_size * (i - 1)]
+                }
+            else:
+                cv_indices[nb_folds - i] = {
+                    'train': self._indices[:-val_size * i],
+                    'test': self._indices[- val_size:]
+                }
+
+        return cv_indices
+
+    def get_cv_data(self, cv):
+        train_indices = self.cv_indices[cv]['train']
+        test_indices = self.cv_indices[cv]['test']
+
+        train_data = {pair: self._input_data[pair].iloc[train_indices] for pair in self._input_data}
+        test_data = {pair: self._input_data[pair].iloc[test_indices] for pair in self._input_data}
+
+        if self._preprocess_param is not None:
+            LOGGER.info('Preprocessing ...')
+            for pair in self._input_data:
+                for feature_name in self._preprocess_param:
+                    if self._preprocess_param[feature_name]['method'] == 'minmax':
+                        scaler = preprocessing.MinMaxScaler(self._preprocess_param[feature_name]['feature_range'])
+                        LOGGER.info('Fit to train set and transform')
+                        scaler.fit(train_data[pair][[feature_name]])
+                        train_data[pair].loc[:, feature_name] = scaler.transform(
+                            train_data[pair][[feature_name]].values)
+                        LOGGER.info('Transform test set')
+                        test_data[pair].loc[:, feature_name] = scaler.transform(
+                            test_data[pair][[feature_name]].values)
+                    else:
+                        raise NotImplementedError()
+
+        LOGGER.info('Reshape to sequence data ...')
+        self._train_indices = build_seq(train_indices, self._seq_len)
+        self._train_indices = self._train_indices[:, -1]
+        self._test_indices = build_seq(test_indices, self._seq_len)
+        self._test_indices = self._test_indices[:, -1]
+
+        train_data = np.array([build_seq(train_data[pair], self._seq_len) for pair in self._input_data])
+        test_data = np.array([build_seq(test_data[pair], self._seq_len) for pair in self._input_data])
+
+        return train_data, test_data
+
+    @property
+    def cv_indices(self):
+        return self._cv_indices
+
+    @property
+    def assets(self):
+        return self._assets
+
+    @property
+    def n_assets(self):
+        return self._n_assets
+
+    @property
+    def pairs(self):
+        return self._pairs
+
+    @property
+    def n_pairs(self):
+        return len(self._pairs)
+
+    @property
+    def n_features(self):
+        return self._n_features
+
+    @property
+    def input_data(self):
+        return self._input_data
+
+    @property
+    def returns(self):
+        return self.df_returns.values
+
+    @property
+    def dates(self):
+        return self._dates
+
+    @property
+    def window(self):
+        return self._seqlen
+
+    @property
+    def train_indices(self):
+        return self._train_indices
+
+    @property
+    def test_indices(self):
+        return self._test_indices
+
+    @property
+    def train_dates(self):
+        return self._dates[self._train_indices]
+
+    @property
+    def test_dates(self):
+        return self._dates[self._test_indices]
+
+    @property
+    def train_returns(self):
+        return self.df_returns.iloc[self.train_indices]
+
+    @property
+    def test_returns(self):
+        return self.df_returns.iloc[self.test_indices]
 
 
 def features_generator(dataset):
