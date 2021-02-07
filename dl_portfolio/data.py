@@ -128,6 +128,7 @@ def normalize_2d(data):
 
     raise NotImplementedError()
 
+
 def drop_remainder(indices, batch_size, last=False):
     drop = np.remainder(len(indices), batch_size)
     if last:
@@ -135,6 +136,7 @@ def drop_remainder(indices, batch_size, last=False):
     else:
         indices = indices[drop:]
     return indices
+
 
 class DataLoader(object):
     def __init__(self, model_type: str, features: List, freq: int = 3600,
@@ -186,7 +188,6 @@ class DataLoader(object):
         # get last feature index
         last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
         self.df_data = self.df_data.loc[:last_ind]
-
 
         # TODO: move this into cv fold generation
         # Build features, returns and corresponding base index
@@ -289,7 +290,8 @@ class DataLoader(object):
             if i > 1:
                 cv_indices[nb_folds - i] = {
                     'train': drop_remainder(self._indices[:-val_size * i], self._batch_size, last=False),
-                    'test': drop_remainder(self._indices[- val_size * i:- val_size * (i - 1)], self._batch_size, last=True)
+                    'test': drop_remainder(self._indices[- val_size * i:- val_size * (i - 1)], self._batch_size,
+                                           last=True)
                 }
             else:
                 cv_indices[nb_folds - i] = {
