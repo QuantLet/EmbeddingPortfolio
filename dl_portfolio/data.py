@@ -5,7 +5,7 @@ import datetime as dt
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FREQ, BASE_COLUMNS, RESAMPLE_DICT
 from sklearn import preprocessing
-
+import tensorflow as tf
 
 def one_month_from_freq(freq):
     hour = BASE_FREQ * 2
@@ -389,7 +389,7 @@ class DataLoader(object):
 
 
 class SeqDataLoader(object):
-    def __init__(self, model_type: str, features: List, freq: int = 3600,
+    def __init__(self, model_type: str, features: List, start_date: str, freq: int = 3600,
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
@@ -415,6 +415,7 @@ class SeqDataLoader(object):
 
         # load data
         self.df_data = pd.read_pickle(path)
+        self.df_data = self.df_data.loc[start_date:,:]
         self.df_data = self.df_data.astype(np.float32)
         # resample
         self.df_data = data_to_freq(self.df_data, freq)
@@ -635,8 +636,12 @@ class SeqDataLoader(object):
         return self.df_returns.iloc[self.test_indices]
 
 
-def features_generator(dataset):
+def features_generator(dataset, model_type: str = None):
     for features, _ in dataset:
+        if model_type == "EIIE":
+            features = tf.transpose(features, [0, 3, 1, 2])
+        else:
+            pass
         yield features
 
 
