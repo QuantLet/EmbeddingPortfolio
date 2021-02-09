@@ -70,7 +70,7 @@ def build_layer(config: Dict, **kwargs):
     return layer
 
 
-def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: Optional[float] = None,
+def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: Optional[float] = 0.,
                training: bool = False):
     """
 
@@ -97,7 +97,7 @@ def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: O
             hidden = layer(input_)
         else:
             hidden = layer(hidden)
-        if dropout:
+        if dropout != 0:
             hidden = tf.keras.layers.Dropout(dropout)(hidden)
 
     width = hidden.get_shape()[2]
