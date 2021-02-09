@@ -40,48 +40,48 @@ if __name__ == '__main__':
     # initialize data_loader
     # if config.model_type in ANN:
     if config.model_type == 'EIIE':
-        data_loader = SeqDataLoader('EIIE', config.features, freq=config.freq, seq_len=config.seq_len,
+        data_loader = SeqDataLoader('EIIE', config.features, start_date=config.start_date, freq=config.freq, seq_len=config.seq_len,
                                     preprocess_param=config.preprocess, batch_size=config.batch_size,
-                                    nb_folds=config.nb_folds)
+                                    nb_folds=config.nb_folds, no_cash=config.no_cash)
     else:
         raise NotImplementedError()
         data_loader = DataLoader(config.model_type, config.features, freq=config.freq, window=config.seq_len,
-                                 preprocess_param=config.preprocess, batch_size=config.batch_size)
-
-    # create model
-    LOGGER.info('Create model')
-    if config.model_type == 'mlp':
-        LOGGER.info(f'Build {config.model_type} model')
-        model = build_mlp(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
-                          layers=config.layers, output_dim=data_loader.n_assets, dropout=config.dropout)
-    elif config.model_type == 'mlp-cash-bias':
-        LOGGER.info(f'Build {config.model_type} model')
-        model = build_mlp_with_cash_bias(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
-                                         output_dim=data_loader.n_assets,
-                                         batch_size=config.batch_size,
-                                         n_hidden=config.n_hidden,
-                                         dropout=config.dropout)
-    elif config.model_type == 'EIIE':
-        LOGGER.info(f'Build {config.model_type} model')
-        model = EIIE_model(input_dim=(data_loader.n_pairs, config.seq_len, data_loader.n_features),
-                           output_dim=data_loader.n_assets,
-                           layers=config.layers,
-                           dropout=config.dropout)
-    else:
-        raise NotImplementedError()
-
-    if config.load_model:
-        path = os.path.join(log_dir, config.load_model)
-        LOGGER.info(f'Loading pretrained model from {path}')
-        model.load_weights(path)
-
-    LOGGER.info(model.summary())
+                                 preprocess_param=config.preprocess, batch_size=config.batch_size, no_cash=config.no_cash)
 
     # Start cross-validation loop
     LOGGER.info('Start CV loop ...')
 
     for cv in range(config.nb_folds):
         LOGGER.info(f'CV {cv}')
+        # create model
+        LOGGER.info('Create model')
+        if config.model_type == 'mlp':
+            LOGGER.info(f'Build {config.model_type} model')
+            model = build_mlp(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
+                              layers=config.layers, output_dim=data_loader.n_assets, dropout=config.dropout)
+        elif config.model_type == 'mlp-cash-bias':
+            LOGGER.info(f'Build {config.model_type} model')
+            model = build_mlp_with_cash_bias(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
+                                             output_dim=data_loader.n_assets,
+                                             batch_size=config.batch_size,
+                                             n_hidden=config.n_hidden,
+                                             dropout=config.dropout)
+        elif config.model_type == 'EIIE':
+            LOGGER.info(f'Build {config.model_type} model')
+            model = EIIE_model(input_dim=(data_loader.n_pairs, config.seq_len, data_loader.n_features),
+                               output_dim=data_loader.n_assets,
+                               layers=config.layers,
+                               dropout=config.dropout)
+        else:
+            raise NotImplementedError()
+
+        if config.load_model:
+            path = os.path.join(log_dir, config.load_model)
+            LOGGER.info(f'Loading pretrained model from {path}')
+            model.load_weights(path)
+
+        LOGGER.info(model.summary())
+
         train_examples, test_examples = data_loader.get_cv_data(cv)
         # Input
         if config.model_type != 'EIIE':
@@ -113,31 +113,34 @@ if __name__ == '__main__':
         # Training loop
         LOGGER.info('Start training loop ...')
         model, train_history, test_history = train(train_dataset, test_dataset, model, config.model_type,
-                                                   config.lr_scheduler, config.momentum, config.n_epochs,
-                                                   data_loader.assets, config.benchmark, config.annual_period,
-                                                   config.trading_fee, config.log_every, config.plot_every,
-                                                   no_cash=config.no_cash, clip_value=None, train_returns=train_returns)
+                                                   config.loss_config['name'],
+                                                   config.optimizer, config.lr_scheduler, config.n_epochs,
+                                                   data_loader.assets, config.trading_fee, config.log_every,
+                                                   config.plot_every, no_cash=config.no_cash, clip_value=None,
+                                                   train_returns=train_returns, **config.loss_config['params'])
 
         # plot final history and save
         if config.save:
-            plot_train_history(train_history, test_history, save_dir=os.path.join(log_dir, 'history.png'), show=True)
+            plot_train_history(train_history, test_history, save_dir=os.path.join(log_dir, f'history_{cv}.png'), show=True)
         else:
             plot_train_history(train_history, test_history, show=True)
 
         if config.save:
             # save model
-            model.save_weights(os.path.join(log_dir, 'model'))
+            model.save_weights(os.path.join(log_dir, f'model_{cv}'))
 
         # Inference on train
-        train_predictions = model.predict(features_generator(train_dataset), verbose=1, steps=train_nb_batch)
-        train_predictions = pd.DataFrame(train_predictions, columns=data_loader.assets, index=train_dates)
+        train_predictions = model.predict(features_generator(train_dataset, model_type=config.model_type),
+                                          verbose=1)  # , steps=train_nb_batch)
+        train_predictions = pd.DataFrame(train_predictions, columns=data_loader.assets, index=train_returns.index)
 
         # Inference on test
-        test_predictions = model.predict(features_generator(test_dataset), verbose=1, steps=test_nb_batch)
-        test_predictions = pd.DataFrame(test_predictions, columns=data_loader.assets, index=test_dates)
+        test_predictions = model.predict(features_generator(test_dataset, model_type=config.model_type),
+                                         verbose=1)  # , steps=test_nb_batch)
+        test_predictions = pd.DataFrame(test_predictions, columns=data_loader.assets, index=test_returns.index)
 
         if config.save:
-            pickle.dump(test_predictions, open(os.path.join(log_dir, 'test_prediction.p'), 'wb'))
+            pickle.dump(test_predictions, open(os.path.join(log_dir, f'test_prediction_{cv}.p'), 'wb'))
 
         # Final prediction
         fig, axs = plt.subplots(1, 2, figsize=(15, 3))
@@ -148,7 +151,7 @@ if __name__ == '__main__':
         axs[1].legend(data_loader.assets)
         axs[1].set_title('Test prediction')
         if config.save:
-            plt.savefig(os.path.join(log_dir, 'prediction.png'))
+            plt.savefig(os.path.join(log_dir, f'prediction_{cv}.png'))
         plt.show()
 
         # Final perf
@@ -171,5 +174,5 @@ if __name__ == '__main__':
         axs[1].legend()
         axs[1].set_title('Final test performance')
         if config.save:
-            plt.savefig(os.path.join(log_dir, 'performance.png'))
+            plt.savefig(os.path.join(log_dir, f'performance_{cv}.png'))
         plt.show()
