@@ -72,7 +72,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                     initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
             else:
                 if no_cash:
-                    initial_position = actions[-1:,:]
+                    initial_position = actions[-1:, :]
                 else:
                     initial_position = actions[-1:, :-1]
 
@@ -80,11 +80,14 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
 
             with tf.GradientTape() as tape:
                 actions = model(features, training=True)
+
                 port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
                                                                     trading_fee=trading_fee,
                                                                     cash_bias=not no_cash)
                 # print(port_return_no_fee - port_return)
                 if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+                    # benchmark = tf.reduce_mean(returns[:, :-1], axis=-1)
+                    # loss_params['benchmark'] = benchmark
                     loss_value = loss_function(port_return, **loss_params)
                 else:
                     raise NotImplementedError()
@@ -145,6 +148,8 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                                                                 cash_bias=not no_cash)
 
             if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+                # benchmark = tf.reduce_mean(returns, axis=-1)
+                # loss_params['benchmark'] = benchmark
                 loss_value = loss_function(port_return, **loss_params)
             else:
                 raise NotImplementedError()

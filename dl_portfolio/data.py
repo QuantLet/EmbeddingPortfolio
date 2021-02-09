@@ -7,6 +7,7 @@ from dl_portfolio.constant import BASE_FREQ, BASE_COLUMNS, RESAMPLE_DICT
 from sklearn import preprocessing
 import tensorflow as tf
 
+
 def one_month_from_freq(freq):
     hour = BASE_FREQ * 2
     if freq == hour:
@@ -150,7 +151,8 @@ class DataLoader(object):
     def __init__(self, model_type: str, features: List, freq: int = 3600,
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32):
+                 nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32,
+                 cv_type: str = 'incremental'):
         self._freq = freq
         self._window = window
         self._features = features
@@ -161,6 +163,7 @@ class DataLoader(object):
         self._val_size = val_size
         self._model_type = model_type
         self._batch_size = batch_size
+        self._cv_type = cv_type
 
         if not no_cash:
             self._assets = self._pairs + ['cash']
@@ -207,7 +210,7 @@ class DataLoader(object):
 
         # Train / Test split
         LOGGER.info('Train / test split')
-        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
+        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type=self._cv_type)
 
     def build_1d_pair_features(self, pair, window=None):
         if window is None:
@@ -393,7 +396,7 @@ class SeqDataLoader(object):
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
-                 seq_len: int = 1, batch_size: int = 32):
+                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental'):
         self._preprocess_param = preprocess_param
         self._freq = freq
         self._seq_len = seq_len
@@ -405,6 +408,7 @@ class SeqDataLoader(object):
         self._val_size = val_size
         self._model_type = model_type
         self._batch_size = batch_size
+        self._cv_type = cv_type
 
         if not no_cash:
             self._assets = self._pairs + ['cash']
@@ -415,7 +419,7 @@ class SeqDataLoader(object):
 
         # load data
         self.df_data = pd.read_pickle(path)
-        self.df_data = self.df_data.loc[start_date:,:]
+        self.df_data = self.df_data.loc[start_date:, :]
         self.df_data = self.df_data.astype(np.float32)
         # resample
         self.df_data = data_to_freq(self.df_data, freq)
@@ -448,11 +452,13 @@ class SeqDataLoader(object):
 
         # Train / Test split
         LOGGER.info('Train / test split')
-        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type='incremental')
+        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type=self._cv_type)
 
     def build_1d_pair_features(self, pair):
         df_features = pd.DataFrame()
-        for feature_spec in self._features:
+        self._feature_index = {}
+        for i, feature_spec in enumerate(self._features):
+            self._feature_index[feature_spec['name']] = i
             params = feature_spec.get('params')
             if params is not None:
                 feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
@@ -517,27 +523,46 @@ class SeqDataLoader(object):
         :param type:
         :return:
         """
-        if type != 'incremental':
-            raise NotImplementedError()
 
         month = one_month_from_freq(self._freq)
         val_size = n_months * month
         cv_indices = {}
-        for i in range(nb_folds, 0, -1):
-            if i > 1:
-                cv_indices[nb_folds - i] = {
-                    'train': self._indices[:-val_size * i],
-                    'test': self._indices[- val_size * i:- val_size * (i - 1)]
-                }
-            else:
-                cv_indices[nb_folds - i] = {
-                    'train': self._indices[:-val_size * i],
-                    'test': self._indices[- val_size:]
-                }
+        if type == 'incremental':
+            for i in range(nb_folds, 0, -1):
+                if i > 1:
+                    cv_indices[nb_folds - i] = {
+                        'train': self._indices[:-val_size * i],
+                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
+                    }
+                else:
+                    cv_indices[nb_folds - i] = {
+                        'train': self._indices[:-val_size * i],
+                        'test': self._indices[- val_size:]
+                    }
+        elif type == 'fold':
+            for i in range(nb_folds, 0, -1):
+                if i == nb_folds:
+                    cv_indices[nb_folds - i] = {
+                        'train': self._indices[:-val_size * i],
+                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
+                    }
+                elif 1 < i < nb_folds:
+                    cv_indices[nb_folds - i] = {
+                        'train': self._indices[-val_size * (i + 1):-val_size * i],
+                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
+                    }
+                else:
+                    cv_indices[nb_folds - i] = {
+                        'train': self._indices[-val_size * (i + 1):-val_size * i],
+                        'test': self._indices[- val_size:]
+                    }
+        else:
+            raise NotImplementedError()
 
         return cv_indices
 
     def get_cv_data(self, cv):
+        seq_normalization = False
         train_indices = self.cv_indices[cv]['train']
         test_indices = self.cv_indices[cv]['test']
 
@@ -549,7 +574,8 @@ class SeqDataLoader(object):
             for pair in self._input_data:
                 for feature_name in self._preprocess_param:
                     if self._preprocess_param[feature_name]['method'] == 'minmax':
-                        scaler = preprocessing.MinMaxScaler(self._preprocess_param[feature_name]['feature_range'])
+                        scaler = preprocessing.MinMaxScaler(
+                            self._preprocess_param[feature_name]['params']['feature_range'])
                         LOGGER.info('Fit to train set and transform')
                         scaler.fit(train_data[pair][[feature_name]])
                         train_data[pair].loc[:, feature_name] = scaler.transform(
@@ -557,6 +583,10 @@ class SeqDataLoader(object):
                         LOGGER.info('Transform test set')
                         test_data[pair].loc[:, feature_name] = scaler.transform(
                             test_data[pair][[feature_name]].values)
+                    elif self._preprocess_param[feature_name]['method'] == 'seq_normalization':
+                        seq_normalization = True
+                        pass
+
                     else:
                         raise NotImplementedError()
 
@@ -568,6 +598,18 @@ class SeqDataLoader(object):
 
         train_data = np.array([build_seq(train_data[pair], self._seq_len) for pair in self._input_data])
         test_data = np.array([build_seq(test_data[pair], self._seq_len) for pair in self._input_data])
+
+        if seq_normalization:
+            LOGGER.info('Sequence normalization')
+            for feature_name in self._preprocess_param:
+                feature_index = self._feature_index[feature_name]
+                base_norm = self._preprocess_param[feature_name]['params']['base']
+                LOGGER.info(
+                    f'Normalization sequence with base {base_norm} for feature: {feature_name} at index: {feature_index}')
+                train_data[:, :, :, feature_index] = train_data[:, :, :, feature_index] / np.expand_dims(
+                    train_data[:, :, base_norm, feature_index], -1)
+                test_data[:, :, :, feature_index] = test_data[:, :, :, feature_index] / np.expand_dims(
+                    test_data[:, :, base_norm, feature_index], -1)
 
         return train_data, test_data
 

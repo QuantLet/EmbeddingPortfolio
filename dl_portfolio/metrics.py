@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 
-
+# TODO: what about edgeworth expansion for sharpe ratio => estimate variance with expansion, maybe more differentiable or look at probabilistic sharpe ratio
 def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_position: tf.Tensor,
                       trading_fee: float = 0., cash_bias: bool = True):
     ret = tf.math.reduce_sum(next_returns * prediction, axis=-1)
@@ -21,7 +21,6 @@ def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_po
 def penalized_volatility_returns(port_returns: tf.Tensor,
                                  benchmark: tf.constant = tf.constant(0.0093, dtype=tf.float32),
                                  alpha: tf.constant = tf.constant(1., dtype=tf.float32)):
-    # take log maybe ??
     excess_return = port_returns - benchmark
     # loss = - (tf.reduce_mean(excess_return) - alpha * tf.math.sqrt(
     #     tf.reduce_mean(excess_return ** 2) - tf.reduce_mean(excess_return) ** 2))

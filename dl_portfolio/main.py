@@ -42,7 +42,7 @@ if __name__ == '__main__':
     if config.model_type == 'EIIE':
         data_loader = SeqDataLoader('EIIE', config.features, start_date=config.start_date, freq=config.freq, seq_len=config.seq_len,
                                     preprocess_param=config.preprocess, batch_size=config.batch_size,
-                                    nb_folds=config.nb_folds, no_cash=config.no_cash)
+                                    nb_folds=config.nb_folds, no_cash=config.no_cash, cv_type=config.cv_type)
     else:
         raise NotImplementedError()
         data_loader = DataLoader(config.model_type, config.features, freq=config.freq, window=config.seq_len,
@@ -75,10 +75,11 @@ if __name__ == '__main__':
         else:
             raise NotImplementedError()
 
-        if config.load_model:
-            path = os.path.join(log_dir, config.load_model)
-            LOGGER.info(f'Loading pretrained model from {path}')
-            model.load_weights(path)
+        if config.load_model == 'CV':
+            if cv > 0:
+                path = os.path.join(log_dir, f'model_{cv-1}.ckpt')
+                LOGGER.info(f'Loading pretrained model from {path}')
+                model.load_weights(path)
 
         LOGGER.info(model.summary())
 
@@ -127,7 +128,7 @@ if __name__ == '__main__':
 
         if config.save:
             # save model
-            model.save_weights(os.path.join(log_dir, f'model_{cv}'))
+            model.save_weights(os.path.join(log_dir, f'model_{cv}.ckpt'))
 
         # Inference on train
         train_predictions = model.predict(features_generator(train_dataset, model_type=config.model_type),
