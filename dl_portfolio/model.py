@@ -53,7 +53,7 @@ def build_mlp(input_dim: Tuple, layers: List[Dict], output_dim: int, dropout: Op
 
 def build_layer(config: Dict, **kwargs):
     if config['type'] == 'conv':
-        layer = tf.keras.layers.Conv2D(config['filters'], config['kernel_size'], **config['params'])
+        layer = tf.keras.layers.Conv2D(config['filters'], config['kernel_size'], **config['params'], dtype=tf.float32)
 
         # strides = layer['strides'], padding = 'valid',
         # data_format = None, dilation_rate = (1, 1), groups = 1, activation = 'tanh',
@@ -65,8 +65,11 @@ def build_layer(config: Dict, **kwargs):
     elif config['type'] == 'EIIE_dense':
         # from pgportfolio
         width = kwargs.get('width')
-        layer = tf.keras.layers.Conv2D(config['filters'], [1, width], strides=(1, 1),
+        layer = tf.keras.layers.Conv2D(config['filters'], [1, width], strides=(1, 1), dtype=tf.float32,
                                        **config['params'])
+    elif config['type'] == 'dense':
+        layer = tf.keras.layers.Dense(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+
     return layer
 
 
@@ -110,6 +113,30 @@ def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: O
     output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
 
     return tf.keras.models.Model(input_, output)
+
+
+def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
+                            dropout: Optional[float] = 0., training: bool = False):
+    asset_graph = []
+    inputs = []
+    for k in range(n_assets):
+        input_ = tf.keras.layers.Input((input_dim), dtype=tf.float32)
+        inputs.append(input_)
+        for i, layer in enumerate(layers):
+            layer_name = f'asset_{k}_layer_{i}'
+            layer = build_layer(layer, name = layer_name)
+            if i == 0:
+                hidden = layer(input_)
+            else:
+                hidden = layer(hidden)
+            if dropout != 0:
+                hidden = tf.keras.layers.Dropout(dropout)(hidden)
+        asset_graph.append(hidden)
+
+    all_asset = tf.keras.layers.concatenate(asset_graph, axis=-1)
+    output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(all_asset)
+
+    return tf.keras.models.Model(inputs, output)
 
 
 def build_mlp_with_cash_bias(input_dim: Tuple, output_dim: int, batch_size: int,
