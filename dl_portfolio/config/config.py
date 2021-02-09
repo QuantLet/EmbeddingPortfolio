@@ -1,9 +1,11 @@
 import tensorflow as tf
+from dl_portfolio.metrics import penalized_volatility_returns, sharpe_ratio
 
 # Random seed
 seed = None
 
 # Data
+start_date = '2017-01-01'
 seq_len = 24
 features = [
     {'name': 'close'},
@@ -35,34 +37,38 @@ layers = [
     },
 ]
 
-model_name = "first_EIIE"
+model_name = "EIIE_vol_pen_returns"
 n_hidden = 1
 dropout = 0
 
 # Training
 load_model = None
-learning_rate = 0.001
-
+optimizer = tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.95)
+# optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
+# TODO implement early stopping
+n_epochs = 100
 lr_scheduler = {
     0: 0.01,
-    15: 0.001,
-    40: 0.0001
+    40: 0.001,
+    80: 0.0001
 }
-
-momentum = 0.8
-n_epochs = 100
-batch_size = 64
+batch_size = 16
 log_every = 1
-plot_every = 20
+plot_every = 10
 nb_folds = 5
 test_size = 300
 
 # Strategy, loss function
-freq = 14400 # 4h
-no_cash = False
-benchmark = 0.
-annual_period = 1
+freq = 14400  # 4h
+no_cash = True
 trading_fee = 0.0075
-
+# loss_config = {
+#     'name': 'sharpe_ratio',
+#     'params': {'benchmark': 0., 'annual_period': 1}
+# }
+loss_config = {
+    'name': 'penalized_volatility_returns',
+    'params': {'benchmark': 0., 'alpha': 0.2}
+}
 # Output
-save = False
+save = True

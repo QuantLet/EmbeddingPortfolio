@@ -1,11 +1,12 @@
 import tensorflow as tf
 import numpy as np
-from dl_portfolio.metrics import portfolio_returns, sharpe_ratio
+from dl_portfolio.metrics import portfolio_returns, sharpe_ratio, penalized_volatility_returns
 from dl_portfolio.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
 from dl_portfolio.evaluate import plot_train_history
 import pandas as pd
+
 
 def set_learning_rate(epoch, lr_scheduler):
     learning_rate_strategy = 'step'
@@ -23,18 +24,26 @@ def set_learning_rate(epoch, lr_scheduler):
     return learning_rate
 
 
-def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, model_type:str, learning_rate: Union[float, dict],
-          momentum: float,
-          n_epochs: int, assets: List[str], benchmark: float, annual_period: int, trading_fee: float,
-          log_every: int, plot_every: int, no_cash: bool = False, clip_value: float = None, train_returns=None):
+def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, model_type: str, loss_name: str,
+          optimizer: tf.keras.optimizers, learning_rate: Union[float, dict], n_epochs: int, assets: List[str],
+          trading_fee: float, log_every: int, plot_every: int, no_cash: bool = False, train_returns=None, **kwargs):
     n_assets = len(assets)
-    if isinstance(learning_rate, dict):
-        initial_lr = learning_rate[0]
-    if clip_value is not None:
+    if loss_name == 'sharpe_ratio':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
+                       'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32)}
+        loss_function = sharpe_ratio
+    elif loss_name == 'penalized_volatility_returns':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
+                       'alpha': tf.constant(kwargs.get('alpha', 1), dtype=tf.float32)}
+        loss_function = penalized_volatility_returns
+    else:
+        raise NotImplementedError()
+
+    """if clip_value is not None:
         optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum, clipvalue=clip_value)
     else:
         optimizer = tf.keras.optimizers.SGD(learning_rate=initial_lr, momentum=momentum)
-
+    """
     train_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
     test_history = {'loss': [], 'avg_ret': [], 'cum_ret': []}
 
@@ -62,7 +71,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 else:
                     initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
             else:
-                initial_position = actions[-1:, :-1]
+                if no_cash:
+                    initial_position = actions[-1:,:]
+                else:
+                    initial_position = actions[-1:, :-1]
 
             # Optimize the model
 
@@ -72,8 +84,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                                                                     trading_fee=trading_fee,
                                                                     cash_bias=not no_cash)
                 # print(port_return_no_fee - port_return)
-                loss_value = sharpe_ratio(port_return, benchmark=tf.constant(benchmark, dtype=tf.float32),
-                                          annual_period=tf.constant(annual_period, dtype=tf.float32))
+                if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+                    loss_value = loss_function(port_return, **loss_params)
+                else:
+                    raise NotImplementedError()
 
             if np.isnan(loss_value.numpy()):
                 if len(epoch_actions) > 0:
@@ -129,8 +143,11 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
             port_return_no_fee, port_return = portfolio_returns(actions, returns, initial_position,
                                                                 trading_fee=trading_fee,
                                                                 cash_bias=not no_cash)
-            loss_value = sharpe_ratio(port_return, benchmark=tf.constant(benchmark, dtype=tf.float32),
-                                      annual_period=tf.constant(annual_period, dtype=tf.float32))
+
+            if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+                loss_value = loss_function(port_return, **loss_params)
+            else:
+                raise NotImplementedError()
 
             # Track progress
             test_epoch_stats['loss'].update_state(loss_value)
@@ -167,6 +184,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                     test_epoch_stats[
                         'cum_ret'].result())
             )
+            print()
 
         if epoch % plot_every == 0:
             plt.plot(epoch_actions)
@@ -178,11 +196,13 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
             else:
                 initial_position = tf.Variable(np.array([[0] * (n_assets - 1)]), dtype=tf.float32)
-            strat_perf_no_fee, strat_perf = portfolio_returns(tf.Variable(epoch_actions), tf.Variable(train_returns.values),
-                                           initial_position, trading_fee=trading_fee, cash_bias=not no_cash)
+            strat_perf_no_fee, strat_perf = portfolio_returns(tf.Variable(epoch_actions),
+                                                              tf.Variable(train_returns.values),
+                                                              initial_position, trading_fee=trading_fee,
+                                                              cash_bias=not no_cash)
 
             strat_perf = strat_perf.numpy()
-            strat_perf = pd.Series(strat_perf, index = train_returns.index)
+            strat_perf = pd.Series(strat_perf, index=train_returns.index)
             if not no_cash:
                 eq_port = train_returns.drop('cash', 1)
             else:

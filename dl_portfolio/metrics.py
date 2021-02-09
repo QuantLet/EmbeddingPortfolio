@@ -12,13 +12,24 @@ def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_po
 
     # Moody et al (1998) https://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.87.8437&rep=rep1&type=pdf
     ret_fee = tf.math.reduce_sum((next_returns + 1) * prediction, axis=-1) * (
-                1 - trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1))
+            1 - trading_fee * tf.math.reduce_sum(np.abs(positions[1:] - positions[:-1]), axis=1))
     ret_fee = ret_fee - 1
 
     return ret, ret_fee
 
 
-def sharpe_ratio(port_returns: tf.Tensor, benchmark: tf.constant(0.0093, dtype=tf.float32),
+def penalized_volatility_returns(port_returns: tf.Tensor,
+                                 benchmark: tf.constant = tf.constant(0.0093, dtype=tf.float32),
+                                 alpha: tf.constant = tf.constant(1., dtype=tf.float32)):
+    # take log maybe ??
+    excess_return = port_returns - benchmark
+    # loss = - (tf.reduce_mean(excess_return) - alpha * tf.math.sqrt(
+    #     tf.reduce_mean(excess_return ** 2) - tf.reduce_mean(excess_return) ** 2))
+    loss = - (tf.reduce_mean(excess_return) - alpha * tf.math.reduce_std(excess_return))
+    return loss
+
+
+def sharpe_ratio(port_returns: tf.Tensor, benchmark: tf.constant = tf.constant(0.0093, dtype=tf.float32),
                  annual_period: tf.constant = tf.constant(0, dtype=tf.float32)):
     # take log maybe ??
     excess_return = port_returns - benchmark
