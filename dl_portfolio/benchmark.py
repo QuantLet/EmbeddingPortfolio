@@ -4,6 +4,8 @@ import numpy as np
 
 
 def market_cap_weights(freq):
+    market_cap = pd.read_pickle('crypto_data/marketcap/clean_marketcap_daily.p')
+    market_cap = market_cap.astype(np.float32)
     if freq != BASE_FREQ * 48:
         if freq == BASE_FREQ:
             freq = '30min'
@@ -13,10 +15,9 @@ def market_cap_weights(freq):
             freq = '2H'
         elif freq == BASE_FREQ * 8:
             freq = '4H'
-
-    market_cap = pd.read_pickle('crypto_data/marketcap/clean_marketcap_daily.p')
-    market_cap = market_cap.astype(np.float32)
-    market_cap = market_cap.resample(freq).first().fillna(method='ffill')
+        else:
+            raise NotImplementedError()
+        market_cap = market_cap.resample(freq).first().fillna(method='ffill')
     weights = market_cap.divide(market_cap.sum(1), 0)
 
     return weights

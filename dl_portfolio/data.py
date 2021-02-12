@@ -29,7 +29,7 @@ def build_seq(data, seq_len):
 
 def data_to_freq(data, freq):
     assert freq in [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8,
-                    BASE_FREQ * 48], 'Specified freq must be higher than 30sec'
+                    BASE_FREQ * 48], f'Specified freq must be one of [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8, BASE_FREQ * 48], freq is: {freq}'
     assert data.index.freq == '30T', 'Data must have BASE_FREQ'
     if freq != BASE_FREQ:
         if freq == BASE_FREQ * 2:
@@ -203,7 +203,7 @@ class DataLoader(object):
         # TODO: move this into cv fold generation
         # Build features, returns and corresponding base index
         LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
-        if self._model_type == 'EIIE':
+        if self._model_type in ['EIIE', 'asset_independent_model']:
             self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
         else:
             self._input_data, self.df_returns, self._indices, self._dates = self.build_1d_features_and_returns()
@@ -396,7 +396,7 @@ class SeqDataLoader(object):
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
-                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental'):
+                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1):
         self._preprocess_param = preprocess_param
         self._freq = freq
         self._seq_len = seq_len
@@ -409,6 +409,7 @@ class SeqDataLoader(object):
         self._model_type = model_type
         self._batch_size = batch_size
         self._cv_type = cv_type
+        self._horizon = horizon
 
         if not no_cash:
             self._assets = self._pairs + ['cash']
@@ -526,6 +527,9 @@ class SeqDataLoader(object):
 
         month = one_month_from_freq(self._freq)
         val_size = n_months * month
+        assert val_size * nb_folds < len(
+            self._indices), f'val_size * nb_folds is too big: {val_size * nb_folds}\n val_size: {val_size}, ' \
+                            f'nb_folds: {nb_folds} for {len(self._indices)} samples'
         cv_indices = {}
         if type == 'incremental':
             for i in range(nb_folds, 0, -1):
@@ -677,13 +681,21 @@ class SeqDataLoader(object):
     def test_returns(self):
         return self.df_returns.iloc[self.test_indices]
 
+    @property
+    def train_returns_seq(self):
+        returns = []
+        for i in range(len(self.train_indices)):
+            returns.append(self.df_returns.values[i : i + self._horizon - 1])
+        return returns
+
 
 def features_generator(dataset, model_type: str = None):
     for features, _ in dataset:
         if model_type == "EIIE":
             features = tf.transpose(features, [0, 3, 1, 2])
-        else:
-            pass
+        elif model_type == 'asset_independent_model':
+            features = [features[:, :, :, i] for i in range(features.shape[-1])]
+
         yield features
 
 

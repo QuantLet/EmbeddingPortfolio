@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from dl_portfolio.metrics import portfolio_returns, sharpe_ratio, penalized_volatility_returns
+from dl_portfolio.metrics import portfolio_returns, sharpe_ratio, penalized_volatility_returns, average_return, \
+    cum_return
 from dl_portfolio.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
@@ -36,6 +37,12 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'alpha': tf.constant(kwargs.get('alpha', 1), dtype=tf.float32)}
         loss_function = penalized_volatility_returns
+    elif loss_name == 'average_return':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32)}
+        loss_function = average_return
+    elif loss_name == 'cum_return':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32)}
+        loss_function = cum_return
     else:
         raise NotImplementedError()
 
@@ -63,8 +70,6 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         epoch_grads = []
         counter = 0
         for features, returns in train_dataset:
-            if model_type == "EIIE":
-                features = tf.transpose(features, [0, 3, 1, 2])
             if counter == 0:
                 if no_cash:
                     initial_position = tf.Variable([[1 / n_assets] * n_assets], dtype=tf.float32)
@@ -76,8 +81,12 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                 else:
                     initial_position = actions[-1:, :-1]
 
-            # Optimize the model
+            if model_type == "EIIE":
+                features = tf.transpose(features, [0, 3, 1, 2])
+            elif model_type == 'asset_independent_model':
+                features = [features[:, :, :, i] for i in range(n_assets)]
 
+            # Optimize the model
             with tf.GradientTape() as tape:
                 actions = model(features, training=True)
 
@@ -85,12 +94,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                                                                     trading_fee=trading_fee,
                                                                     cash_bias=not no_cash)
                 # print(port_return_no_fee - port_return)
-                if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
-                    # benchmark = tf.reduce_mean(returns[:, :-1], axis=-1)
-                    # loss_params['benchmark'] = benchmark
-                    loss_value = loss_function(port_return, **loss_params)
-                else:
-                    raise NotImplementedError()
+                # if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+                #     benchmark = tf.reduce_mean(returns[:, :-1], axis=-1)
+                #     loss_params['benchmark'] = benchmark
+                loss_value = loss_function(port_return, **loss_params)
 
             if np.isnan(loss_value.numpy()):
                 if len(epoch_actions) > 0:
@@ -134,6 +141,8 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         for features, returns in test_dataset:
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
+            elif model_type == 'asset_independent_model':
+                features = [features[:, :, :, i] for i in range(n_assets)]
 
             if counter == 0:
                 initial_position = epoch_actions[-1:, :]
@@ -147,12 +156,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
                                                                 trading_fee=trading_fee,
                                                                 cash_bias=not no_cash)
 
-            if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
-                # benchmark = tf.reduce_mean(returns, axis=-1)
-                # loss_params['benchmark'] = benchmark
-                loss_value = loss_function(port_return, **loss_params)
-            else:
-                raise NotImplementedError()
+            # if loss_name in ['sharpe_ratio', 'penalized_volatility_returns']:
+            #     benchmark = tf.reduce_mean(returns[:, :-1], axis=-1)
+            #     loss_params['benchmark'] = benchmark
+            loss_value = loss_function(port_return, **loss_params)
 
             # Track progress
             test_epoch_stats['loss'].update_state(loss_value)

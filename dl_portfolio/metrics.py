@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 
+
 # TODO: what about edgeworth expansion for sharpe ratio => estimate variance with expansion, maybe more differentiable or look at probabilistic sharpe ratio
 def portfolio_returns(prediction: tf.Tensor, next_returns: tf.Tensor, initial_position: tf.Tensor,
                       trading_fee: float = 0., cash_bias: bool = True):
@@ -40,6 +41,16 @@ def sharpe_ratio(port_returns: tf.Tensor, benchmark: tf.constant = tf.constant(0
             tf.math.sqrt(tf.reduce_mean(excess_return ** 2) - tf.reduce_mean(excess_return) ** 2 + 1e-12))
     return sr
 
+
+def average_return(port_returns: tf.Tensor, benchmark: tf.constant = tf.constant(0.0093, dtype=tf.float32)):
+    # take log maybe ??
+    excess_return = port_returns - benchmark
+    return - tf.math.reduce_mean(excess_return)
+
+def cum_return(port_returns: tf.Tensor, benchmark: tf.constant = tf.constant(0.0093, dtype=tf.float32)):
+    # take log maybe ??
+    excess_return = port_returns - benchmark
+    return - tf.math.reduce_prod(excess_return + 1.)
 
 def diff_sr(prev_A, prev_B, ret):
     return (prev_B * (ret - prev_A) - 0.5 * prev_A * (ret ** 2 - prev_B)) / ((prev_B - prev_A ** 2) ** (3 / 2))
