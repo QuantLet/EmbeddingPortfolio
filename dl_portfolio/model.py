@@ -124,6 +124,39 @@ def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: O
     return tf.keras.models.Model(input_, output)
 
 
+class CashBias(tf.keras.layers.Layer):
+    def __init__(self, *args, **kwargs):
+        super(CashBias, self).__init__(*args, **kwargs)
+
+    def build(self, input_shape):
+        self.bias = self.add_weight('cash_bias',
+                                    shape=tf.TensorShape([None, 1]),
+                                    initializer=tf.keras.initializers.Ones(),
+                                    trainable=True)
+
+    def call(self, x):
+        return self.bias
+
+    def test(self):
+        print('THIS WORK', tf.TensorShape((None, 1)))
+
+        cash_bias = CashBias()(all_asset)
+        exit()
+
+        # print(tf.Variable(tf.ones_initializer()(shape=tf.TensorShape((None, 1)), dtype=tf.float32), validate_shape=False))
+        # exit()
+        # print(tf.ones_initializer()(tf.TensorShape([None, 1])))
+        exit()
+        cash_bias = tf.Variable(initial_value=1, shape=tf.TensorShape([None, 1]), validate_shape=False)
+        exit()
+
+        print(cash_bias.shape)  # ], validate_shape=False))
+        exit()
+        cash_bias = tf.Variable(1., shape=1)
+        print(cash_bias.shape)
+        exit()
+
+
 def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
                             dropout: Optional[float] = 0., training: bool = False):
     output_layer = layers[-1]

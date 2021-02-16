@@ -7,6 +7,7 @@ seed = None
 # Data
 start_date = '2017-01-01'
 seq_len = 24
+horizon = 6
 features = [
     {'name': 'close'},
     {'name': 'returns', 'params': {'time_period': 1}}
@@ -80,8 +81,8 @@ val_size = 6  # in months
 
 # Strategy, loss function
 freq = 14400  # 4h
-no_cash = True
-trading_fee = 0.0075
+no_cash = False
+trading_fee = 0.0
 
 loss_config = {
     'name': 'cum_return',

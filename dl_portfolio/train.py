@@ -29,6 +29,10 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
           optimizer: tf.keras.optimizers, learning_rate: Union[float, dict], n_epochs: int, assets: List[str],
           trading_fee: float, log_every: int, plot_every: int, no_cash: bool = False, train_returns=None, **kwargs):
     n_assets = len(assets)
+    if no_cash:
+        n_pairs = n_assets
+    else:
+        n_pairs = n_assets - 1
     if loss_name == 'sharpe_ratio':
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32)}
@@ -84,7 +88,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
             elif model_type == 'asset_independent_model':
-                features = [features[:, :, :, i] for i in range(n_assets)]
+                features = [features[:, :, :, i] for i in range(n_pairs)]
 
             # Optimize the model
             with tf.GradientTape() as tape:
@@ -142,7 +146,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
             elif model_type == 'asset_independent_model':
-                features = [features[:, :, :, i] for i in range(n_assets)]
+                features = [features[:, :, :, i] for i in range(n_pairs)]
 
             if counter == 0:
                 initial_position = epoch_actions[-1:, :]

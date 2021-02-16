@@ -82,7 +82,7 @@ if __name__ == '__main__':
                 input_dim = (config.seq_len, data_loader.n_features)
             else:
                 input_dim = (data_loader.n_features)
-            model = asset_independent_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_assets,
+            model = asset_independent_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
                                             layers=config.layers, dropout=config.dropout)
         else:
             raise NotImplementedError()

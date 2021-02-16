@@ -410,7 +410,8 @@ class SeqDataLoader(object):
         self._batch_size = batch_size
         self._cv_type = cv_type
         self._horizon = horizon
-
+        if self._horizon > 1:
+            raise NotImplementedError()
         if not no_cash:
             self._assets = self._pairs + ['cash']
         else:
@@ -535,29 +536,29 @@ class SeqDataLoader(object):
             for i in range(nb_folds, 0, -1):
                 if i > 1:
                     cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i],
+                        'train': self._indices[:-val_size * i - self._horizon + 1],
                         'test': self._indices[- val_size * i:- val_size * (i - 1)]
                     }
                 else:
                     cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i],
+                        'train': self._indices[:-val_size * i - self._horizon + 1],
                         'test': self._indices[- val_size:]
                     }
         elif type == 'fold':
             for i in range(nb_folds, 0, -1):
                 if i == nb_folds:
                     cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i],
+                        'train': self._indices[:-val_size * i - self._horizon + 1],
                         'test': self._indices[- val_size * i:- val_size * (i - 1)]
                     }
                 elif 1 < i < nb_folds:
                     cv_indices[nb_folds - i] = {
-                        'train': self._indices[-val_size * (i + 1):-val_size * i],
+                        'train': self._indices[-val_size * (i + 1):-val_size * i - self._horizon + 1],
                         'test': self._indices[- val_size * i:- val_size * (i - 1)]
                     }
                 else:
                     cv_indices[nb_folds - i] = {
-                        'train': self._indices[-val_size * (i + 1):-val_size * i],
+                        'train': self._indices[-val_size * (i + 1):-val_size * i - self._horizon + 1],
                         'test': self._indices[- val_size:]
                     }
         else:
@@ -674,18 +675,30 @@ class SeqDataLoader(object):
         return self._dates[self._test_indices]
 
     @property
-    def train_returns(self):
+    def df_train_returns(self):
         return self.df_returns.iloc[self.train_indices]
 
     @property
-    def test_returns(self):
+    def df_test_returns(self):
         return self.df_returns.iloc[self.test_indices]
 
     @property
-    def train_returns_seq(self):
-        returns = []
-        for i in range(len(self.train_indices)):
-            returns.append(self.df_returns.values[i : i + self._horizon - 1])
+    def train_returns(self):
+        # shape: (n, horizon, n_pairs) if horizon > 1
+        if self._horizon > 1:
+            returns = np.array([self.df_returns.values[i: i + self._horizon] for i in range(len(self.train_indices))])
+        else:
+            returns = self.df_returns.iloc[self.train_indices]
+
+        return returns
+
+    @property
+    def test_returns(self):
+        # shape: (n, horizon, n_pairs) if horizon > 1
+        if self._horizon > 1:
+            returns = np.array([self.df_returns.values[i: i + self._horizon] for i in range(len(self.test_indices))])
+        else:
+            returns = self.df_returns.iloc[self.test_indices]
         return returns
 
 
