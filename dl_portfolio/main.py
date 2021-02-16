@@ -93,7 +93,6 @@ if __name__ == '__main__':
                 LOGGER.info(f'Loading pretrained model from {path}')
                 model.load_weights(path)
 
-
         LOGGER.info(model.summary())
 
         train_examples, test_examples = data_loader.get_cv_data(cv)
@@ -110,6 +109,11 @@ if __name__ == '__main__':
         LOGGER.info(f'Train returns shape: {train_returns.shape}')
         LOGGER.info(f'Test data shape: {test_examples.shape}')
         LOGGER.info(f'Test returns shape: {test_returns.shape}')
+
+        if 'returns' in [f['name'] for f in config.features]:
+            for i in range(train_examples.shape[0]):
+                assert (np.sum(train_examples[i, 1:, -1, -1] != train_returns.values[:-1, i])) == 0
+                print(True)
 
         # Training pipeline
         LOGGER.info('Create tf.data.Dataset')

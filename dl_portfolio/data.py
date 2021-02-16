@@ -491,7 +491,11 @@ class SeqDataLoader(object):
 
         # Get corresponding returns
         dates = df_features.index
-        return_dates = dates + dt.timedelta(seconds=self._freq)
+        if self._horizon > 0:
+            return_dates = dates + dt.timedelta(seconds=self._freq)
+        else:
+            exit('HERE')
+            return_dates = dates
         df_returns = self.df_returns.reindex(return_dates)
         if np.sum(df_returns.isna().sum()) != 0:
             raise NotImplementedError(
