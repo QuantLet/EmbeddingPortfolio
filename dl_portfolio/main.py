@@ -43,6 +43,7 @@ if __name__ == '__main__':
         data_loader = SeqDataLoader('EIIE', config.features, start_date=config.start_date, freq=config.freq,
                                     seq_len=config.seq_len, val_size=config.val_size,
                                     preprocess_param=config.preprocess, batch_size=config.batch_size,
+                                    lookfront=config.lookfront,
                                     nb_folds=config.nb_folds, no_cash=config.no_cash, cv_type=config.cv_type)
     else:
         raise NotImplementedError()
@@ -82,6 +83,7 @@ if __name__ == '__main__':
                 input_dim = (config.seq_len, data_loader.n_features)
             else:
                 input_dim = (data_loader.n_features)
+            assert config.no_cash
             model = asset_independent_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
                                             layers=config.layers, dropout=config.dropout)
         else:
@@ -112,7 +114,14 @@ if __name__ == '__main__':
 
         if 'returns' in [f['name'] for f in config.features]:
             for i in range(train_examples.shape[0]):
-                assert (np.sum(train_examples[i, 1:, -1, -1] != train_returns.values[:-1, i])) == 0
+                if config.lookfront > 0:
+                    assert (np.sum(
+                        train_examples[i, config.lookfront:, -1, -1] != train_returns.values[:-config.lookfront,
+                                                                        i])) == 0
+                else:
+                    assert (np.sum(
+                        train_examples[i, :, -1, -1] != train_returns.values[:, i])) == 0
+
                 print(True)
 
         # Training pipeline

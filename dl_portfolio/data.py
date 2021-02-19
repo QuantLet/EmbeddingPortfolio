@@ -396,7 +396,7 @@ class SeqDataLoader(object):
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
-                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1):
+                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1, lookfront: int = 1):
         self._preprocess_param = preprocess_param
         self._freq = freq
         self._seq_len = seq_len
@@ -410,6 +410,7 @@ class SeqDataLoader(object):
         self._batch_size = batch_size
         self._cv_type = cv_type
         self._horizon = horizon
+        self.lookfront = lookfront
         if self._horizon > 1:
             raise NotImplementedError()
         if not no_cash:
@@ -491,17 +492,19 @@ class SeqDataLoader(object):
 
         # Get corresponding returns
         dates = df_features.index
-        if self._horizon > 0:
-            return_dates = dates + dt.timedelta(seconds=self._freq)
+        if self.lookfront > 0:
+            # return_dates = dates + dt.timedelta(seconds=self._freq)
+            return_dates = list(dates)[self.lookfront:]
         else:
-            exit('HERE')
             return_dates = dates
         df_returns = self.df_returns.reindex(return_dates)
         if np.sum(df_returns.isna().sum()) != 0:
             raise NotImplementedError(
                 'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
+        if self.lookfront > 0:
+            df_features = df_features.iloc[:-self.lookfront]
         assert len(df_features) == len(df_returns)
-        assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
+        # assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
 
         # Base index
         n_samples = len(df_features)
@@ -509,7 +512,6 @@ class SeqDataLoader(object):
         dates = df_features.index
         # Convert to float32
         df_features, df_returns = df_features.astype(np.float32), df_returns.astype(np.float32)
-
         return df_features, df_returns, indices, dates
 
     def build_features_EIIE(self):

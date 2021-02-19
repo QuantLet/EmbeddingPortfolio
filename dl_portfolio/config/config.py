@@ -6,14 +6,14 @@ seed = None
 
 # Data
 start_date = '2017-01-01'
-seq_len = 24
-horizon = 6
+seq_len = 1
+lookfront = 0
 features = [
     {'name': 'close'},
     {'name': 'returns', 'params': {'time_period': 1}}
 ]
 preprocess = {
-    'close': {'method': 'seq_normalization', 'params': {'base': -1}}
+    'close': {'method': 'minmax', 'params': {'feature_range': [-1,1]}}
 }
 
 # Model
@@ -67,25 +67,25 @@ dropout = 0
 # optimizer = tf.keras.optimizers.SGD(learning_rate=0.01, momentum=0.8)
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 # TODO implement early stopping
-n_epochs = 150
+n_epochs = 80
 lr_scheduler = {
     0: 0.01
 }
 batch_size = 128
 log_every = 1
 plot_every = 20
-cv_type='fold'
-load_model = 'CV'
-nb_folds = 5
+cv_type='incremental'
+load_model = None # 'CV'
+nb_folds = 1
 val_size = 6  # in months
 
 # Strategy, loss function
 freq = 14400  # 4h
-no_cash = False
-trading_fee = 0.0
+no_cash = True
+trading_fee = 0.00075
 
 loss_config = {
-    'name': 'cum_return',
+    'name': 'sharpe_ratio',
     'params': {'benchmark': 0.}
 }
 # loss_config = {
