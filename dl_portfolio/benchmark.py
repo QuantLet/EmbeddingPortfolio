@@ -1,4 +1,5 @@
 from dl_portfolio.constant import BASE_FREQ
+from dl_portfolio.metrics import np_portfolio_returns
 import pandas as pd
 import numpy as np
 
@@ -15,6 +16,8 @@ def market_cap_weights(freq):
             freq = '2H'
         elif freq == BASE_FREQ * 8:
             freq = '4H'
+        elif freq == BASE_FREQ * 24:
+            freq = '12H'
         else:
             raise NotImplementedError()
         market_cap = market_cap.resample(freq).first().fillna(method='ffill')
@@ -23,10 +26,25 @@ def market_cap_weights(freq):
     return weights
 
 
-def market_cap_returns(asset_return: pd.DataFrame, freq: int):
+def market_cap_returns(asset_return: pd.DataFrame, freq: int, trading_fee: float = 0.):
     weights = market_cap_weights(freq)
     weights = weights.loc[asset_return.index]
-    port_returns = (asset_return * weights).sum(1)
+
+    strat_perf_no_fee, strat_perf = np_portfolio_returns(weights, asset_return,
+                                                         initial_position=weights.values[:1,:],
+                                                         trading_fee=trading_fee,
+                                                         cash_bias=False)
+    return strat_perf, np.exp(np.cumsum(strat_perf))
+
+
+def equally_weighted_returns(asset_return: pd.DataFrame):
+    raise NotImplementedError()
+    strat_perf_no_fee, strat_perf = np_portfolio_returns(weights, asset_return,
+                                                         initial_position=weights.values[:1, :],
+                                                         trading_fee=trading_fee,
+                                                         cash_bias=False)
+
+    port_returns = asset_return.mean(1)
     port_value = (port_returns + 1).cumprod()
 
     return port_returns, port_value
