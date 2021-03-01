@@ -10,3 +10,12 @@ def create_log_dir(model_name, model_type):
     if not os.path.isdir(log_dir):  # Create the log directory if it doesn't exist
         os.makedirs(log_dir)
     return log_dir
+
+
+def get_best_model_from_dir(dir_):
+    files = os.listdir(dir_)
+    files = list(filter(lambda x: 'model' in x, files))
+    files = [[f, f.split('e_')[-1].split('.')[0]] for f in files]
+    files.sort(key=lambda x: x[1])
+    file = files[-1][0]
+    return file

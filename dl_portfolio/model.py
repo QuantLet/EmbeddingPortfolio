@@ -66,6 +66,8 @@ def build_layer(config: Dict, **kwargs):
                                        **kwargs)
     elif config['type'] == 'lstm':
         layer = tf.keras.layers.LSTM(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+    elif config['type'] == 'gru':
+        layer = tf.keras.layers.GRU(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
 
     elif config['type'] == 'EIIE_dense':
         # from pgportfolio
@@ -74,6 +76,8 @@ def build_layer(config: Dict, **kwargs):
                                        **config['params'])
     elif config['type'] == 'dense':
         layer = tf.keras.layers.Dense(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+    elif config['type'] == 'BatchNormalization':
+        layer = tf.keras.layers.BatchNormalization(**config.get('params', {}), dtype=tf.float32, **kwargs)
 
     else:
         raise NotImplementedError(f"'{config['type']}' type layer has not been implemented")
