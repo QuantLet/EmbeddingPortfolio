@@ -8,16 +8,22 @@ from sklearn import preprocessing
 import tensorflow as tf
 
 
-def one_month_from_freq(freq):
-    hour = BASE_FREQ * 2
-    if freq == hour:
-        month = 24 * 30
-    elif freq == hour * 2:
-        month = 12 * 30
-    elif freq == hour * 4:
-        month = 6 * 30
-    elif freq == hour * 24:
-        month = 30
+def one_month_from_freq(freq, base_freq=BASE_FREQ):
+    if base_freq == BASE_FREQ:
+        hour = base_freq * 2
+        if freq == hour:
+            month = 24 * 30
+        elif freq == hour * 2:
+            month = 12 * 30
+        elif freq == hour * 4:
+            month = 6 * 30
+        elif freq == hour * 12:
+            month = 2 * 30
+        elif freq == hour * 24:
+            month = 30
+    elif base_freq == 'D':
+        month = 22
+
     return month
 
 
@@ -28,7 +34,8 @@ def build_seq(data, seq_len):
 
 
 def data_to_freq(data, freq):
-    assert freq in [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8,
+    # raise NotImplementedError('Verify resamplig method to make sure we dont look into the future, in particular for freq < D')
+    assert freq in [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8, BASE_FREQ * 24,
                     BASE_FREQ * 48], f'Specified freq must be one of [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8, BASE_FREQ * 48], freq is: {freq}'
     assert data.index.freq == '30T', 'Data must have BASE_FREQ'
     if freq != BASE_FREQ:
@@ -38,6 +45,8 @@ def data_to_freq(data, freq):
             freq = '2H'
         elif freq == BASE_FREQ * 8:
             freq = '4H'
+        elif freq == BASE_FREQ * 24:
+            freq = '12H'
         elif freq == BASE_FREQ * 48:
             freq = '1D'
 
@@ -56,8 +65,12 @@ def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
     if feature_name in BASE_COLUMNS:
         feature = data[feature_name]
     elif feature_name == 'returns':
+        raise NotImplementedError('It seems that we are looking into the future with that feature....')
         time_period = kwargs.get('time_period', 1)
         feature = data['close'].pct_change(time_period)
+    elif feature_name == 'open_close_returns':
+        feature = data['close'] / data['open'].values - 1
+
     elif feature_name == 'log_returns':
         time_period = kwargs.get('time_period', 1)
         feature = np.log(data['close'].pct_change(time_period) + 1)
@@ -154,6 +167,10 @@ class DataLoader(object):
                  nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32,
                  cv_type: str = 'incremental'):
         self._freq = freq
+        if 'crypto_data' in path:
+            self._base_freq = 1800
+        else:
+            self._base_freq = 'D'
         self._window = window
         self._features = features
         self._n_features = len(features)
@@ -176,7 +193,9 @@ class DataLoader(object):
         self.df_data = pd.read_pickle(path)
         self.df_data = self.df_data.astype(np.float32)
         # resample
-        self.df_data = data_to_freq(self.df_data, freq)
+        if 'crypto_data' in path:
+            self.df_data = data_to_freq(self.df_data, freq)
+
         # Get returns
         self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
         if not no_cash:
@@ -297,7 +316,7 @@ class DataLoader(object):
         if type != 'incremental':
             raise NotImplementedError()
 
-        month = one_month_from_freq(self._freq)
+        month = one_month_from_freq(self._freq, base_freq=self._base_freq)
         val_size = n_months * month
         cv_indices = {}
         for i in range(nb_folds, 0, -1):
@@ -396,9 +415,14 @@ class SeqDataLoader(object):
                  path: str = 'crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
-                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1, lookfront: int = 1):
+                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1,
+                 lookfront: int = 1):
         self._preprocess_param = preprocess_param
         self._freq = freq
+        if 'crypto_data' in path:
+            self._base_freq = 1800
+        else:
+            self._base_freq = 'D'
         self._seq_len = seq_len
         self._features = features
         self._n_features = len(features)
@@ -422,16 +446,19 @@ class SeqDataLoader(object):
 
         # load data
         self.df_data = pd.read_pickle(path)
-        self.df_data = self.df_data.loc[start_date:, :]
+        self.df_data = self.df_data.loc[start_date:, self._pairs]
         self.df_data = self.df_data.astype(np.float32)
         # resample
-        self.df_data = data_to_freq(self.df_data, freq)
+        if 'crypto_data' in path:
+            self.df_data = data_to_freq(self.df_data, freq)
         # Get returns
-        self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
+        self.df_returns = (self.df_data.loc[:, pd.IndexSlice[:, 'close']] / self.df_data.loc[:, pd.IndexSlice[:, 'open']].values - 1).droplevel(1, 1)
+        # self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
         if not no_cash:
             # Add cash column
             self.df_returns['cash'] = 0.
         self.df_returns = self.df_returns.astype(np.float32)
+        self.df_returns = np.log(self.df_returns + 1.)
         # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
         # returns[:, -1] = daily_risk_free_rate
 
@@ -471,7 +498,7 @@ class SeqDataLoader(object):
 
         df_features.columns = self._features_name
         self._lookback = np.max(df_features.isna().sum())
-        max_feature_lookback = np.max([f['params'].get('time_period') for f in self._features if 'params' in f])
+        max_feature_lookback = np.max([f['params'].get('time_period') if 'params' in f else 0 for f in self._features])
         assert self._lookback == max_feature_lookback
         LOGGER.info(f'Lookback is {self._lookback}')
         before_drop = len(df_features)
@@ -490,6 +517,9 @@ class SeqDataLoader(object):
         df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
         assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
 
+        # df_returns = df_features.loc[:, pd.IndexSlice[:,'returns']].droplevel(1,1)
+        # df_returns = df_returns.iloc[1:,:]
+
         # Get corresponding returns
         dates = df_features.index
         if self.lookfront > 0:
@@ -497,7 +527,22 @@ class SeqDataLoader(object):
             return_dates = list(dates)[self.lookfront:]
         else:
             return_dates = dates
+
         df_returns = self.df_returns.reindex(return_dates)
+        # df_features['index'] = list(range(len(df_features)))
+        # df_returns['index'] = list(range(len(df_returns)))
+        # df_returns = df_returns.dropna()
+
+        # features_dates = df_returns.index - dt.timedelta(seconds=self._freq)
+        # df_features = df_features.reindex(features_dates)
+        # df_features = df_features.dropna()
+
+        # print(df_features['index'])
+        # print(df_returns['index'])
+        # exit()
+
+        if np.sum(df_features.isna().sum()) != 0:
+            raise NotImplementedError()
         if np.sum(df_returns.isna().sum()) != 0:
             raise NotImplementedError(
                 'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
@@ -532,7 +577,7 @@ class SeqDataLoader(object):
         :return:
         """
 
-        month = one_month_from_freq(self._freq)
+        month = one_month_from_freq(self._freq, base_freq=self._base_freq)
         val_size = n_months * month
         assert val_size * nb_folds < len(
             self._indices), f'val_size * nb_folds is too big: {val_size * nb_folds}\n val_size: {val_size}, ' \
@@ -583,7 +628,9 @@ class SeqDataLoader(object):
         if self._preprocess_param is not None:
             LOGGER.info('Preprocessing ...')
             for pair in self._input_data:
+                features_seq_normalize = []
                 for feature_name in self._preprocess_param:
+                    print(feature_name, self._preprocess_param[feature_name])
                     if self._preprocess_param[feature_name]['method'] == 'minmax':
                         scaler = preprocessing.MinMaxScaler(
                             self._preprocess_param[feature_name]['params']['feature_range'])
@@ -594,8 +641,18 @@ class SeqDataLoader(object):
                         LOGGER.info('Transform test set')
                         test_data[pair].loc[:, feature_name] = scaler.transform(
                             test_data[pair][[feature_name]].values)
+                    elif self._preprocess_param[feature_name]['method'] == 'mean_std':
+                        scaler = preprocessing.StandardScaler(**self._preprocess_param[feature_name]['params'])
+                        LOGGER.info('Fit to train set and transform')
+                        scaler.fit(train_data[pair][[feature_name]])
+                        train_data[pair].loc[:, feature_name] = scaler.transform(
+                            train_data[pair][[feature_name]].values)
+                        LOGGER.info('Transform test set')
+                        test_data[pair].loc[:, feature_name] = scaler.transform(
+                            test_data[pair][[feature_name]].values)
                     elif self._preprocess_param[feature_name]['method'] == 'seq_normalization':
                         seq_normalization = True
+                        features_seq_normalize.append(feature_name)
                         pass
 
                     else:
@@ -612,7 +669,7 @@ class SeqDataLoader(object):
 
         if seq_normalization:
             LOGGER.info('Sequence normalization')
-            for feature_name in self._preprocess_param:
+            for feature_name in features_seq_normalize:
                 feature_index = self._feature_index[feature_name]
                 base_norm = self._preprocess_param[feature_name]['params']['base']
                 LOGGER.info(
