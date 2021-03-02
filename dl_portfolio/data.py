@@ -766,7 +766,7 @@ class SeqDataLoader(object):
 
 
 def features_generator(dataset, model_type: str = None):
-    for features, _ in dataset:
+    for ind, features, _ in dataset:
         if model_type == "EIIE":
             features = tf.transpose(features, [0, 3, 1, 2])
         elif model_type == 'asset_independent_model':

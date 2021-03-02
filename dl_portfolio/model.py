@@ -164,7 +164,7 @@ class CashBias(tf.keras.layers.Layer):
 def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
                             dropout: Optional[float] = 0., training: bool = False):
     output_layer = layers[-1]
-    assert output_layer['type'] in ['softmax', 'simple_long_only']
+    assert output_layer['type'] in ['softmax', 'simple_long_only', 'softmax_with_weights']
     asset_graph = []
     inputs = []
     for k in range(n_assets):
@@ -196,6 +196,11 @@ def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, la
         # apply sigmoid to get positive weights
         all_asset = tf.keras.layers.Activation('sigmoid', dtype=tf.float32)(all_asset)
         output = all_asset / tf.reshape(tf.reduce_sum(all_asset, axis=-1), (-1, 1))
+    elif output_layer['type'] == 'softmax_with_weights':
+        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name = 'previous_weights')
+        inputs.append(prev_weights)
+        all_asset_with_w = tf.keras.layers.concatenate([all_asset, prev_weights], axis=-1)
+        output = tf.keras.layers.Dense(n_assets, activation='softmax', dtype=tf.float32)(all_asset_with_w)
 
     return tf.keras.models.Model(inputs, output)
 

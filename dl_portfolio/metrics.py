@@ -76,3 +76,19 @@ def cum_return(port_returns: tf.Tensor, benchmark: tf.constant = tf.constant(0.0
 
 def diff_sr(prev_A, prev_B, ret):
     return (prev_B * (ret - prev_A) - 0.5 * prev_A * (ret ** 2 - prev_B)) / ((prev_B - prev_A ** 2) ** (3 / 2))
+
+def downside_risk(returns, risk_free=0):
+    adj_returns = returns - risk_free
+    sqr_downside = np.square(np.clip(adj_returns, np.NINF, 0))
+    return np.sqrt(np.nanmean(sqr_downside) * 252)
+
+
+def sortino(returns, risk_free=0):
+    adj_returns = returns - risk_free
+    drisk = downside_risk(adj_returns)
+
+    if drisk == 0:
+        return np.nan
+
+    return (np.nanmean(adj_returns) * np.sqrt(252)) \
+        / drisk

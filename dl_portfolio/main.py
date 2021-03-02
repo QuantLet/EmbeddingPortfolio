@@ -9,7 +9,7 @@ from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model, 
 from dl_portfolio.utils import create_log_dir, get_best_model_from_dir
 from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data
 from dl_portfolio.evaluate import plot_train_history
-from dl_portfolio.train import train
+from dl_portfolio.train import train, pretrain, online_training
 from dl_portfolio.config import config
 import logging, pickle
 from dl_portfolio.benchmark import market_cap_returns, equally_weighted_returns
@@ -65,6 +65,8 @@ if __name__ == '__main__':
             cv_log_dir = None
         # create model
         LOGGER.info('Create model')
+        feed_prev_weights = False
+        online = False
         if config.model_type == 'mlp':
             LOGGER.info(f'Build {config.model_type} model')
             model = build_mlp(input_dim=(data_loader.n_features * data_loader.n_pairs * config.seq_len),
@@ -88,6 +90,9 @@ if __name__ == '__main__':
                 input_dim = (config.seq_len, data_loader.n_features)
             else:
                 input_dim = (data_loader.n_features)
+            if config.layers[-1]['type'] == 'softmax_with_weights':
+                feed_prev_weights = True
+                online = True
             assert config.no_cash
             model = asset_independent_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
                                             layers=config.layers, dropout=config.dropout)
@@ -135,8 +140,9 @@ if __name__ == '__main__':
         # Train
         if config.model_type in ['EIIE', 'asset_independent_model']:
             train_dataset = tf.data.Dataset.from_tensor_slices(
-                (np.transpose(train_examples, (1, 2, 3, 0)), train_returns))
-            test_dataset = tf.data.Dataset.from_tensor_slices((np.transpose(test_examples, (1, 2, 3, 0)), test_returns))
+                (list(range(len(train_examples[0]))), np.transpose(train_examples, (1, 2, 3, 0)), train_returns))
+            test_dataset = tf.data.Dataset.from_tensor_slices(
+                (list(range(len(test_examples[0]))), np.transpose(test_examples, (1, 2, 3, 0)), test_returns))
         else:
             train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
             test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
@@ -145,13 +151,58 @@ if __name__ == '__main__':
 
         # Training loop
         LOGGER.info('Start training loop ...')
-        model, train_history, test_history = train(train_dataset, test_dataset, model, config.model_type,
-                                                   config.loss_config['name'],
-                                                   config.optimizer, config.lr_scheduler, config.n_epochs,
-                                                   data_loader.assets, config.trading_fee, config.log_every,
-                                                   config.plot_every, no_cash=config.no_cash, clip_value=None,
-                                                   train_returns=train_returns, **config.loss_config['params'],
-                                                   save=config.save, log_dir=cv_log_dir)
+        if online:
+            model, train_history, test_history, portfolio_weights = pretrain(train_dataset, model, config.model_type,
+                                                                             config.loss_config['name'],
+                                                                             config.optimizer, config.lr_scheduler,
+                                                                             config.n_epochs, data_loader.assets,
+                                                                             config.trading_fee, config.log_every,
+                                                                             config.plot_every, no_cash=config.no_cash,
+                                                                             clip_value=None,
+                                                                             train_returns=train_returns,
+                                                                             **config.loss_config['params'],
+                                                                             save=config.save, log_dir=cv_log_dir,
+                                                                             feed_prev_weights=feed_prev_weights)
+            rolling_train_size = config.batch_size  # int(4 * config.batch_size)
+            train_examples = train_examples[:, -rolling_train_size:, :, :]
+            portfolio_weights = portfolio_weights[-rolling_train_size - 1:, :]
+            np_train_returns = train_returns.values[-rolling_train_size:, :]
+            model, strat_return, test_prediction = online_training(train_examples, np_train_returns, test_examples,
+                                                                   test_returns.values, portfolio_weights, model,
+                                                                   config.model_type,
+                                                                   config.loss_config['name'],
+                                                                   config.optimizer, config.lr_scheduler, 5,
+                                                                   32,
+                                                                   data_loader.assets, config.trading_fee,
+                                                                   config.log_every,
+                                                                   config.plot_every, no_cash=config.no_cash,
+                                                                   **config.loss_config['params'],
+                                                                   save=config.save, log_dir=cv_log_dir,
+                                                                   feed_prev_weights=feed_prev_weights)
+            strat_return = pd.DataFrame(strat_return, index=test_returns.index,
+                                        columns=['returns'])
+            test_prediction = pd.DataFrame(test_prediction, index=test_returns.index,
+                                           columns=test_returns.columns)
+            benchmark_returns, benchmark_value = market_cap_returns(test_returns, config.freq,
+                                                                    trading_fee=config.trading_fee)
+
+            plt.figure(figsize=(20, 10))
+            plt.plot(benchmark_value, label='benchmark')
+            plt.plot(np.exp(np.cumsum(strat_return)), label='strategy')
+            plt.legend()
+            plt.show()
+
+            plt.plot(test_prediction)
+            plt.show()
+        else:
+            model, train_history, test_history = train(train_dataset, test_dataset, model, config.model_type,
+                                                       config.loss_config['name'],
+                                                       config.optimizer, config.lr_scheduler, config.n_epochs,
+                                                       data_loader.assets, config.trading_fee, config.log_every,
+                                                       config.plot_every, no_cash=config.no_cash, clip_value=None,
+                                                       train_returns=train_returns, **config.loss_config['params'],
+                                                       save=config.save, log_dir=cv_log_dir,
+                                                       feed_prev_weights=feed_prev_weights)
 
         # plot final history and save
         if config.save:
@@ -224,7 +275,8 @@ if __name__ == '__main__':
         test_returns = pd.DataFrame(test_returns, index=test_predictions.index,
                                     columns=train_predictions.columns)
         if config.benchmark == 'marketcap':
-            benchmark_returns, benchmark_value = market_cap_returns(test_returns, config.freq, trading_fee=config.trading_fee)
+            benchmark_returns, benchmark_value = market_cap_returns(test_returns, config.freq,
+                                                                    trading_fee=config.trading_fee)
         elif config.benchmark == 'equally_weighted':
             benchmark_returns, benchmark_value = equally_weighted_returns(test_returns, trading_fee=config.trading_fee)
         else:
