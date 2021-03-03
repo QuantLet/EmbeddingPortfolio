@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.metrics import np_portfolio_returns
-from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model, asset_independent_model
+from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model, asset_independent_model, stacked_asset_model
 from dl_portfolio.utils import create_log_dir, get_best_model_from_dir
 from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data
 from dl_portfolio.evaluate import plot_train_history
@@ -39,7 +39,7 @@ if __name__ == '__main__':
 
     # initialize data_loader
     # if config.model_type in ANN:
-    if config.model_type in ['EIIE', 'asset_independent_model']:
+    if config.model_type in ['EIIE', 'asset_independent_model', 'stacked_asset_model']:
         data_loader = SeqDataLoader('EIIE', config.features, start_date=config.start_date, freq=config.freq,
                                     path=config.path, pairs=config.pairs,
                                     seq_len=config.seq_len, val_size=config.val_size,
@@ -96,6 +96,20 @@ if __name__ == '__main__':
             assert config.no_cash
             model = asset_independent_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
                                             layers=config.layers, dropout=config.dropout)
+        elif config.model_type == 'stacked_asset_model':
+            LOGGER.info(f'Build {config.model_type} model')
+            if config.layers[0]['type'] in ['lstm', 'conv1d', 'gru']:
+                input_dim = (config.seq_len, data_loader.n_features)
+            else:
+                input_dim = (data_loader.n_features)
+            if config.layers[-1]['type'] == 'softmax_with_weights':
+                feed_prev_weights = True
+                online = True
+            assert config.no_cash
+            model = stacked_asset_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
+                                        layers=config.layers, dropout=config.dropout)
+
+
         else:
             raise NotImplementedError()
 
@@ -110,7 +124,7 @@ if __name__ == '__main__':
 
         train_examples, test_examples = data_loader.get_cv_data(cv)
         # Input
-        if config.model_type not in ['EIIE', 'asset_independent_model']:
+        if config.model_type not in ['EIIE', 'asset_independent_model', 'stacked_asset_model']:
             train_examples = data_loader.input_data.values[train_indices]
             test_examples = data_loader.input_data.values[test_indices]
 
@@ -138,7 +152,7 @@ if __name__ == '__main__':
         # Training pipeline
         LOGGER.info('Create tf.data.Dataset')
         # Train
-        if config.model_type in ['EIIE', 'asset_independent_model']:
+        if config.model_type in ['EIIE', 'asset_independent_model', 'stacked_asset_model']:
             train_dataset = tf.data.Dataset.from_tensor_slices(
                 (list(range(len(train_examples[0]))), np.transpose(train_examples, (1, 2, 3, 0)), train_returns))
             test_dataset = tf.data.Dataset.from_tensor_slices(

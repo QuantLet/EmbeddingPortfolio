@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.metrics import volatility, portfolio_returns, sharpe_ratio, \
-    penalized_volatility_returns, average_return, cum_return
+    penalized_volatility_returns, average_return, cum_return, sortino_ratio
 from dl_portfolio.logger import LOGGER
 import matplotlib.pyplot as plt
 from typing import List, Union
@@ -44,9 +44,14 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
     if loss_name == 'sharpe_ratio':
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32),
-                       'epsilon': tf.constant(kwargs.get('epsilon', 0.001), dtype=tf.float32),
+                       'epsilon': tf.constant(kwargs.get('epsilon', 1e-6), dtype=tf.float32),
                        }
         loss_function = sharpe_ratio
+    elif loss_name == 'sortino_ratio':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
+                       'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32),
+                       }
+        loss_function = sortino_ratio
     elif loss_name == 'penalized_volatility_returns':
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'alpha': tf.constant(kwargs.get('alpha', 1), dtype=tf.float32)}
@@ -99,7 +104,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
 
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
-            elif model_type == 'asset_independent_model':
+            elif model_type in ['asset_independent_model', 'stacked_asset_model']:
                 features = [features[:, :, :, i] for i in range(n_pairs)]
 
             # Optimize the model
@@ -162,7 +167,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         for indices, features, returns in test_dataset:
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
-            elif model_type == 'asset_independent_model':
+            elif model_type in ['asset_independent_model', 'stacked_asset_model']:
                 features = [features[:, :, :, i] for i in range(n_pairs)]
 
             if counter == 0:
@@ -303,9 +308,14 @@ def pretrain(train_dataset: tf.data.Dataset, model, model_type: str, loss_name: 
     if loss_name == 'sharpe_ratio':
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32),
-                       'epsilon': tf.constant(kwargs.get('epsilon', 0.001), dtype=tf.float32),
+                       'epsilon': tf.constant(kwargs.get('epsilon', 1e-6), dtype=tf.float32),
                        }
         loss_function = sharpe_ratio
+    elif loss_name == 'sortino_ratio':
+        loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
+                       'annual_period': tf.constant(kwargs.get('annual_period', 1), dtype=tf.float32),
+                       }
+        loss_function = sortino_ratio
     elif loss_name == 'penalized_volatility_returns':
         loss_params = {'benchmark': tf.constant(kwargs.get('benchmark', 0), dtype=tf.float32),
                        'alpha': tf.constant(kwargs.get('alpha', 1), dtype=tf.float32)}
@@ -356,7 +366,7 @@ def pretrain(train_dataset: tf.data.Dataset, model, model_type: str, loss_name: 
 
             if model_type == "EIIE":
                 features = tf.transpose(features, [0, 3, 1, 2])
-            elif model_type == 'asset_independent_model':
+            elif model_type in ['asset_independent_model', 'stacked_asset_model']:
                 features = [features[:, :, :, i] for i in range(n_pairs)]
                 if feed_prev_weights:
                     features.append(prev_weights)
@@ -532,7 +542,7 @@ def online_training(train_examples: np.array, train_returns: np.array, test_exam
 
                     if model_type == "EIIE":
                         features = tf.transpose(features, [0, 3, 1, 2])
-                    elif model_type == 'asset_independent_model':
+                    elif model_type in ['asset_independent_model', 'stacked_asset_model']:
                         features = [features[:, :, :, i] for i in range(n_pairs)]
                         if feed_prev_weights:
                             features.append(prev_weights)

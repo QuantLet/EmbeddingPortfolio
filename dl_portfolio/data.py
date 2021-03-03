@@ -75,6 +75,11 @@ def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
         time_period = kwargs.get('time_period', 1)
         feature = np.log(data['close'].pct_change(time_period) + 1)
 
+    elif feature_name == 'realized_volatility':
+        time_period = kwargs.get('time_period')
+        assert time_period is not None
+        feature = np.log(data['close']).rolling(time_period).std()
+
     return feature
 
 
@@ -488,6 +493,7 @@ class SeqDataLoader(object):
         df_features = pd.DataFrame()
         self._feature_index = {}
         for i, feature_spec in enumerate(self._features):
+            assert feature_spec.get('lookback') is not None
             self._feature_index[feature_spec['name']] = i
             params = feature_spec.get('params')
             if params is not None:
@@ -498,8 +504,8 @@ class SeqDataLoader(object):
 
         df_features.columns = self._features_name
         self._lookback = np.max(df_features.isna().sum())
-        max_feature_lookback = np.max([f['params'].get('time_period') if 'params' in f else 0 for f in self._features])
-        assert self._lookback == max_feature_lookback
+        max_feature_lookback = np.max([f.get('lookback') for f in self._features])
+        assert self._lookback == max_feature_lookback, f"max_feature_lookback: {max_feature_lookback}, self._lookback: {self._lookback}"
         LOGGER.info(f'Lookback is {self._lookback}')
         before_drop = len(df_features)
         # drop na
@@ -769,7 +775,7 @@ def features_generator(dataset, model_type: str = None):
     for ind, features, _ in dataset:
         if model_type == "EIIE":
             features = tf.transpose(features, [0, 3, 1, 2])
-        elif model_type == 'asset_independent_model':
+        elif model_type in ['asset_independent_model', 'stacked_asset_model']:
             features = [features[:, :, :, i] for i in range(features.shape[-1])]
 
         yield features

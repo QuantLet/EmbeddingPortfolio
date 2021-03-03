@@ -189,15 +189,58 @@ def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, la
         all_asset = tf.keras.layers.Reshape([shape[2]])(all_asset)
 
     if output_layer['type'] == 'softmax':
-        # output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(all_asset)
-        output = tf.keras.layers.Activation('softmax', dtype=tf.float32)(all_asset)
+        output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(all_asset)
 
     elif output_layer['type'] == 'simple_long_only':
         # apply sigmoid to get positive weights
         all_asset = tf.keras.layers.Activation('sigmoid', dtype=tf.float32)(all_asset)
         output = all_asset / tf.reshape(tf.reduce_sum(all_asset, axis=-1), (-1, 1))
     elif output_layer['type'] == 'softmax_with_weights':
-        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name = 'previous_weights')
+        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name='previous_weights')
+        inputs.append(prev_weights)
+        all_asset_with_w = tf.keras.layers.concatenate([all_asset, prev_weights], axis=-1)
+        output = tf.keras.layers.Dense(n_assets, activation='softmax', dtype=tf.float32)(all_asset_with_w)
+
+    return tf.keras.models.Model(inputs, output)
+
+
+def stacked_asset_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
+                        dropout: Optional[float] = 0., training: bool = False):
+    output_layer = layers[-1]
+    assert output_layer['type'] in ['softmax', 'simple_long_only', 'softmax_with_weights']
+    asset_graph = []
+    inputs = []
+    for k in range(n_assets):
+        input_ = tf.keras.layers.Input((input_dim), dtype=tf.float32)
+        inputs.append(input_)
+
+    all_asset = tf.keras.layers.concatenate(inputs, axis=-1)
+    for i, layer in enumerate(layers[:-1]):
+        layer_name = f'asset_{k}_layer_{i}'
+        layer = build_layer(layer, name=layer_name)
+        if i == 0:
+            hidden = layer(all_asset)
+        else:
+            hidden = layer(hidden)
+        if dropout != 0:
+            hidden = tf.keras.layers.Dropout(dropout)(hidden)
+
+    shape = hidden.shape
+    if len(shape) > 2:
+        assert len(shape) == 3
+        assert shape[1] == 1
+        hidden = tf.keras.layers.Reshape([shape[2]])(hidden)
+
+    if output_layer['type'] == 'softmax':
+        output = tf.keras.layers.Dense(output_dim, activation='softmax', dtype=tf.float32)(hidden)
+
+    elif output_layer['type'] == 'simple_long_only':
+        # apply sigmoid to get positive weights
+        output = tf.keras.layers.Dense(output_dim, activation='sigmoid', dtype=tf.float32)(hidden)
+        output = output / tf.reshape(tf.reduce_sum(output, axis=-1), (-1, 1))
+    elif output_layer['type'] == 'softmax_with_weights':
+        raise NotImplementedError()
+        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name='previous_weights')
         inputs.append(prev_weights)
         all_asset_with_w = tf.keras.layers.concatenate([all_asset, prev_weights], axis=-1)
         output = tf.keras.layers.Dense(n_assets, activation='softmax', dtype=tf.float32)(all_asset_with_w)
