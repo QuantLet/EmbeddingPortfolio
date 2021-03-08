@@ -5,9 +5,11 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.metrics import np_portfolio_returns
-from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model, asset_independent_model, stacked_asset_model
+from dl_portfolio.model import build_mlp, build_mlp_with_cash_bias, EIIE_model, asset_independent_model, \
+    stacked_asset_model
 from dl_portfolio.utils import create_log_dir, get_best_model_from_dir
-from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data
+from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data, \
+    drop_remainder
 from dl_portfolio.evaluate import plot_train_history
 from dl_portfolio.train import train, pretrain, online_training
 from dl_portfolio.config import config
@@ -86,7 +88,7 @@ if __name__ == '__main__':
                                dropout=config.dropout)
         elif config.model_type == 'asset_independent_model':
             LOGGER.info(f'Build {config.model_type} model')
-            if config.layers[0]['type'] in ['lstm', 'conv1d', 'gru']:
+            if config.layers[0]['type'] in ['lstm', 'conv1d', 'gru', 'DynamicSmoothRNN']:
                 input_dim = (config.seq_len, data_loader.n_features)
             else:
                 input_dim = (data_loader.n_features)
@@ -98,16 +100,21 @@ if __name__ == '__main__':
                                             layers=config.layers, dropout=config.dropout)
         elif config.model_type == 'stacked_asset_model':
             LOGGER.info(f'Build {config.model_type} model')
-            if config.layers[0]['type'] in ['lstm', 'conv1d', 'gru']:
+            if config.layers[0]['type'] in ['lstm', 'conv1d', 'gru', 'DynamicSmoothRNN']:
                 input_dim = (config.seq_len, data_loader.n_features)
             else:
                 input_dim = (data_loader.n_features)
             if config.layers[-1]['type'] == 'softmax_with_weights':
                 feed_prev_weights = True
                 online = True
-            assert config.no_cash
-            model = stacked_asset_model(input_dim, output_dim=data_loader.n_assets, n_assets=data_loader.n_pairs,
-                                        layers=config.layers, dropout=config.dropout)
+            if config.layers[-1]['type'] == 'cash_bias':
+                assert not config.no_cash
+                model = stacked_asset_model(input_dim, output_dim=data_loader.n_assets, n_pairs=data_loader.n_pairs,
+                                            layers=config.layers, dropout=config.dropout, batch_size=config.batch_size,
+                                            cash_bias=True)
+            else:
+                model = stacked_asset_model(input_dim, output_dim=data_loader.n_assets, n_pairs=data_loader.n_pairs,
+                                            layers=config.layers, dropout=config.dropout, cash_bias=False)
 
 
         else:
@@ -148,16 +155,45 @@ if __name__ == '__main__':
         #                 train_examples[i, :, -1, -1] != train_returns.values[:, i])) == 0
         #
         #         print(True)
-
         # Training pipeline
         LOGGER.info('Create tf.data.Dataset')
         # Train
         if config.model_type in ['EIIE', 'asset_independent_model', 'stacked_asset_model']:
+            if not config.no_cash:
+                # drop remainder since cash bias layer need specification of batch size
+                indices = list(range(train_examples.shape[1]))
+                indices = drop_remainder(indices, config.batch_size, last=False)
+                train_examples = train_examples[:, indices, :, :]
+                train_returns = train_returns.iloc[indices]
+
+                indices = list(range(test_examples.shape[1]))
+                indices = drop_remainder(indices, config.batch_size, last=True)
+                test_examples = test_examples[:, indices, :, :]
+                test_returns = test_returns.iloc[indices]
+
+                LOGGER.info(f'Train data shape: {train_examples.shape}')
+                LOGGER.info(f'Train returns shape: {train_returns.shape}')
+                LOGGER.info(f'Test data shape: {test_examples.shape}')
+                LOGGER.info(f'Test returns shape: {test_returns.shape}')
+
             train_dataset = tf.data.Dataset.from_tensor_slices(
-                (list(range(len(train_examples[0]))), np.transpose(train_examples, (1, 2, 3, 0)), train_returns))
+                (list(range(len(train_examples[0]))), np.transpose(train_examples, (1, 2, 3, 0)), train_returns.values))
             test_dataset = tf.data.Dataset.from_tensor_slices(
-                (list(range(len(test_examples[0]))), np.transpose(test_examples, (1, 2, 3, 0)), test_returns))
+                (list(range(len(test_examples[0]))), np.transpose(test_examples, (1, 2, 3, 0)), test_returns.values))
+
         else:
+            if not config.no_cash:
+                # drop remainder since cash bias layer need specification of batch size
+                indices = list(range(train_examples.shape[0]))
+                indices = drop_remainder(indices, config.batch_size, last=False)
+                train_examples = train_examples[indices]
+                train_returns = train_returns.values[indices]
+
+                indices = list(range(test_examples.shape[0]))
+                indices = drop_remainder(indices, config.batch_size, last=False)
+                test_examples = test_examples[indices]
+                test_returns = test_returns.values[indices]
+
             train_dataset = tf.data.Dataset.from_tensor_slices((train_examples, train_returns))
             test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_returns))
         train_dataset = train_dataset.batch(config.batch_size, drop_remainder=False)
@@ -216,7 +252,7 @@ if __name__ == '__main__':
                                                        config.plot_every, no_cash=config.no_cash, clip_value=None,
                                                        train_returns=train_returns, **config.loss_config['params'],
                                                        save=config.save, log_dir=cv_log_dir,
-                                                       feed_prev_weights=feed_prev_weights)
+                                                       callbacks=config.callbacks, feed_prev_weights=feed_prev_weights)
 
         # plot final history and save
         if config.save:
@@ -260,7 +296,7 @@ if __name__ == '__main__':
             initial_position = np.array([[1 / data_loader.n_assets] * data_loader.n_assets])
         else:
             initial_position = np.array(np.array([[0] * (data_loader.n_assets - 1)]))
-        strat_perf_no_fee, strat_perf = np_portfolio_returns(train_predictions, train_returns,
+        strat_perf_no_fee, strat_perf = np_portfolio_returns(train_predictions.values, train_returns,
                                                              initial_position=initial_position,
                                                              trading_fee=config.trading_fee,
                                                              cash_bias=not config.no_cash)
@@ -282,7 +318,7 @@ if __name__ == '__main__':
             initial_position = train_predictions.iloc[-1:, :]
         else:
             initial_position = train_predictions.iloc[-1:, :-1]
-        strat_perf_no_fee, strat_perf = np_portfolio_returns(test_predictions, test_returns,
+        strat_perf_no_fee, strat_perf = np_portfolio_returns(test_predictions.values, test_returns,
                                                              initial_position=initial_position,
                                                              trading_fee=config.trading_fee,
                                                              cash_bias=not config.no_cash)

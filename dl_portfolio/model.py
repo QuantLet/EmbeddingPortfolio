@@ -1,6 +1,7 @@
 import tensorflow as tf
 from typing import Tuple, Optional, List, Dict
 from dl_portfolio.logger import LOGGER
+from dl_portfolio.custom_layer import DynamicSmoothRNN, SmoothRNN
 
 
 class CashBias(tf.keras.layers.Layer):
@@ -66,8 +67,15 @@ def build_layer(config: Dict, **kwargs):
                                        **kwargs)
     elif config['type'] == 'lstm':
         layer = tf.keras.layers.LSTM(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+
     elif config['type'] == 'gru':
         layer = tf.keras.layers.GRU(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+
+    elif config['type'] == 'DynamicSmoothRNN':
+        layer = DynamicSmoothRNN(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+
+    elif config['type'] == 'SmoothRNN':
+        layer = SmoothRNN(config['neurons'], config['alpha'], **config['params'], dtype=tf.float32, **kwargs)
 
     elif config['type'] == 'EIIE_dense':
         # from pgportfolio
@@ -128,46 +136,15 @@ def EIIE_model(input_dim: Tuple, output_dim: int, layers: List[Dict], dropout: O
     return tf.keras.models.Model(input_, output)
 
 
-class CashBias(tf.keras.layers.Layer):
-    def __init__(self, *args, **kwargs):
-        super(CashBias, self).__init__(*args, **kwargs)
-
-    def build(self, input_shape):
-        self.bias = self.add_weight('cash_bias',
-                                    shape=tf.TensorShape([None, 1]),
-                                    initializer=tf.keras.initializers.Ones(),
-                                    trainable=True)
-
-    def call(self, x):
-        return self.bias
-
-    def test(self):
-        print('THIS WORK', tf.TensorShape((None, 1)))
-
-        cash_bias = CashBias()(all_asset)
-        exit()
-
-        # print(tf.Variable(tf.ones_initializer()(shape=tf.TensorShape((None, 1)), dtype=tf.float32), validate_shape=False))
-        # exit()
-        # print(tf.ones_initializer()(tf.TensorShape([None, 1])))
-        exit()
-        cash_bias = tf.Variable(initial_value=1, shape=tf.TensorShape([None, 1]), validate_shape=False)
-        exit()
-
-        print(cash_bias.shape)  # ], validate_shape=False))
-        exit()
-        cash_bias = tf.Variable(1., shape=1)
-        print(cash_bias.shape)
-        exit()
-
-
-def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
-                            dropout: Optional[float] = 0., training: bool = False):
+def asset_independent_model(input_dim: Tuple, output_dim: int, n_pairs: int, layers: List[Dict],
+                            dropout: Optional[float] = 0., training: bool = False, cash_bias=False, batch_size=None):
+    if cash_bias:
+        assert batch_size is not None
     output_layer = layers[-1]
     assert output_layer['type'] in ['softmax', 'simple_long_only', 'softmax_with_weights']
     asset_graph = []
     inputs = []
-    for k in range(n_assets):
+    for k in range(n_pairs):
         input_ = tf.keras.layers.Input((input_dim), dtype=tf.float32)
         inputs.append(input_)
         for i, layer in enumerate(layers[:-1]):
@@ -196,21 +173,29 @@ def asset_independent_model(input_dim: Tuple, output_dim: int, n_assets: int, la
         all_asset = tf.keras.layers.Activation('sigmoid', dtype=tf.float32)(all_asset)
         output = all_asset / tf.reshape(tf.reduce_sum(all_asset, axis=-1), (-1, 1))
     elif output_layer['type'] == 'softmax_with_weights':
-        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name='previous_weights')
+        prev_weights = tf.keras.layers.Input((n_pairs), dtype=tf.float32, name='previous_weights')
         inputs.append(prev_weights)
         all_asset_with_w = tf.keras.layers.concatenate([all_asset, prev_weights], axis=-1)
-        output = tf.keras.layers.Dense(n_assets, activation='softmax', dtype=tf.float32)(all_asset_with_w)
+        output = tf.keras.layers.Dense(n_pairs, activation='softmax', dtype=tf.float32)(all_asset_with_w)
+    elif output_layer['type'] == 'cash_bias':
+        assert len(all_asset.shape) == 2
+        assert all_asset.shape[-1] == n_pairs
+        cash_bias = build_cash_bias(batch_size)
+        all_asset_with_cash = tf.keras.layers.concatenate([all_asset, cash_bias], axis=-1)
+        output = tf.keras.layers.Activation('softmax')(all_asset_with_cash)
 
     return tf.keras.models.Model(inputs, output)
 
 
-def stacked_asset_model(input_dim: Tuple, output_dim: int, n_assets: int, layers: List[Dict],
-                        dropout: Optional[float] = 0., training: bool = False):
+def stacked_asset_model(input_dim: Tuple, output_dim: int, n_pairs: int, layers: List[Dict],
+                        dropout: Optional[float] = 0., training: bool = False, cash_bias=False, batch_size=None):
+    if cash_bias:
+        assert batch_size is not None
     output_layer = layers[-1]
-    assert output_layer['type'] in ['softmax', 'simple_long_only', 'softmax_with_weights']
+    assert output_layer['type'] in ['softmax', 'simple_long_only', 'softmax_with_weights', 'cash_bias']
     asset_graph = []
     inputs = []
-    for k in range(n_assets):
+    for k in range(n_pairs):
         input_ = tf.keras.layers.Input((input_dim), dtype=tf.float32)
         inputs.append(input_)
 
@@ -240,10 +225,16 @@ def stacked_asset_model(input_dim: Tuple, output_dim: int, n_assets: int, layers
         output = output / tf.reshape(tf.reduce_sum(output, axis=-1), (-1, 1))
     elif output_layer['type'] == 'softmax_with_weights':
         raise NotImplementedError()
-        prev_weights = tf.keras.layers.Input((n_assets), dtype=tf.float32, name='previous_weights')
+        prev_weights = tf.keras.layers.Input((n_pairs), dtype=tf.float32, name='previous_weights')
         inputs.append(prev_weights)
         all_asset_with_w = tf.keras.layers.concatenate([all_asset, prev_weights], axis=-1)
         output = tf.keras.layers.Dense(n_assets, activation='softmax', dtype=tf.float32)(all_asset_with_w)
+    elif output_layer['type'] == 'cash_bias':
+        assert len(hidden.shape) == 2
+        output = tf.keras.layers.Dense(output_dim - 1, activation='linear', dtype=tf.float32)(hidden)
+        cash_bias = build_cash_bias(batch_size)
+        output = tf.keras.layers.concatenate([output, cash_bias], axis=-1)
+        output = tf.keras.layers.Activation('softmax')(output)
 
     return tf.keras.models.Model(inputs, output)
 
@@ -347,13 +338,72 @@ class MLP(tf.keras.Model):
         return self.output_layer(network)
 
 
+class CashBias(tf.keras.layers.Layer):
+    def __init__(self, *args, **kwargs):
+        super(CashBias, self).__init__(*args, **kwargs)
+
+    def build(self, input_shape):
+        print(input_shape)
+        self.bias = self.add_weight('cash_bias',
+                                    shape=(input_shape[-1], 1),
+                                    initializer=tf.keras.initializers.Ones(),
+                                    trainable=True)
+
+    def call(self, x):
+        print(x.shape)
+
+        return tf.stack([x, self.bias])  # tf.concat([x, self.bias], -1)
+        # tf.keras.layers.Concatenate
+
+    def test(self):
+        print('THIS WORK', tf.TensorShape((None, 1)))
+
+        # cash_bias = CashBias()(all_asset)
+        exit()
+
+        # print(tf.Variable(tf.ones_initializer()(shape=tf.TensorShape((None, 1)), dtype=tf.float32), validate_shape=False))
+        # exit()
+        # print(tf.ones_initializer()(tf.TensorShape([None, 1])))
+        exit()
+        cash_bias = tf.Variable(initial_value=1, shape=tf.TensorShape([None, 1]), validate_shape=False)
+        exit()
+
+        print(cash_bias.shape)  # ], validate_shape=False))
+        exit()
+        cash_bias = tf.Variable(1., shape=1)
+        print(cash_bias.shape)
+        exit()
+
+
+def build_cash_bias(batch_size, initial_value=tf.initializers.Ones()):
+    return tf.Variable(initial_value=initial_value((batch_size, 1)), dtype=tf.float32, trainable=True)
+
+
 if __name__ == "__main__":
     import numpy as np
 
-    model = MLP(input_dim=(None, 5), output_dim=4, batch_size=64, n_hidden=1, cash_initializer=tf.ones_initializer(),
-                dropout=0.2)
+    # model = MLP(input_dim=(None, 5), output_dim=4, batch_size=64, n_hidden=1, cash_initializer=tf.ones_initializer(),
+    #             dropout=0.2)
+    #
+    # pred = model(np.zeros((64, 5)), training=True)
+    # print(pred.shape)
+    # pred = model(np.zeros((64, 5)), training=False)
+    # print(pred.shape)
 
-    pred = model(np.zeros((64, 5)), training=True)
-    print(pred.shape)
-    pred = model(np.zeros((64, 5)), training=False)
-    print(pred.shape)
+    input_ = tf.keras.layers.Input((10, 2))
+
+    output = CashBias()(input_)
+    exit()
+
+    layer_1 = tf.keras.layers.LSTM(1)
+    output_layer = tf.keras.layers.Dense(3)
+    cash_bias = CashBias()
+
+    output_no_cash = output_layer(layer_1(input_))
+    model = tf.keras.models.Model(input_, output_no_cash)
+    print(model.summary())
+
+    output = cash_bias(output_no_cash)
+
+    model = tf.keras.models.Model(input_, output)
+    print(model.summary())

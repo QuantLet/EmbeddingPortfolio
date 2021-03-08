@@ -157,9 +157,11 @@ def normalize_2d(data):
 
 def drop_remainder(indices, batch_size, last=False):
     drop = np.remainder(len(indices), batch_size)
+    if len(indices) - drop < batch_size:
+        raise ValueError('After dropping data is too small to generate one batch')
     if drop > 0:
         if last:
-            indices = indices[:drop]
+            indices = indices[:-drop]
         else:
             indices = indices[drop:]
     return indices
@@ -167,7 +169,7 @@ def drop_remainder(indices, batch_size, last=False):
 
 class DataLoader(object):
     def __init__(self, model_type: str, features: List, freq: int = 3600,
-                 path: str = 'crypto_data/price/train_data_1800.p',
+                 path: str = 'data/crypto_data/price/train_data_1800.p',
                  pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
                  nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32,
                  cv_type: str = 'incremental'):
