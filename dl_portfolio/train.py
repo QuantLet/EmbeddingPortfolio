@@ -31,6 +31,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
           trading_fee: float, log_every: int, plot_every: int, no_cash: bool = False, train_returns=None,
           test_returns=None, **kwargs):
     save = kwargs.get('save', False)
+    callbacks = kwargs.get('callbacks')
     n_assets = len(assets)
     if no_cash:
         n_pairs = n_assets
@@ -67,6 +68,9 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         loss_function = volatility
     else:
         raise NotImplementedError()
+
+    if 'early_stopping' in callbacks:
+        early_stopping = True
 
     train_history = {'loss': [], 'avg_ret': [], 'cum_ret': [], 'total_loss': []}
     test_history = {'loss': [], 'avg_ret': [], 'cum_ret': [], 'total_loss': []}
@@ -209,6 +213,7 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
         test_history['avg_ret'].append(test_avg_ret)
         test_history['cum_ret'].append(test_cum_ret)
 
+
         if epoch % log_every == 0:
             LOGGER.info(
                 "Epoch {:03d}: Loss: {:.6f}, Mean Loss: {:.6f}, Returns: {:.6f}, Vol: {:.6f}, Cum Returns: {:.6f}, Trading fee: {:.6f}, Test Loss: {:.6f}, Mean Test Loss: {:.6f}, Test Returns: {:.6f}, Test Vol: {:.6f}, Test Cum Returns: {:.6f}".format(
@@ -278,9 +283,26 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
             plot_train_history(train_history, test_history, show=True)
 
         if save:
-            if test_history['total_loss'][-1] == np.min(test_history['total_loss']):
+            if epoch == 0:
                 LOGGER.info(f"Saving model at epoch {epoch}: {os.path.join(log_dir, f'model_e_{epoch}.ckpt')}")
                 model.save_weights(os.path.join(log_dir, f'model_e_{epoch}.ckpt'))
+            else:
+                if test_history['total_loss'][-1] == np.min(test_history['total_loss']) and test_history['total_loss'][-1] != test_history['total_loss'][-2]:
+                    LOGGER.info(f"Saving model at epoch {epoch}: {os.path.join(log_dir, f'model_e_{epoch}.ckpt')}")
+                    model.save_weights(os.path.join(log_dir, f'model_e_{epoch}.ckpt'))
+
+        # early stopping
+        if early_stopping:
+            patience = callbacks['early_stopping']['patience']
+            min_epoch = callbacks['early_stopping']['min_epoch']
+            monitor = callbacks['early_stopping']['monitor']
+            if epoch > patience and epoch > min_epoch:
+                if test_history[monitor][-1] > test_history[monitor][-1 - patience]:
+                    LOGGER.info(f'Stopping training: test total loss did not improve since {patience} epochs')
+                    if save:
+                        LOGGER.info(f"Saving model at epoch {epoch}: {os.path.join(log_dir, f'model_e_{epoch}.ckpt')}")
+                        model.save_weights(os.path.join(log_dir, f'model_e_{epoch}_stopped.ckpt'))
+                    break
 
     return model, train_history, test_history
 
