@@ -37,14 +37,14 @@ def market_cap_returns(asset_return: pd.DataFrame, freq: int, trading_fee: float
     return strat_perf, np.exp(np.cumsum(strat_perf))
 
 
-def equally_weighted_returns(asset_return: pd.DataFrame):
-    raise NotImplementedError()
-    strat_perf_no_fee, strat_perf = np_portfolio_returns(weights, asset_return,
-                                                         initial_position=weights.values[:1, :],
-                                                         trading_fee=trading_fee,
-                                                         cash_bias=False)
+def equally_weighted_returns(asset_return: pd.DataFrame, **kwargs):
+    # raise NotImplementedError()
+    # strat_perf_no_fee, strat_perf = np_portfolio_returns(weights, asset_return,
+    #                                                      initial_position=weights.values[:1, :],
+    #                                                      trading_fee=trading_fee,
+    #                                                      cash_bias=False)
 
     port_returns = asset_return.mean(1)
-    port_value = (port_returns + 1).cumprod()
+    port_value = np.exp(np.cumsum(port_returns))
 
     return port_returns, port_value
