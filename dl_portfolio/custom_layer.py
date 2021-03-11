@@ -50,20 +50,20 @@ class SmoothRNNCell(SimpleRNNCell, Layer):
                  recurrent_dropout=0.,
                  **kwargs):
         super(SmoothRNNCell, self).__init__(units,
-                                              activation=activation,
-                                              use_bias=use_bias,
-                                              kernel_initializer=kernel_initializer,
-                                              recurrent_initializer=recurrent_initializer,
-                                              bias_initializer=bias_initializer,
-                                              kernel_regularizer=kernel_regularizer,
-                                              recurrent_regularizer=recurrent_regularizer,
-                                              bias_regularizer=bias_regularizer,
-                                              kernel_constraint=kernel_constraint,
-                                              recurrent_constraint=recurrent_constraint,
-                                              bias_constraint=bias_constraint,
-                                              dropout=dropout,
-                                              recurrent_dropout=recurrent_dropout,
-                                              **kwargs)
+                                            activation=activation,
+                                            use_bias=use_bias,
+                                            kernel_initializer=kernel_initializer,
+                                            recurrent_initializer=recurrent_initializer,
+                                            bias_initializer=bias_initializer,
+                                            kernel_regularizer=kernel_regularizer,
+                                            recurrent_regularizer=recurrent_regularizer,
+                                            bias_regularizer=bias_regularizer,
+                                            kernel_constraint=kernel_constraint,
+                                            recurrent_constraint=recurrent_constraint,
+                                            bias_constraint=bias_constraint,
+                                            dropout=dropout,
+                                            recurrent_dropout=recurrent_dropout,
+                                            **kwargs)
         assert 0 <= alpha <= 1
         self.alpha = alpha
         self.units = units
@@ -587,90 +587,192 @@ class DynamicSmoothRNN(RNN):
         return cls(**config)
 
 
+class DenseTied(tf.keras.layers.Dense):
+    def __init__(self, units, tied_to, **kwargs):
+        self.tied_to = tied_to
+        super(DenseTied, self).__init__(units, **kwargs)
+
+    def build(self, input_shape):
+        assert len(input_shape) >= 2
+        input_dim = input_shape[-1]
+        # self.kernel = K.transpose(self.tied_to.kernel)
+        # self._non_trainable_weights.append(self.kernel)
+        if self.use_bias:
+            self.bias = self.add_weight(shape=(self.units,),
+                                        initializer=self.bias_initializer,
+                                        name='bias',
+                                        regularizer=self.bias_regularizer,
+                                        constraint=self.bias_constraint)
+        else:
+            self.bias = None
+        self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
+        self.built = True
+
+    def call(self, inputs):
+        # self.kernel =
+        output = K.dot(inputs, K.transpose(self.tied_to.kernel))
+        if self.use_bias:
+            output = K.bias_add(output, self.bias, data_format='channels_last')
+        if self.activation is not None:
+            output = self.activation(output)
+        return output
+
+
+class TransposeDense(tf.keras.layers.Dense):
+    # https://medium.com/@lmayrandprovencher/building-an-autoencoder-with-tied-weights-in-keras-c4a559c529a2
+    def __init__(self, units, ref_layer, **kwargs):
+        super(TransposeDense, self).__init__(units, **kwargs)
+        self.ref_layer = ref_layer
+
+    def build(self, input_shape):
+        self.b = self.add_weight(
+            shape=(self.units,),
+            initializer=self.bias_initializer,
+            name='bias',
+            regularizer=self.bias_regularizer,
+            constraint=self.bias_constraint
+        )
+
+        # self.w = self.ref_layer.get_weights()[0]
+        # self.w = tf.transpose(self.w)
+
+    def call(self, inputs):
+        # x = tf.matmul(inputs, self.w, transpose_b = False)
+        x = tf.matmul(inputs, self.ref_layer.weights[0], transpose_b=True)
+        return self.activation(x + self.b)
+
+
 if __name__ == "__main__":
-    np.random.seed(1)
-    x = tf.Variable([[1.]])
-    linear_layer = Linear(32)
-    # The layer's weights are created dynamically the first time the layer is called
-    y = linear_layer(x)
-    print(y)
+    x = np.random.normal(size=(200, 4))
+    input_dim = x.shape[-1]
+    input_ = tf.keras.layers.Input(input_dim)
+    encoder = tf.keras.layers.Dense(2)
+    decoder = DenseTied(input_dim, tied_to=encoder, trainable=True)
 
-    x = tf.Variable([[[1.]]])
-    alphaRNN_layer = SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
-                                     recurrent_initializer='orthogonal',
-                                     activation='linear')
-    # The layer's weights are created dynamically the first time the layer is called
-    y = alphaRNN_layer(x, x)
-    print(y)
+    output = decoder(encoder(input_))
+    autoencoder = tf.keras.models.Model(input_, output)
 
-    simple_rnncell = SimpleRNNCell(1, kernel_initializer='glorot_uniform', recurrent_initializer='orthogonal',
-                                   activation='linear')
-    print(simple_rnncell(x, x))
+    autoencoder.compile(loss='mse', optimizer='adam')
 
-    input_ = tf.keras.layers.Input((1, 1))
-    layer = RNN(simple_rnncell)
-    output = layer(input_)
-    model = tf.keras.models.Model(input_, output)
-    print(output)
-    print(model.summary())
-    print(model(x))
+    print(autoencoder.layers[1].get_weights()[0])
+    print(autoencoder.layers[2].get_weights()[1])
 
-    input_ = tf.keras.layers.Input((1, 1))
-    layer_1 = RNN(SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
-                                     recurrent_initializer='orthogonal',
-                                     activation='linear'), return_sequences=True)
-    layer_2 = RNN(SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
-                                     recurrent_initializer='orthogonal',
-                                     activation='linear'), return_sequences=False)
-    hidden_1 = layer_1(input_)
-    output = layer_2(hidden_1)
-    model = tf.keras.models.Model(input_, output)
-    print(output)
-    print(model.summary())
-    print(model(x))
+    print(autoencoder.summary())
+    # print(autoencoder.layers[1].get_weights())
+    # print(autoencoder.layers[2].get_weights())
+    # print('KERNEL')
+    # print(decoder.kernel)
+    # print('WEIGHTS')
+    # print(decoder.weights)
+    # print(len(encoder.trainable_weights))
+    #
+    # print('Trainable')
+    # print(decoder.trainable_weights)
+    # print(len(decoder.trainable_weights))
 
-    input_ = tf.keras.layers.Input((1, 1))
-    layer_1 = SmoothRNN(1, alpha=1, kernel_initializer='glorot_uniform',
-                          recurrent_initializer='orthogonal',
-                          activation='linear', return_sequences=True)
-    layer_2 = SmoothRNN(1, alpha=1, kernel_initializer='glorot_uniform',
-                          recurrent_initializer='orthogonal',
-                          activation='linear', return_sequences=False)
-    hidden_1 = layer_1(input_)
-    output = layer_2(hidden_1)
-    model = tf.keras.models.Model(input_, output)
-    print(output)
-    print(model.summary())
-    print(model(x))
+    w_encoder = np.round(autoencoder.layers[1].get_weights()[0], 3)
+    w_decoder = np.round(autoencoder.layers[2].get_weights()[1], 3)
+    print('Encoder weights\n', w_encoder)
+    print('Decoder weights\n', w_decoder)
 
-    x = tf.Variable([[[1.]]])
-    dynamic_smoothed_RNN_layer = DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
-                                                      recurrent_initializer='orthogonal',
-                                                      activation='linear')
-    # The layer's weights are created dynamically the first time the layer is called
-    y = dynamic_smoothed_RNN_layer(x, x)
-    print(y)
+    print('Decoder bias', autoencoder.layers[2].get_weights()[0])
+    autoencoder.fit(x, x, epochs=3)
+    print('Decoder bias', autoencoder.layers[2].get_weights()[0])
 
-    input_ = tf.keras.layers.Input((1, 1))
-    layer_1 = RNN(DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
-                                       recurrent_initializer='orthogonal',
-                                       activation='linear'), return_sequences=True)
-    layer_2 = RNN(DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
-                                       recurrent_initializer='orthogonal',
-                                       activation='linear'), return_sequences=False)
-    hidden_1 = layer_1(input_)
-    output = layer_2(hidden_1)
-    model = tf.keras.models.Model(input_, output)
-    print(output)
-    print(model.summary())
-    print(model(x))
+    w_encoder = np.round(autoencoder.layers[1].get_weights()[0], 3)
+    w_decoder = np.round(autoencoder.layers[2].get_weights()[1], 3)
+    print('Encoder weights\n', w_encoder)
+    print('Decoder weights\n', w_decoder)
+    exit()
 
-    input_ = tf.keras.layers.Input((1, 1))
-    layer_1 = DynamicSmoothRNN(1, return_sequences=True)
-    layer_2 = DynamicSmoothRNN(1, return_sequences=False)
-    hidden_1 = layer_1(input_)
-    output = layer_2(hidden_1)
-    model = tf.keras.models.Model(input_, output)
-    print(output)
-    print(model.summary())
-    print(model(x))
+    w_encoder = np.round(np.transpose(autoencoder.layers[1].kernel), 3)
+    w_decoder = np.round(autoencoder.layers[2].kernel, 3)
+    print('Encoder kernel\n', w_encoder)
+    print('Decoder kernel\n', w_decoder)
+
+    # np.random.seed(1)
+    # x = tf.Variable([[1.]])
+    # linear_layer = Linear(32)
+    # # The layer's weights are created dynamically the first time the layer is called
+    # y = linear_layer(x)
+    # print(y)
+    #
+    # x = tf.Variable([[[1.]]])
+    # alphaRNN_layer = SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
+    #                                recurrent_initializer='orthogonal',
+    #                                activation='linear')
+    # # The layer's weights are created dynamically the first time the layer is called
+    # y = alphaRNN_layer(x, x)
+    # print(y)
+    #
+    # simple_rnncell = SimpleRNNCell(1, kernel_initializer='glorot_uniform', recurrent_initializer='orthogonal',
+    #                                activation='linear')
+    # print(simple_rnncell(x, x))
+    #
+    # input_ = tf.keras.layers.Input((1, 1))
+    # layer = RNN(simple_rnncell)
+    # output = layer(input_)
+    # model = tf.keras.models.Model(input_, output)
+    # print(output)
+    # print(model.summary())
+    # print(model(x))
+    #
+    # input_ = tf.keras.layers.Input((1, 1))
+    # layer_1 = RNN(SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
+    #                             recurrent_initializer='orthogonal',
+    #                             activation='linear'), return_sequences=True)
+    # layer_2 = RNN(SmoothRNNCell(1, alpha=1, kernel_initializer='glorot_uniform',
+    #                             recurrent_initializer='orthogonal',
+    #                             activation='linear'), return_sequences=False)
+    # hidden_1 = layer_1(input_)
+    # output = layer_2(hidden_1)
+    # model = tf.keras.models.Model(input_, output)
+    # print(output)
+    # print(model.summary())
+    # print(model(x))
+    #
+    # input_ = tf.keras.layers.Input((1, 1))
+    # layer_1 = SmoothRNN(1, alpha=1, kernel_initializer='glorot_uniform',
+    #                     recurrent_initializer='orthogonal',
+    #                     activation='linear', return_sequences=True)
+    # layer_2 = SmoothRNN(1, alpha=1, kernel_initializer='glorot_uniform',
+    #                     recurrent_initializer='orthogonal',
+    #                     activation='linear', return_sequences=False)
+    # hidden_1 = layer_1(input_)
+    # output = layer_2(hidden_1)
+    # model = tf.keras.models.Model(input_, output)
+    # print(output)
+    # print(model.summary())
+    # print(model(x))
+    #
+    # x = tf.Variable([[[1.]]])
+    # dynamic_smoothed_RNN_layer = DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
+    #                                                   recurrent_initializer='orthogonal',
+    #                                                   activation='linear')
+    # # The layer's weights are created dynamically the first time the layer is called
+    # y = dynamic_smoothed_RNN_layer(x, x)
+    # print(y)
+    #
+    # input_ = tf.keras.layers.Input((1, 1))
+    # layer_1 = RNN(DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
+    #                                    recurrent_initializer='orthogonal',
+    #                                    activation='linear'), return_sequences=True)
+    # layer_2 = RNN(DynamicSmoothRNNCell(1, kernel_initializer='glorot_uniform',
+    #                                    recurrent_initializer='orthogonal',
+    #                                    activation='linear'), return_sequences=False)
+    # hidden_1 = layer_1(input_)
+    # output = layer_2(hidden_1)
+    # model = tf.keras.models.Model(input_, output)
+    # print(output)
+    # print(model.summary())
+    # print(model(x))
+    #
+    # input_ = tf.keras.layers.Input((1, 1))
+    # layer_1 = DynamicSmoothRNN(1, return_sequences=True)
+    # layer_2 = DynamicSmoothRNN(1, return_sequences=False)
+    # hidden_1 = layer_1(input_)
+    # output = layer_2(hidden_1)
+    # model = tf.keras.models.Model(input_, output)
+    # print(output)
+    # print(model.summary())
+    # print(model(x))
