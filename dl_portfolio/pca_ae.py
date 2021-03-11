@@ -12,8 +12,33 @@ from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
 import os
+import seaborn as sns
 
 LOG_DIR = 'dl_portfolio/log_AE'
+
+
+def heat_map_cluster(load_dir, show=False, save=False):
+    sets = os.listdir(load_dir)
+    sets.sort(key=lambda x: int(x))
+    encoder_weights = {}
+    for set_ in sets:
+        encoder_weights[int(set_)] = pd.read_pickle(f"{load_dir}/{set_}/encoder_weights.p")
+
+    n_sets = len(encoder_weights.keys())
+    fig, axs = plt.subplots(n_sets, 3, figsize=(10, 10 * n_sets), sharex=True, sharey=True)
+    yticks = list(encoder_weights[n_sets - 1].index)
+
+    for i, s in enumerate(encoder_weights.keys()):
+        print(i)
+        for j, c in enumerate(list(encoder_weights[s].columns)):
+            ax = sns.heatmap(encoder_weights[s][c].values.reshape(-1, 1),
+                             xticklabels=[c],
+                             yticklabels=yticks,
+                             vmin=0., vmax=1., ax=axs[i, j], cbar=j == 2)
+    if save:
+        plt.savefig(f'{load_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
+    if show:
+        plt.show()
 
 
 def get_layer_by_name(name, model):
@@ -43,11 +68,18 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
                  kernel_initializer: str = 'glorot_uniform',
                  ortho_weights: bool = True,
                  non_neg_unit_norm: bool = True,
-                 uncorr_features: bool = True
+                 uncorr_features: bool = True,
+                 activity_regularizer=None,
+                 **kwargs
                  ):
     kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, axis=0) if ortho_weights else None
     kernel_constraint = NonNegAndUnitNorm(axis=0) if non_neg_unit_norm else None
-    activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim, weightage=1.) if uncorr_features else None
+    if activity_regularizer is None:
+        weightage = kwargs.get('weightage', 1.)
+        activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
+                                                              weightage=weightage) if uncorr_features else None
+    else:
+        assert not uncorr_features
 
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32, name='input')
     encoder_layer_1 = tf.keras.layers.Dense(encoding_dim,
@@ -69,26 +101,26 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
     #                                         name='encoder_2',
     #                                         dtype=tf.float32)
 
-    # decoder_layer = DenseTied(input_dim,
-    #                           tied_to=encoder_layer,
-    #                           activation=activation,
-    #                           kernel_initializer=kernel_initializer,
-    #                           kernel_regularizer=kernel_regularizer,
-    #                           use_bias=True,
-    #                           dtype=tf.float32,
-    #                           name='decoder')
+    decoder_layer_1 = DenseTied(input_dim,
+                                tied_to=encoder_layer_1,
+                                activation=activation,
+                                kernel_initializer=kernel_initializer,
+                                kernel_regularizer=kernel_regularizer,
+                                use_bias=True,
+                                dtype=tf.float32,
+                                name='decoder_1')
     # decoder_layer_2 = TransposeDense(int(0.75 * input_dim), encoder_layer_2, activation=activation,
     #                                  kernel_initializer=kernel_initializer,
     #                                  kernel_regularizer=kernel_regularizer,
     #                                  use_bias=True,
     #                                  dtype=tf.float32,
     #                                  name='decoder_2')
-    decoder_layer_1 = TransposeDense(input_dim, encoder_layer_1, activation=activation,
-                                     kernel_initializer=kernel_initializer,
-                                     kernel_regularizer=kernel_regularizer,
-                                     use_bias=True,
-                                     dtype=tf.float32,
-                                     name='decoder_1')
+    # decoder_layer_1 = TransposeDense(input_dim, encoder_layer_1, activation=activation,
+    #                                  kernel_initializer=kernel_initializer,
+    #                                  kernel_regularizer=kernel_regularizer,
+    #                                  use_bias=True,
+    #                                  dtype=tf.float32,
+    #                                  name='decoder_1')
     output = decoder_layer_1(encoder_layer_1(input_))
     # output = decoder_layer_1(
     #     decoder_layer_2(
@@ -111,6 +143,8 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
 def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None):
     if end == str(data.index[-1]):
         end = '2020-03-08 00:00:00'
+    else:
+        end = pd.to_datetime(end) + dt.timedelta(days=6 * 30)
     train_data = data.loc[start:end, assets].iloc[:-1, :]
     train_data = train_data.loc[:, pd.IndexSlice[:, 'price']].droplevel(1, 1)
 
@@ -159,15 +193,17 @@ if __name__ == "__main__":
     np.random.seed(seed)
     LOGGER.info(f"Set seed: {seed}")
     save = True
-    model_name = f'linear_{seed}_uncorr_lr_e-3'
+    model_name = f'linear_{seed}_uncorr_lr_e-3_l1_reg'
     learning_rate = 1e-3
     epochs = 600
     batch_size = 64
     activation = 'linear'
     encoding_dim = 3
     val_size = 30 * 6
-    uncorr_features = True
-    loss = 'mae'
+    uncorr_features = False
+    weightage = 1e-1
+    activity_regularizer = tf.keras.regularizers.l1(1e-3)
+    loss = 'mse'
     rescale = None
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
@@ -210,10 +246,11 @@ if __name__ == "__main__":
         input_dim = len(assets)
         model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
                                       kernel_initializer=NonNegAndUnitNormInit(initializer='glorot_uniform'),
-                                      # 'glorot_uniform',
                                       ortho_weights=True,
                                       non_neg_unit_norm=True,
-                                      uncorr_features=uncorr_features
+                                      uncorr_features=uncorr_features,
+                                      activity_regularizer=activity_regularizer,
+                                      weightage=weightage
                                       )
         if int(set_) > 0:
             LOGGER.info('Set weights')
@@ -232,29 +269,40 @@ if __name__ == "__main__":
         # Train
         LOGGER.info('Start training')
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
-                      loss=loss, metrics=[tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+                      loss=tf.keras.losses.MeanSquaredError(),
+                      metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
+                               tf.keras.metrics.RootMeanSquaredError(name='rmse')]
                       )
         history = model.fit(train_data, train_data,
                             epochs=epochs,
                             batch_size=batch_size,
                             validation_data=(val_data, val_data),
+                            validation_batch_size=batch_size,
                             callbacks=callbacks,
+                            shuffle=False,
                             verbose=1)
         if save:
             model.save(f"{save_dir}/{set_}/model.h5")
         prev_encoder_weights = model.layers[1].get_weights()
         prev_decoder_weights = model.layers[2].get_weights()
 
-        fix, axs = plt.subplots(1, 2, figsize=(15, 5))
+        fix, axs = plt.subplots(1, 3, figsize=(15, 5))
         axs[0].plot(history.history['loss'], label='loss')
         axs[0].plot(history.history['val_loss'], label='val loss')
         axs[0].legend()
-        axs[1].plot(history.history['rmse'], label='rmse')
-        axs[1].plot(history.history['val_rmse'], label='val_rmse')
+        axs[1].plot(history.history['mse'], label='mse')
+        axs[1].plot(history.history['val_mse'], label='val_mse')
         axs[1].legend()
+        axs[2].plot(history.history['rmse'], label='rmse')
+        axs[2].plot(history.history['val_rmse'], label='val_rmse')
+        axs[2].legend()
         if save:
             plt.savefig(f"{save_dir}/{set_}/history.png")
         plt.show()
+
+        # Evaluate
+        model.evaluate(train_data, train_data)
+        model.evaluate(val_data, val_data)
 
         val_prediction = model.predict(val_data)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
@@ -268,18 +316,22 @@ if __name__ == "__main__":
             test_prediction.to_pickle(f"{save_dir}/{set_}/test_prediction.p")
             encoder_weights.to_pickle(f"{save_dir}/{set_}/encoder_weights.p")
 
+        # indices = np.random.choice(list(range(len(val_data))), 5).tolist()
+        # xticks = assets
         # for i in indices:
         #     plt.figure()
         #     plt.scatter(xticks, val_data[i], label='truth')
-        #     plt.scatter(xticks, val_prediction[i], label='prediction')
+        #     plt.scatter(xticks, val_prediction.values[i], label='prediction')
         #     plt.legend()
         #     plt.show()
-        #
-        # for i in range(train_data.shape[-1]):
-        #     rmse = np.sqrt(np.mean((val_prediction[:, i] - val_data[:, i]) ** 2))
-        #     print(list(data.columns)[i], rmse)
-        # print(model.evaluate(val_data, val_data))
-        #
+
+        # for i in range(input_dim):
+        #     rmse = np.sqrt(np.mean((val_prediction.values[:, i] - val_data[:, i]) ** 2))
+        #     print(assets[i], rmse)
+
         # val_features = encoder.predict(val_data)
         # print(np.corrcoef(val_features.T))
         # print(encoder.layers[-1].kernel.numpy().sum(0))
+
+    if save:
+        heat_map_cluster(save_dir, show=True, save=save)

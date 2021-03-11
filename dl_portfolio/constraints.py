@@ -56,7 +56,6 @@ class NonNegAndUnitNorm(Constraint):
 
 
 class UncorrelatedFeaturesConstraint(Constraint):
-
     def __init__(self, encoding_dim, weightage=1.0):
         self.encoding_dim = encoding_dim
         self.weightage = weightage
@@ -75,13 +74,13 @@ class UncorrelatedFeaturesConstraint(Constraint):
 
     # Constraint penalty
     def uncorrelated_feature(self, x):
+        covariance = self.get_covariance(x)
         if (self.encoding_dim <= 1):
             return 0.0
         else:
             output = K.sum(K.square(
-                self.covariance - tf.math.multiply(self.covariance, tf.eye(self.encoding_dim))))
+                covariance - tf.math.multiply(covariance, tf.eye(self.encoding_dim))))
             return output
 
     def __call__(self, x):
-        self.covariance = self.get_covariance(x)
         return self.weightage * self.uncorrelated_feature(x)
