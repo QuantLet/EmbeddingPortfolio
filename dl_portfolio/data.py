@@ -27,6 +27,32 @@ def one_month_from_freq(freq, base_freq=BASE_FREQ):
     return month
 
 
+def build_seq_data(data, seq_len, nb_sequence=None, horizon=1):
+    LOGGER.info(f'Data shape: {data.shape}')
+    n_sample = data.shape[0] - horizon
+    max_nb_sequence = n_sample - seq_len + 1
+    LOGGER.info(f'Max nb of sequences: {max_nb_sequence}')
+    if nb_sequence is None:
+        nb_sequence = max_nb_sequence
+    if nb_sequence > max_nb_sequence:
+        nb_sequence = max_nb_sequence
+    LOGGER.info(f"NB sequence: {nb_sequence}")
+    seq_data = np.zeros((nb_sequence, seq_len, 1))
+    seq_data[:] = np.nan
+    label = np.zeros((nb_sequence, 1))
+    label[:] = np.nan
+    for i in range(nb_sequence):
+        seq_data[i] = data[i:i + seq_len]
+        label[i] = data[i + seq_len + horizon - 1]
+
+    seq_data = seq_data.astype(np.float32)
+    label = label.astype(np.float32)
+    assert np.sum(np.isnan(seq_data)) == 0, np.sum(np.isnan(seq_data))
+    assert np.sum(label[:-1, 0] != seq_data[1:, -1, 0]) == 0
+
+    return seq_data, label
+
+
 def build_seq(data, seq_len):
     data = np.array(
         [data[i - seq_len:i] for i in range(seq_len, len(data) + 1)])
@@ -459,7 +485,9 @@ class SeqDataLoader(object):
         if 'crypto_data' in path:
             self.df_data = data_to_freq(self.df_data, freq)
         # Get returns
-        self.df_returns = (self.df_data.loc[:, pd.IndexSlice[:, 'close']] / self.df_data.loc[:, pd.IndexSlice[:, 'open']].values - 1).droplevel(1, 1)
+        self.df_returns = (self.df_data.loc[:, pd.IndexSlice[:, 'close']] / self.df_data.loc[:, pd.IndexSlice[:,
+                                                                                                'open']].values - 1).droplevel(
+            1, 1)
         # self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
         if not no_cash:
             # Add cash column
