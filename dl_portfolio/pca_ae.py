@@ -25,7 +25,7 @@ def heat_map_cluster(load_dir, show=False, save=False):
         encoder_weights[int(set_)] = pd.read_pickle(f"{load_dir}/{set_}/encoder_weights.p")
 
     n_sets = len(encoder_weights.keys())
-    fig, axs = plt.subplots(n_sets, 3, figsize=(10, 10 * n_sets), sharex=True, sharey=True)
+    fig, axs = plt.subplots(n_sets, 3, figsize=(10, 10 * n_sets), sharey=True)
     yticks = list(encoder_weights[n_sets - 1].index)
 
     for i, s in enumerate(encoder_weights.keys()):
@@ -47,11 +47,12 @@ def get_layer_by_name(name, model):
 
 class NonNegAndUnitNormInit(tf.keras.initializers.Initializer):
 
-    def __init__(self, initializer: str):
+    def __init__(self, initializer: str, **kwargs):
         if initializer == 'glorot_uniform':
             self.initializer = tf.keras.initializers.GlorotUniform()
         elif initializer == 'random_normal':
-            self.initializer = tf.keras.initializers.RandomNormal()
+            self.initializer = tf.keras.initializers.RandomNormal(mean=kwargs.get('mean', 0.0),
+                                                                  stddev=kwargs.get('stddev', 0.05))
         else:
             raise NotImplementedError()
 
@@ -70,10 +71,17 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
                  non_neg_unit_norm: bool = True,
                  uncorr_features: bool = True,
                  activity_regularizer=None,
+                 non_neg=False,
                  **kwargs
                  ):
     kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, axis=0) if ortho_weights else None
-    kernel_constraint = NonNegAndUnitNorm(axis=0) if non_neg_unit_norm else None
+    if non_neg_unit_norm:
+        assert not non_neg
+        kernel_constraint = NonNegAndUnitNorm(axis=0)
+    elif non_neg:
+        kernel_constraint = tf.keras.constraints.NonNeg()
+    else:
+        kernel_constraint = None
     if activity_regularizer is None:
         weightage = kwargs.get('weightage', 1.)
         activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
@@ -192,10 +200,11 @@ if __name__ == "__main__":
     # seed = 200
     np.random.seed(seed)
     LOGGER.info(f"Set seed: {seed}")
-    save = True
-    model_name = f'linear_{seed}_uncorr_lr_e-3_l1_reg'
+    save = False
+    model_name = f'linear_simple_{seed}_uncorr_lr_e-3_l1_reg'
+    seq_len = 5
     learning_rate = 1e-3
-    epochs = 600
+    epochs = 1
     batch_size = 64
     activation = 'linear'
     encoding_dim = 3
@@ -205,6 +214,11 @@ if __name__ == "__main__":
     activity_regularizer = tf.keras.regularizers.l1(1e-3)
     loss = 'mse'
     rescale = None
+    kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
+    ortho_weights = True
+    non_neg_unit_norm = True
+    non_neg = False
+
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
             monitor='val_rmse', min_delta=1e-4, patience=300, verbose=1,
@@ -245,13 +259,17 @@ if __name__ == "__main__":
         # Build model
         input_dim = len(assets)
         model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
-                                      kernel_initializer=NonNegAndUnitNormInit(initializer='glorot_uniform'),
-                                      ortho_weights=True,
-                                      non_neg_unit_norm=True,
+                                      kernel_initializer=kernel_initializer,
+                                      ortho_weights=ortho_weights,
+                                      non_neg_unit_norm=non_neg_unit_norm,
                                       uncorr_features=uncorr_features,
                                       activity_regularizer=activity_regularizer,
+                                      non_neg=non_neg,
                                       weightage=weightage
                                       )
+
+        print(model.summary())
+
         if int(set_) > 0:
             LOGGER.info('Set weights')
             # Set encoder layer weights
