@@ -17,13 +17,9 @@ def cluster_portfolio(test_returns, train_cluster_port, encoding_weights):
     return port_returns
 
 
-def get_portfolio_perf(train_returns, test_returns, train_cluster_port, encoding_weights,
-                       pca_train_cluster_port, pca_encoding_weights, fx_levrage=1.):
+def get_portfolio_perf(train_returns, test_returns, train_cluster_port, encoding_weights, fx_levrage=1.):
     # AE port
     ae_port_returns = cluster_portfolio(test_returns, train_cluster_port, encoding_weights)
-
-    # PCA port
-    pca_port_returns = cluster_portfolio(test_returns, pca_train_cluster_port, pca_encoding_weights)
 
     # ivp
     cov = np.cov(train_returns, rowvar=False)
@@ -33,7 +29,7 @@ def get_portfolio_perf(train_returns, test_returns, train_cluster_port, encoding
     # equally
     equally_weighted = test_returns.mean(1)
 
-    return equally_weighted, ivp_returns, ae_port_returns, pca_port_returns
+    return equally_weighted, ivp_returns, ae_port_returns
 
 
 def getIVP(cov):

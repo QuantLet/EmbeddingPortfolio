@@ -17,24 +17,28 @@ import seaborn as sns
 LOG_DIR = 'dl_portfolio/log_AE'
 
 
-def heat_map_cluster(load_dir, show=False, save=False):
-    sets = os.listdir(load_dir)
+def heat_map_cluster(load_dir, show=False, save=False, filename = 'encoder_weights.p', **kwargs):
+    sets = [sets for sets in os.listdir(load_dir) if sets.isdigit()]
     sets.sort(key=lambda x: int(x))
     encoder_weights = {}
     for set_ in sets:
-        encoder_weights[int(set_)] = pd.read_pickle(f"{load_dir}/{set_}/encoder_weights.p")
-
+        encoder_weights[int(set_)] = pd.read_pickle(f"{load_dir}/{set_}/{filename}")
+    n_clusters = len(encoder_weights[int(set_)].columns)
+    last_set = max(list(encoder_weights.keys()))
+    yticks = list(encoder_weights[last_set].index)
     n_sets = len(encoder_weights.keys())
-    fig, axs = plt.subplots(n_sets, 3, figsize=(10, 10 * n_sets), sharey=True)
-    yticks = list(encoder_weights[n_sets - 1].index)
 
-    for i, s in enumerate(encoder_weights.keys()):
-        print(i)
-        for j, c in enumerate(list(encoder_weights[s].columns)):
-            ax = sns.heatmap(encoder_weights[s][c].values.reshape(-1, 1),
-                             xticklabels=[c],
-                             yticklabels=yticks,
-                             vmin=0., vmax=1., ax=axs[i, j], cbar=j == 2)
+    fig, axs = plt.subplots(n_sets, n_clusters, figsize=(10, 10 * n_sets), sharey=True)
+    if n_sets > 1:
+        for i, s in enumerate(encoder_weights.keys()):
+            print(i)
+            for j, c in enumerate(list(encoder_weights[s].columns)):
+                ax = sns.heatmap(encoder_weights[s][c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
+                                 ax=axs[i, j], cbar=j == n_clusters - 1, **kwargs)
+    else:
+        for j, c in enumerate(list(encoder_weights[last_set].columns)):
+            ax = sns.heatmap(encoder_weights[last_set][c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
+                             ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
     if save:
         plt.savefig(f'{load_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
     if show:
@@ -90,58 +94,25 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
         assert not uncorr_features
 
     input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32, name='input')
-    encoder_layer_1 = tf.keras.layers.Dense(encoding_dim,
-                                            activation=activation,
-                                            kernel_initializer=kernel_initializer,
-                                            kernel_regularizer=kernel_regularizer,
-                                            activity_regularizer=activity_regularizer,
-                                            kernel_constraint=kernel_constraint,
-                                            use_bias=True,
-                                            name='encoder_1',
-                                            dtype=tf.float32)
-    # encoder_layer_2 = tf.keras.layers.Dense(encoding_dim,
-    #                                         activation=activation,
-    #                                         kernel_initializer=kernel_initializer,
-    #                                         kernel_regularizer=kernel_regularizer,
-    #                                         activity_regularizer=activity_regularizer,
-    #                                         kernel_constraint=kernel_constraint,
-    #                                         use_bias=True,
-    #                                         name='encoder_2',
-    #                                         dtype=tf.float32)
-
-    decoder_layer_1 = DenseTied(input_dim,
-                                tied_to=encoder_layer_1,
-                                activation=activation,
-                                kernel_initializer=kernel_initializer,
-                                kernel_regularizer=kernel_regularizer,
-                                use_bias=True,
-                                dtype=tf.float32,
-                                name='decoder_1')
-    # decoder_layer_2 = TransposeDense(int(0.75 * input_dim), encoder_layer_2, activation=activation,
-    #                                  kernel_initializer=kernel_initializer,
-    #                                  kernel_regularizer=kernel_regularizer,
-    #                                  use_bias=True,
-    #                                  dtype=tf.float32,
-    #                                  name='decoder_2')
-    # decoder_layer_1 = TransposeDense(input_dim, encoder_layer_1, activation=activation,
-    #                                  kernel_initializer=kernel_initializer,
-    #                                  kernel_regularizer=kernel_regularizer,
-    #                                  use_bias=True,
-    #                                  dtype=tf.float32,
-    #                                  name='decoder_1')
-    output = decoder_layer_1(encoder_layer_1(input_))
-    # output = decoder_layer_1(
-    #     decoder_layer_2(
-    #         encoder_layer_2(
-    #             encoder_layer_1(input_)
-    #         )
-    #     )
-    # )
-
-    # encoding = encoder_layer_2(
-    #     encoder_layer_1(input_)
-    # )
-    encoding = encoder_layer_1(input_)
+    encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                          activation=activation,
+                                          kernel_initializer=kernel_initializer,
+                                          kernel_regularizer=kernel_regularizer,
+                                          activity_regularizer=activity_regularizer,
+                                          kernel_constraint=kernel_constraint,
+                                          use_bias=True,
+                                          name='encoder',
+                                          dtype=tf.float32)
+    decoder_layer = DenseTied(input_dim,
+                              tied_to=encoder_layer,
+                              activation='linear',
+                              kernel_initializer=kernel_initializer,
+                              kernel_regularizer=kernel_regularizer,
+                              use_bias=True,
+                              dtype=tf.float32,
+                              name='decoder')
+    output = decoder_layer(encoder_layer(input_))
+    encoding = encoder_layer(input_)
     autoencoder = tf.keras.models.Model(input_, output)
     encoder = tf.keras.models.Model(input_, encoding)
 
@@ -176,7 +147,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     test_data = test_data.values
 
     # standardization
-    scaler = preprocessing.StandardScaler(with_std=True, with_mean=False)
+    scaler = preprocessing.StandardScaler(with_std=True, with_mean=True)
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
     val_data = scaler.transform(val_data)
@@ -197,21 +168,22 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
 
 if __name__ == "__main__":
     seed = np.random.randint(100)
-    # seed = 200
+    seed = 69
     np.random.seed(seed)
+    tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
+    fx = True
     save = False
-    model_name = f'linear_simple_{seed}_uncorr_lr_e-3_l1_reg'
-    seq_len = 5
+    model_name = f'relu_simple_{seed}_uncorr_lr_e-3_fx'
     learning_rate = 1e-3
-    epochs = 1
-    batch_size = 64
-    activation = 'linear'
-    encoding_dim = 3
+    epochs = 600
+    batch_size = 128
+    activation = 'relu'
+    encoding_dim = 2
     val_size = 30 * 6
-    uncorr_features = False
-    weightage = 1e-1
-    activity_regularizer = tf.keras.regularizers.l1(1e-3)
+    uncorr_features = True
+    weightage = 5e-2 # 1e-2
+    activity_regularizer = None  # tf.keras.regularizers.l1(1e-3)
     loss = 'mse'
     rescale = None
     kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
@@ -239,23 +211,49 @@ if __name__ == "__main__":
     data = data.astype(np.float32)
     data.index = pd.to_datetime(data.index)
 
+    if fx:
+        fxdata = pd.read_csv('./data/forex/daily_price.csv', index_col=0, header=[0, 1])
+        fxdata = fxdata.astype(np.float32)
+        fxdata.index = pd.to_datetime(fxdata.index)
+        fxdata = fxdata.loc[:, pd.IndexSlice[:, 'close']]
+        fx_assets = np.unique(list(fxdata.columns.get_level_values(0))).tolist()
+        fxdata.columns = pd.MultiIndex.from_product(([fx_assets, ['price']]))
+        print(fx_assets)
+        print(fxdata.head())
+        data = pd.concat([data, fxdata], 1)
+        asset_to_train_on = data_specs['0']['assets'] + ['monero', 'stellar', 'nem', 'ethereum'] + fx_assets
+    else:
+        asset_to_train_on = data_specs['0']['assets'] + ['monero', 'stellar', 'nem', 'ethereum']
+
+    print(data.head())
+
+    spec = {str(len(data_specs) - 1): data_specs[str(len(data_specs) - 1)]}
+    spec[str(len(data_specs) - 1)]['start'] = data_specs['0']['start']
+    spec[str(len(data_specs) - 1)]['assets'] = asset_to_train_on
+    data_specs = spec
+
     asset_to_train_on = {}
     for set_ in data_specs:
         LOGGER.info(f'Starting with set: {set_}')
         if save:
             os.mkdir(f"{save_dir}/{set_}")
         data_spec = data_specs[set_]
-        if int(set_) > 0:
-            prev_set = str(int(set_) - 1)
-            assets = asset_to_train_on[prev_set].copy()
-            assets = assets + data_spec['assets']
-        else:
-            assets = data_spec['assets'].copy()
-        asset_to_train_on[set_] = assets
+        # if int(set_) > 0:
+        #     prev_set = str(int(set_) - 1)
+        #     assets = asset_to_train_on[prev_set].copy()
+        #     assets = assets + data_spec['assets']
+        # else:
+        #     assets = data_spec['assets'].copy()
+        # asset_to_train_on[set_] = assets
+        asset_to_train_on[set_] = data_spec['assets'].copy()
+        assets = data_spec['assets'].copy()
 
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets,
                                                                       val_size=val_size, rescale=rescale)
+        LOGGER.info(f'Train shape: {train_data.shape}')
+        LOGGER.info(f'Validation shape: {val_data.shape}')
+
         # Build model
         input_dim = len(assets)
         model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
@@ -270,19 +268,19 @@ if __name__ == "__main__":
 
         print(model.summary())
 
-        if int(set_) > 0:
-            LOGGER.info('Set weights')
-            # Set encoder layer weights
-            weights = model.layers[1].get_weights()[0]
-            weights[:-1] = prev_encoder_weights[0]
-            bias = prev_encoder_weights[1]
-            model.layers[1].set_weights([weights, bias])
-            encoder.layers[1].set_weights([weights, bias])
-
-            # Set decoder layer weights
-            bias = model.layers[2].get_weights()[0]
-            bias[:-1] = prev_decoder_weights[0]
-            model.layers[2].set_weights([bias, weights, model.layers[2].get_weights()[-1]])
+        # if int(set_) > 0:
+        #     LOGGER.info('Set weights')
+        #     # Set encoder layer weights
+        #     weights = model.layers[1].get_weights()[0]
+        #     weights[:-1] = prev_encoder_weights[0]
+        #     bias = prev_encoder_weights[1]
+        #     model.layers[1].set_weights([weights, bias])
+        #     encoder.layers[1].set_weights([weights, bias])
+        #
+        #     # Set decoder layer weights
+        #     bias = model.layers[2].get_weights()[0]
+        #     bias[:-1] = prev_decoder_weights[0]
+        #     model.layers[2].set_weights([bias, weights, model.layers[2].get_weights()[-1]])
 
         # Train
         LOGGER.info('Start training')
@@ -325,31 +323,44 @@ if __name__ == "__main__":
         val_prediction = model.predict(val_data)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
         encoder_weights = pd.DataFrame(prev_encoder_weights[0], index=assets)
+        print(encoder_weights)
 
         test_prediction = model.predict(test_data)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
 
-        if save:
-            val_prediction.to_pickle(f"{save_dir}/{set_}/val_prediction.p")
-            test_prediction.to_pickle(f"{save_dir}/{set_}/test_prediction.p")
-            encoder_weights.to_pickle(f"{save_dir}/{set_}/encoder_weights.p")
 
-        # indices = np.random.choice(list(range(len(val_data))), 5).tolist()
-        # xticks = assets
-        # for i in indices:
-        #     plt.figure()
-        #     plt.scatter(xticks, val_data[i], label='truth')
-        #     plt.scatter(xticks, val_prediction.values[i], label='prediction')
-        #     plt.legend()
-        #     plt.show()
+        indices = np.random.choice(list(range(len(val_data))), 5).tolist()
+        xticks = assets
+        for i in indices:
+            plt.figure()
+            plt.scatter(xticks, val_data[i], label='truth')
+            plt.scatter(xticks, val_prediction.values[i], label='prediction')
+            plt.legend()
+            plt.show()
 
         # for i in range(input_dim):
         #     rmse = np.sqrt(np.mean((val_prediction.values[:, i] - val_data[:, i]) ** 2))
         #     print(assets[i], rmse)
 
-        # val_features = encoder.predict(val_data)
-        # print(np.corrcoef(val_features.T))
-        # print(encoder.layers[-1].kernel.numpy().sum(0))
+        val_cluster_portfolio = encoder.predict(val_data)
+        val_cluster_portfolio = pd.DataFrame(val_cluster_portfolio, index=dates['val'])
+
+        print(np.corrcoef(val_cluster_portfolio.T))
+        print(encoder.layers[-1].kernel.numpy().sum(0))
+
+        val_data = scaler.inverse_transform(val_data)
+        val_data = pd.DataFrame(val_data, index=dates['val'], columns=assets)
+
+        test_data = scaler.inverse_transform(test_data)
+        test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
+
+        if save:
+            val_data.to_pickle(f"{save_dir}/{set_}/val_returns.p")
+            test_data.to_pickle(f"{save_dir}/{set_}/test_returns.p")
+            val_prediction.to_pickle(f"{save_dir}/{set_}/val_prediction.p")
+            test_prediction.to_pickle(f"{save_dir}/{set_}/test_prediction.p")
+            encoder_weights.to_pickle(f"{save_dir}/{set_}/encoder_weights.p")
+            val_cluster_portfolio.to_pickle(f"{save_dir}/{set_}/val_cluster_portfolio.p")
 
     if save:
-        heat_map_cluster(save_dir, show=True, save=save)
+        heat_map_cluster(save_dir, show=True, save=save, vmax=1., vmin=0.)
