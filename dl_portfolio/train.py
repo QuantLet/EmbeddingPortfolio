@@ -71,6 +71,8 @@ def train(train_dataset: tf.data.Dataset, test_dataset: tf.data.Dataset, model, 
 
     if 'early_stopping' in callbacks:
         early_stopping = True
+    else:
+        early_stopping = False
 
     train_history = {'loss': [], 'avg_ret': [], 'cum_ret': [], 'total_loss': []}
     test_history = {'loss': [], 'avg_ret': [], 'cum_ret': [], 'total_loss': []}
