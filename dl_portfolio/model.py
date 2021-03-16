@@ -84,8 +84,15 @@ def build_layer(config: Dict, **kwargs):
                                        **config['params'])
     elif config['type'] == 'dense':
         layer = tf.keras.layers.Dense(config['neurons'], **config['params'], dtype=tf.float32, **kwargs)
+
     elif config['type'] == 'BatchNormalization':
         layer = tf.keras.layers.BatchNormalization(**config.get('params', {}), dtype=tf.float32, **kwargs)
+
+    elif config['type'] == 'RepeatVector':
+        layer = tf.keras.layers.RepeatVector(config['neurons'])
+
+    elif config['type'] == 'TimeDistributed':
+        layer = tf.keras.layers.RepeatVector(config['neurons'])
 
     else:
         raise NotImplementedError(f"'{config['type']}' type layer has not been implemented")
@@ -221,7 +228,7 @@ def stacked_asset_model(input_dim: Tuple, output_dim: int, n_pairs: int, layers:
 
     elif output_layer['type'] == 'simple_long_only':
         # apply sigmoid to get positive weights
-        output = tf.keras.layers.Dense(output_dim, activation='sigmoid', dtype=tf.float32)(hidden)
+        output = tf.keras.layers.Dense(output_dim, activation='sigmoid', dtype=tf.float32, **output_layer['params'])(hidden)
         output = output / tf.reshape(tf.reduce_sum(output, axis=-1), (-1, 1))
     elif output_layer['type'] == 'softmax_with_weights':
         raise NotImplementedError()

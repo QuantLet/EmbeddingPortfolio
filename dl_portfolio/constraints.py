@@ -4,10 +4,11 @@ from tensorflow.keras.constraints import Constraint
 
 
 class WeightsOrthogonalityConstraint(Constraint):
-    def __init__(self, encoding_dim, weightage=1.0, axis=0):
+    def __init__(self, encoding_dim, weightage=1.0, axis=0, max_dim=None):
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.axis = axis
+        self.max_dim = max_dim
 
     def weights_orthogonality(self, w):
         if self.axis == 1:
@@ -20,7 +21,12 @@ class WeightsOrthogonalityConstraint(Constraint):
             return m
 
     def __call__(self, w):
-        return self.weights_orthogonality(w)
+        if self.max_dim is not None:
+            w_reg = w[:, :self.max_dim]
+            m = self.weights_orthogonality(w_reg)
+        else:
+            m = self.weights_orthogonality(w)
+        return m
 
 
 class NonNegAndUnitNorm(Constraint):
@@ -40,16 +46,21 @@ class NonNegAndUnitNorm(Constraint):
       `(rows, cols, input_depth)`.
     """
 
-    def __init__(self, axis=0):
+    def __init__(self, axis=0, max_dim=None):
         self.axis = axis
+        self.max_dim = max_dim
 
     def __call__(self, w):
-        non_neg = w * tf.cast(tf.greater_equal(w, 0.), K.floatx())
-
-        return non_neg / (
-                K.epsilon() + K.sqrt(
-            tf.reduce_sum(
-                tf.square(non_neg), axis=self.axis, keepdims=True)))
+        if self.max_dim is not None:
+            assert self.axis == 0
+            w_reg = w[:, :self.max_dim]
+            non_neg = w_reg * tf.cast(tf.greater_equal(w_reg, 0.), K.floatx())
+            output = non_neg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(non_neg), axis=self.axis, keepdims=True)))
+            w = tf.concat([output, w[:, self.max_dim:]], axis=-1)
+        else:
+            non_neg = w * tf.cast(tf.greater_equal(w, 0.), K.floatx())
+            w = non_neg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(non_neg), axis=self.axis, keepdims=True)))
+        return w
 
     def get_config(self):
         return {'axis': self.axis}
