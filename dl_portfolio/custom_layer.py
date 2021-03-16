@@ -13,24 +13,6 @@ from tensorflow.keras.layers import InputSpec
 
 # https://keras.io/guides/making_new_layers_and_models_via_subclassing/
 
-class Linear(Layer):
-    def __init__(self, units=32):
-        super(Linear, self).__init__()
-        self.units = units
-
-    def build(self, input_shape):
-        self.w = self.add_weight(
-            shape=(input_shape[-1], self.units),
-            initializer="random_normal",
-            trainable=True,
-        )
-        self.b = self.add_weight(
-            shape=(self.units,), initializer="random_normal", trainable=True
-        )
-
-    def call(self, inputs):
-        return tf.matmul(inputs, self.w) + self.b
-
 
 class SmoothRNNCell(SimpleRNNCell, Layer):
     def __init__(self, units,
