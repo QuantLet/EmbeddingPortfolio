@@ -77,12 +77,16 @@ layers = [
         'params': {
             'activation': 'tanh',
             'return_sequences': False,
-            'kernel_regularizer': tf.keras.regularizers.L1(5e-8)
+            'kernel_regularizer': tf.keras.regularizers.L1(5e-8),
+            'activity_regularizer': tf.keras.regularizers.L1(1e-3)
         }
 
     },
     {
-        'type': 'simple_long_only'
+        'type': 'simple_long_only',
+        'params': {
+            'activity_regularizer': tf.keras.regularizers.L1(1e-3)
+        }
     }
 ]
 dropout = 0
@@ -132,18 +136,19 @@ lr_scheduler = {
 }
 callbacks = {
     'early_stopping': {
-        'patience': 5,
-        'min_epoch': 100,
+        'patience': 20,
+        'min_epoch': 120,
         'monitor': 'loss' # 'total_loss'
     }
 }
+
 # lr_scheduler = {
 #     0: 0.005,
 #     50: 0.001
 # }
 batch_size = 256
 log_every = 1
-plot_every = 20
+plot_every = 100
 cv_type = 'incremental'
 load_model = None  # 'CV'
 nb_folds = 3
@@ -186,6 +191,6 @@ loss_config = {
 benchmark = 'equally_weighted'  # 'equally_weighted'  # 'marketcap'
 
 # Output
-model_name = "stacked_asset_model_DSRNN_SR"
-save = False
+model_name = "stacked_asset_model_DSRNN_SR_FOREX"
+save = True
 
