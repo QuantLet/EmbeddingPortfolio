@@ -1,14 +1,15 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import json
+import json, os, pickle
 from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
-import os
+
 from dl_portfolio.pca_ae import NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_features
 from typing import List
 from sklearn import preprocessing
+from sklearn.decomposition import PCA
 
 LOG_DIR = 'dl_portfolio/log_fx_AE'
 
@@ -64,23 +65,57 @@ if __name__ == "__main__":
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
     fx = True
-    save = True
-    model_name = f'linear_simple_{seed}_uncorr_lr_e-3_fx_cv_encoding_3'
+    save = False
+    model_name = f'elu_simple_{seed}_uncorr_lr_e-3_fx_cv_encoding_2_weightage_1e-2'
     learning_rate = 1e-3
     epochs = 600
     batch_size = 128
-    activation = 'linear'
-    encoding_dim = 3
+    activation = 'elu'
+    encoding_dim = 2
     val_size = 30 * 3
     uncorr_features = True
-    weightage = 1e-3  # 1e-2
+    weightage = 1e-2  # 1e-2
     activity_regularizer = None  # tf.keras.regularizers.l1(1e-3)
-    loss = 'mse'
+    loss = 'mae'
     rescale = None
     kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
     ortho_weights = True
     non_neg_unit_norm = True
     non_neg = False
+
+    # data_specs = {
+    #     0: {
+    #         'start': '2015-08-07',
+    #         'end': '2019-12-08'
+    #     },
+    #     1: {
+    #         'start': '2015-08-07',
+    #         'end': '2020-03-08'
+    #     },
+    #     2: {
+    #         'start': '2015-08-07',
+    #         'end': '2020-06-08'
+    #     },
+    #     3: {
+    #         'start': '2015-08-07',
+    #         'end': '2020-09-08'
+    #     },
+    #     4: {
+    #         'start': '2015-08-07',
+    #         'end': '2020-12-08'
+    #     },
+    #     5: {
+    #         'start': '2015-08-07',
+    #         'end': '2021-03-08'
+    #     }
+    # }
+
+    data_specs = {
+        0: {
+            'start': '2015-08-07',
+            'end': '2021-03-08'
+        }
+    }
 
     callbacks = [
         tf.keras.callbacks.EarlyStopping(
@@ -97,7 +132,6 @@ if __name__ == "__main__":
         os.mkdir(save_dir)
 
     # Load data
-    data_specs = json.load(open('./data/crypto_data/coingecko/data_spec_coins_selected.json', 'r'))
     data = pd.read_csv('./data/crypto_data/coingecko/coins_selected.csv', index_col=0, header=[0, 1])
     data = data.astype(np.float32)
     data.index = pd.to_datetime(data.index)
@@ -112,39 +146,11 @@ if __name__ == "__main__":
     assets = ["bitcoin", "dogecoin", "litecoin", "ripple", 'monero', 'stellar', 'nem',
               'ethereum'] + fx_assets
 
-    data_specs = {
-        0: {
-            'start': '2015-08-07',
-            'end': '2019-12-08'
-        },
-        1: {
-            'start': '2015-08-07',
-            'end': '2020-03-08'
-        },
-        2: {
-            'start': '2015-08-07',
-            'end': '2020-06-08'
-        },
-        3: {
-            'start': '2015-08-07',
-            'end': '2020-09-08'
-        },
-        4: {
-            'start': '2015-08-07',
-            'end': '2020-12-08'
-        },
-        5: {
-            'start': '2015-08-07',
-            'end': '2021-03-08'
-        }
-    }
-
     for cv in data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
         if save:
             os.mkdir(f"{save_dir}/{cv}")
         data_spec = data_specs[cv]
-
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
         LOGGER.info(f'Train shape: {train_data.shape}')
@@ -212,6 +218,27 @@ if __name__ == "__main__":
         model.evaluate(train_data, train_data)
         model.evaluate(val_data, val_data)
 
+        # PCA baseline
+        # pca = PCA(n_components=encoding_dim, random_state=seed)
+        # pca.fit(train_data)
+        # encoding_pca = pca.components_.T
+        # encoding_pca = pd.DataFrame(encoding_pca, index=assets)
+        #
+        # train_pca_cluster_portfolio = pca.transform(train_data)
+        # train_pca_cluster_portfolio = pd.DataFrame(train_pca_cluster_portfolio, index=dates['train'])
+        #
+        # val_pca_cluster_portfolio = pca.transform(val_data)
+        # val_pca_cluster_portfolio = pd.DataFrame(val_pca_cluster_portfolio, index=dates['val'])
+        #
+        # test_pca_cluster_portfolio = pca.transform(test_data)
+        # test_pca_cluster_portfolio = pd.DataFrame(test_pca_cluster_portfolio, index=dates['test'])
+        #
+        # pca_cluster_portfolio = {
+        #     'train': train_pca_cluster_portfolio,
+        #     'val': val_pca_cluster_portfolio,
+        #     'test': test_pca_cluster_portfolio
+        # }
+
         # Results
         val_prediction = model.predict(val_data)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
@@ -232,24 +259,47 @@ if __name__ == "__main__":
         test_prediction = model.predict(test_data)
         test_prediction = scaler.inverse_transform(test_prediction)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
+        train_data = scaler.inverse_transform(train_data)
+        train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
         val_data = scaler.inverse_transform(val_data)
         val_data = pd.DataFrame(val_data, index=dates['val'], columns=assets)
         test_data = scaler.inverse_transform(test_data)
         test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
 
-        val_cluster_portfolio = encoder.predict(val_data)
-        val_cluster_portfolio = pd.DataFrame(val_cluster_portfolio, index=dates['val'])
+        # train_cluster_portfolio = encoder.predict(train_data)
+        # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
+        train_cluster_portfolio = pd.DataFrame(np.dot(train_data, encoder_weights / encoder_weights.sum()),
+                                               index=dates['train'])
+
+        # val_cluster_portfolio = encoder.predict(val_data)
+        # val_cluster_portfolio = pd.DataFrame(val_cluster_portfolio, index=dates['val'])
+        val_cluster_portfolio = pd.DataFrame(np.dot(val_data, encoder_weights / encoder_weights.sum()),
+                                             index=dates['val'])
+
+        # test_cluster_portfolio = encoder.predict(test_data)
+        # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
+        test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
+                                              index=dates['test'])
+
+        cluster_portfolio = {
+            'train': train_cluster_portfolio,
+            'val': val_cluster_portfolio,
+            'test': test_cluster_portfolio
+        }
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.info(f"Unit norm constraint:\n{encoder.layers[-1].kernel.numpy().sum(0)}")
 
         if save:
+            train_data.to_pickle(f"{save_dir}/{cv}/train_returns.p")
             val_data.to_pickle(f"{save_dir}/{cv}/val_returns.p")
             test_data.to_pickle(f"{save_dir}/{cv}/test_returns.p")
             val_prediction.to_pickle(f"{save_dir}/{cv}/val_prediction.p")
             test_prediction.to_pickle(f"{save_dir}/{cv}/test_prediction.p")
             encoder_weights.to_pickle(f"{save_dir}/{cv}/encoder_weights.p")
-            val_cluster_portfolio.to_pickle(f"{save_dir}/{cv}/val_cluster_portfolio.p")
+            # encoding_pca.to_pickle(f"{save_dir}/{cv}/encoding_pca.p")
+            pickle.dump(cluster_portfolio, open(f"{save_dir}/{cv}/cluster_portfolio.p", "wb"))
+            # pickle.dump(pca_cluster_portfolio, open(f"{save_dir}/{cv}/pca_cluster_portfolio.p", "wb"))
 
     if save:
         heat_map_cluster(save_dir, show=True, save=save, vmax=1., vmin=0.)
