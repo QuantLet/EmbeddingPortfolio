@@ -10,8 +10,18 @@ from dl_portfolio.pca_ae import NonNegAndUnitNormInit, heat_map_cluster, pca_ae_
 from typing import List
 from sklearn import preprocessing
 from sklearn.decomposition import PCA
+import tensorflow_addons as tfa
+import tensorflow as tf
+from tensorflow.keras import backend as K
 
-LOG_DIR = 'dl_portfolio/log_fx_AE'
+LOG_DIR = 'dl_portfolio/log_daily_fx_AE'
+
+
+# coefficient of determination (R^2) for regression  (only for Keras tensors)
+def r_square(y_true, y_pred):
+    SS_res = K.sum(K.square(y_true - y_pred))
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+    return (1 - SS_res / (SS_tot + K.epsilon()))
 
 
 def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None):
@@ -58,6 +68,56 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates
 
 
+def load_data(type=['stocks_com', 'fx', 'crypto']):
+    data = pd.DataFrame()
+    assets = []
+    if 'crypto' in type:
+        LOGGER.info('Loading crypto data')
+        # Load data
+        crypto_data = pd.read_csv('./data/crypto_data/coingecko/coins_selected.csv', index_col=0, header=[0, 1])
+        crypto_data = crypto_data.astype(np.float32)
+        crypto_data.index = pd.to_datetime(crypto_data.index)
+        crypto_data = crypto_data.loc[:,
+                      ["bitcoin", "dogecoin", "litecoin", "ripple", 'monero', 'stellar', 'nem', 'ethereum']]
+        data = pd.concat([data, crypto_data], 1)
+        assets = assets + ["bitcoin", "dogecoin", "litecoin", "ripple", 'monero', 'stellar', 'nem', 'ethereum']
+        del crypto_data
+    if 'fx' in type:
+        LOGGER.info('Loading forex data')
+        fxdata = pd.read_csv('./data/forex/daily_price.csv', index_col=0, header=[0, 1])
+        fxdata = fxdata.astype(np.float32)
+        fxdata.index = pd.to_datetime(fxdata.index)
+        fxdata = fxdata.loc[:, pd.IndexSlice[:, 'close']]
+        fx_assets = np.unique(list(fxdata.columns.get_level_values(0))).tolist()
+        fxdata.columns = pd.MultiIndex.from_product(([fx_assets, ['price']]))
+        data = pd.concat([data, fxdata], 1)
+        del fxdata
+        assets = assets + fx_assets
+    if 'stocks_com' in type:
+        LOGGER.info('Loading stocks_com data')
+        stockcom = pd.read_csv('./data/stocks_com/daily_price.csv', index_col=0, header=[0, 1])
+        stockcom = stockcom.astype(np.float32)
+        stockcom.index = pd.to_datetime(stockcom.index)
+        stockcom = stockcom.loc[:, pd.IndexSlice[:, 'close']]
+        sc_assets = np.unique(list(stockcom.columns.get_level_values(0))).tolist()
+        stockcom.columns = pd.MultiIndex.from_product(([sc_assets, ['price']]))
+        data = pd.concat([data, stockcom], 1)
+        del stockcom
+        assets = assets + sc_assets
+    if 'fx' not in type and 'stocks_com' not in type and 'crypto' not in type:
+        raise ValueError()
+
+    # assets = np.random.choice(assets, len(assets), replace=False).tolist()
+    # data = data.loc[:, pd.IndexSlice[assets, 'price']]
+    # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
+
+    data = data.dropna()
+    print(data.head())
+    print(data.tail())
+
+    return data, assets
+
+
 if __name__ == "__main__":
     seed = np.random.randint(100)
     seed = 69
@@ -65,10 +125,10 @@ if __name__ == "__main__":
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
     fx = True
-    save = False
-    model_name = f'elu_simple_{seed}_uncorr_lr_e-3_fx_cv_encoding_2_weightage_1e-2'
+    save = True
+    model_name = f'elu_simple_fx_stock_com_crypto_{seed}_uncorr_lr_e-3_fx_cv_encoding_2_weightage_1e-2_epoch_2000'
     learning_rate = 1e-3
-    epochs = 600
+    epochs = 2000
     batch_size = 128
     activation = 'elu'
     encoding_dim = 2
@@ -83,46 +143,54 @@ if __name__ == "__main__":
     non_neg_unit_norm = True
     non_neg = False
 
-    # data_specs = {
-    #     0: {
-    #         'start': '2015-08-07',
-    #         'end': '2019-12-08'
-    #     },
-    #     1: {
-    #         'start': '2015-08-07',
-    #         'end': '2020-03-08'
-    #     },
-    #     2: {
-    #         'start': '2015-08-07',
-    #         'end': '2020-06-08'
-    #     },
-    #     3: {
-    #         'start': '2015-08-07',
-    #         'end': '2020-09-08'
-    #     },
-    #     4: {
-    #         'start': '2015-08-07',
-    #         'end': '2020-12-08'
-    #     },
-    #     5: {
-    #         'start': '2015-08-07',
-    #         'end': '2021-03-08'
-    #     }
-    # }
 
+    def scheduler(epoch):
+        if epoch < 5:
+            return 1e-2
+        else:
+            return 1e-3
+
+
+    callbacks = [
+        # tf.keras.callbacks.EarlyStopping(
+        #     monitor='val_r_square', min_delta=1e-4, patience=300, verbose=1,
+        #     mode='max', baseline=None, restore_best_weights=True
+        # ),
+        #tf.keras.callbacks.LearningRateScheduler(scheduler, verbose=1)
+    ]
     data_specs = {
         0: {
+            'start': '2015-08-07',
+            'end': '2019-12-08'
+        },
+        1: {
+            'start': '2015-08-07',
+            'end': '2020-03-08'
+        },
+        2: {
+            'start': '2015-08-07',
+            'end': '2020-06-08'
+        },
+        3: {
+            'start': '2015-08-07',
+            'end': '2020-09-08'
+        },
+        4: {
+            'start': '2015-08-07',
+            'end': '2020-12-08'
+        },
+        5: {
             'start': '2015-08-07',
             'end': '2021-03-08'
         }
     }
 
-    callbacks = [
-        tf.keras.callbacks.EarlyStopping(
-            monitor='val_rmse', min_delta=1e-4, patience=300, verbose=1,
-            mode='min', baseline=None, restore_best_weights=True
-        )
-    ]
+    # data_specs = {
+    #     0: {
+    #         'start': '2015-08-07',
+    #         'end': '2021-03-08'
+    #     }
+    # }
 
     if save:
         subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d-%H%M%S')
@@ -131,26 +199,15 @@ if __name__ == "__main__":
         save_dir = f"{LOG_DIR}/{subdir}"
         os.mkdir(save_dir)
 
-    # Load data
-    data = pd.read_csv('./data/crypto_data/coingecko/coins_selected.csv', index_col=0, header=[0, 1])
-    data = data.astype(np.float32)
-    data.index = pd.to_datetime(data.index)
-
-    fxdata = pd.read_csv('./data/forex/daily_price.csv', index_col=0, header=[0, 1])
-    fxdata = fxdata.astype(np.float32)
-    fxdata.index = pd.to_datetime(fxdata.index)
-    fxdata = fxdata.loc[:, pd.IndexSlice[:, 'close']]
-    fx_assets = np.unique(list(fxdata.columns.get_level_values(0))).tolist()
-    fxdata.columns = pd.MultiIndex.from_product(([fx_assets, ['price']]))
-    data = pd.concat([data, fxdata], 1)
-    assets = ["bitcoin", "dogecoin", "litecoin", "ripple", 'monero', 'stellar', 'nem',
-              'ethereum'] + fx_assets
-
     for cv in data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
         if save:
             os.mkdir(f"{save_dir}/{cv}")
         data_spec = data_specs[cv]
+
+        data, assets = load_data(type=['crypto', 'fx', 'stocks_com'])
+        print(data.head())
+        print(assets)
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
         LOGGER.info(f'Train shape: {train_data.shape}')
@@ -170,9 +227,11 @@ if __name__ == "__main__":
         print(model.summary())
         # Train
         LOGGER.info('Start training')
+        print(input_dim)
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
                       loss=tf.keras.losses.MeanSquaredError(),
                       metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
+                               r_square,
                                tf.keras.metrics.RootMeanSquaredError(name='rmse')]
                       )
         if save:
@@ -182,7 +241,8 @@ if __name__ == "__main__":
                         f"{save_dir}/{cv}/best_model.h5",
                         verbose=1,
                         save_best_only=True,
-                        monitor="val_rmse")
+                        mode='max',
+                        monitor="val_r_square")
                 ]
             )
         history = model.fit(train_data, train_data,
@@ -196,7 +256,7 @@ if __name__ == "__main__":
         if save:
             model.save(f"{save_dir}/{cv}/model.h5")
 
-        fix, axs = plt.subplots(1, 3, figsize=(15, 5))
+        fix, axs = plt.subplots(1, 4, figsize=(15, 5))
         axs[0].plot(history.history['loss'], label='loss')
         axs[0].plot(history.history['val_loss'], label='val loss')
         axs[0].legend()
@@ -206,6 +266,9 @@ if __name__ == "__main__":
         axs[2].plot(history.history['rmse'], label='rmse')
         axs[2].plot(history.history['val_rmse'], label='val_rmse')
         axs[2].legend()
+        axs[3].plot(history.history['r_square'], label='R2')
+        axs[3].plot(history.history['val_r_square'], label='val_R2')
+        axs[3].legend()
         if save:
             plt.savefig(f"{save_dir}/{cv}/history.png")
         plt.show()
