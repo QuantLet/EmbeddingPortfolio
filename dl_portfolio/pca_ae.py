@@ -17,7 +17,22 @@ import seaborn as sns
 LOG_DIR = 'dl_portfolio/log_AE'
 
 
-def heat_map_cluster(load_dir, show=False, save=False, filename = 'encoder_weights.p', **kwargs):
+def heat_map(encoder_weights, show=False, save=False, save_dir=None, **kwargs):
+    n_clusters = len(encoder_weights.columns)
+    yticks = list(encoder_weights.index)
+
+    fig, axs = plt.subplots(1, n_clusters, figsize=(10, 10), sharey=True)
+
+    for j, c in enumerate(list(encoder_weights.columns)):
+        ax = sns.heatmap(encoder_weights[c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
+                         ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
+    if save:
+        plt.savefig(f'{save_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
+    if show:
+        plt.show()
+
+
+def heat_map_cluster(load_dir, show=False, save=False, filename='encoder_weights.p', **kwargs):
     sets = [sets for sets in os.listdir(load_dir) if sets.isdigit()]
     sets.sort(key=lambda x: int(x))
     encoder_weights = {}
@@ -182,7 +197,7 @@ if __name__ == "__main__":
     encoding_dim = 2
     val_size = 30 * 6
     uncorr_features = True
-    weightage = 5e-2 # 1e-2
+    weightage = 5e-2  # 1e-2
     activity_regularizer = None  # tf.keras.regularizers.l1(1e-3)
     loss = 'mse'
     rescale = None
@@ -327,7 +342,6 @@ if __name__ == "__main__":
 
         test_prediction = model.predict(test_data)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
-
 
         indices = np.random.choice(list(range(len(val_data))), 5).tolist()
         xticks = assets
