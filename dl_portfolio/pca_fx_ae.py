@@ -6,7 +6,7 @@ from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
 
-from dl_portfolio.pca_ae import NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_features
+from dl_portfolio.pca_ae import NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_layer_by_name, heat_map, pca_permut_ae_model
 from typing import List
 from sklearn import preprocessing
 import tensorflow as tf
@@ -23,7 +23,7 @@ def r_square(y_true, y_pred):
     return (1 - SS_res / (SS_tot + K.epsilon()))
 
 
-def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None):
+def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, randomize_columns=False):
     data = data.loc[start:end, assets]
 
     # Train/val/test split
@@ -72,7 +72,6 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
     assets = []
     END = '2021-01-30 12:30:00'
     for asset_class in type:
-        print(asset_class)
         if asset_class == 'crypto':
             LOGGER.info('Loading crypto data')
             crypto_assets = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP']
@@ -91,8 +90,6 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
             fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD']
             fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
             fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
-            print(fxdata.shape)
-
             data = pd.concat([data, fxdata], 1)
             del fxdata
             assets = assets + fx_assets
@@ -102,7 +99,6 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
             fx_metals_assets = ['XAUUSD', 'XAGUSD']
             fx_m_data = pd.read_pickle('./data/histdatacom/forex_metals_f_3600_2014_2021_close_index.p')
             fx_m_data = fx_m_data.loc[:, pd.IndexSlice[fx_metals_assets, 'close']].droplevel(1, 1)
-            print(fx_m_data.shape)
             data = pd.concat([data, fx_m_data], 1)
             del fx_m_data
             assets = assets + fx_metals_assets
@@ -111,13 +107,11 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
             indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD']
             indices_data = pd.read_pickle('./data/histdatacom/indices_f_3600_2014_2021_close_index.p')
             indices_data = indices_data.loc[:, pd.IndexSlice[indices, 'close']].droplevel(1, 1)
-            print(indices_data.shape)
             data = pd.concat([data, indices_data], 1)
             del indices_data
             assets = assets + indices
         else:
             raise ValueError(asset_class)
-
 
     # assets = np.random.choice(assets, len(assets), replace=False).tolist()
     # data = data.loc[:, pd.IndexSlice[assets, 'price']]
@@ -127,10 +121,6 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
     if 'crypto' in type:
         data = data.fillna(method='ffill')
         data = data.dropna()
-        for a in data.columns:
-            plt.plot(data[a])
-            plt.title(a)
-            plt.show()
     else:
         data = data.dropna()
     data = data.loc[:, assets]
@@ -140,12 +130,12 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
 
 if __name__ == "__main__":
     from dl_portfolio.config.ae_config import *
-
+    random_seed = np.random.randint (0, 100)
     np.random.seed(seed)
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
     if save:
-        subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d-%H%M%S')
+        subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_s%H%M%S')
         if model_name is not None and model_name != '':
             subdir = subdir + '_' + model_name
         save_dir = f"{LOG_DIR}/{subdir}"
@@ -160,21 +150,59 @@ if __name__ == "__main__":
         data_spec = data_specs[cv]
 
         data, assets = load_data(type=data_type)
+
+        if shuffle_columns:
+            LOGGER.info('Shuffle assets order')
+            base_asset_order = assets.copy()
+            np.random.seed(random_seed)
+            np.random.shuffle(assets)
+            np.random.seed(seed)
+        LOGGER.info(f'Assets order: {assets}')
+
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
+
+        if shuffle_columns_while_training:
+            train_data = np.transpose(train_data)
+            np.random.seed(random_seed)
+            np.random.shuffle(train_data)
+            np.random.seed(seed)
+            train_data = np.transpose(train_data)
+
         LOGGER.info(f'Train shape: {train_data.shape}')
         LOGGER.info(f'Validation shape: {val_data.shape}')
         # Build model
         input_dim = len(assets)
-        model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
-                                      kernel_initializer=kernel_initializer,
-                                      ortho_weights=ortho_weights,
-                                      non_neg_unit_norm=non_neg_unit_norm,
-                                      uncorr_features=uncorr_features,
-                                      activity_regularizer=activity_regularizer,
-                                      non_neg=non_neg,
-                                      weightage=weightage
-                                      )
+        if model_type == 'pca_permut_ae_model':
+            model, encoder = pca_permut_ae_model(input_dim, encoding_dim, activation=activation,
+                                          kernel_initializer=kernel_initializer,
+                                          ortho_weights=ortho_weights,
+                                          non_neg_unit_norm=non_neg_unit_norm,
+                                          uncorr_features=uncorr_features,
+                                          activity_regularizer=activity_regularizer,
+                                          non_neg=non_neg,
+                                          weightage=weightage,
+                                          pooling=pooling
+                                          )
+            train_input = [train_data[:,i].reshape(-1,1) for i in range(len(assets))]
+            val_input = [val_data[:,i].reshape(-1,1) for i in range(len(assets))]
+            test_input = [test_data[:,i].reshape(-1,1) for i in range(len(assets))]
+
+        elif model_type == 'pca_ae_model':
+            model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
+                                          kernel_initializer=kernel_initializer,
+                                          ortho_weights=ortho_weights,
+                                          non_neg_unit_norm=non_neg_unit_norm,
+                                          uncorr_features=uncorr_features,
+                                          activity_regularizer=activity_regularizer,
+                                          non_neg=non_neg,
+                                          weightage=weightage
+                                          )
+            train_input = train_data
+            val_input = val_data
+            test_input = test_data
+        else:
+            raise NotImplementedError()
 
         print(model.summary())
         # Train
@@ -197,10 +225,11 @@ if __name__ == "__main__":
                         monitor="val_r_square")
                 ]
             )
-        history = model.fit(train_data, train_data,
+
+        history = model.fit(train_input, train_data,
                             epochs=epochs,
                             batch_size=batch_size,
-                            validation_data=(val_data, val_data),
+                            validation_data=(val_input, val_data),
                             validation_batch_size=batch_size,
                             callbacks=callbacks,
                             shuffle=False,
@@ -230,8 +259,8 @@ if __name__ == "__main__":
             model.load_weights(f"{save_dir}/{cv}/best_model.h5")
 
         # Evaluate
-        model.evaluate(train_data, train_data)
-        model.evaluate(val_data, val_data)
+        model.evaluate(train_input, train_data)
+        model.evaluate(val_input, val_data)
 
         # PCA baseline
         # pca = PCA(n_components=encoding_dim, random_state=seed)
@@ -255,7 +284,7 @@ if __name__ == "__main__":
         # }
 
         # Results
-        val_prediction = model.predict(val_data)
+        val_prediction = model.predict(val_input)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
         # indices = np.random.choice(list(range(len(val_data))), 5).tolist()
         # xticks = assets
@@ -266,14 +295,16 @@ if __name__ == "__main__":
         #     plt.legend()
         #     plt.show()
 
-        encoder_weights = model.layers[1].get_weights()
+        encoder_layer = get_layer_by_name(name='encoder', model=model)
+        encoder_weights = encoder_layer.get_weights()
         # decoder_weights = model.layers[2].get_weights()
         encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
         LOGGER.info(f"Encoder weights:\n{encoder_weights}")
 
-        test_prediction = model.predict(test_data)
+        test_prediction = model.predict(test_input)
         test_prediction = scaler.inverse_transform(test_prediction)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
+
         train_data = scaler.inverse_transform(train_data)
         train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
         val_data = scaler.inverse_transform(val_data)
@@ -296,11 +327,26 @@ if __name__ == "__main__":
         test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
                                               index=dates['test'])
 
+        if shuffle_columns:
+            LOGGER.info('Reorder results with base asset order')
+            val_prediction = val_prediction.loc[:, base_asset_order]
+            train_data = train_data.loc[:, base_asset_order]
+            val_data = val_data.loc[:, base_asset_order]
+            test_data = test_data.loc[:, base_asset_order]
+            test_prediction = test_prediction.loc[:, base_asset_order]
+            encoder_weights = encoder_weights.loc[base_asset_order, :]
+
+        if save:
+            heat_map(encoder_weights, show=True, save=save, save_dir=f"{save_dir}/{cv}", vmax=1., vmin=0.)
+        else:
+            heat_map(encoder_weights, show=True, vmax=1., vmin=0.)
+
         cluster_portfolio = {
             'train': train_cluster_portfolio,
             'val': val_cluster_portfolio,
             'test': test_cluster_portfolio
         }
+
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.info(f"Unit norm constraint:\n{encoder.layers[-1].kernel.numpy().sum(0)}")
