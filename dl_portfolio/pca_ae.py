@@ -6,7 +6,8 @@ from sklearn import preprocessing
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from dl_portfolio.custom_layer import DenseTied, TransposeDense
-from dl_portfolio.constraints import WeightsOrthogonalityConstraint, NonNegAndUnitNorm, UncorrelatedFeaturesConstraint
+from dl_portfolio.constraints import WeightsOrthogonalityConstraint, PositiveSkewnessConstraint, NonNegAndUnitNorm, \
+    UncorrelatedFeaturesConstraint
 from typing import List
 from dl_portfolio.logger import LOGGER
 import tensorflow as tf
@@ -14,8 +15,37 @@ import datetime as dt
 import os
 import seaborn as sns
 from superkeras.permutational_layer import *
+from tensorflow.keras.utils import CustomObjectScope
+from tensorflow.keras.callbacks import Callback
 
 LOG_DIR = 'dl_portfolio/log_AE'
+
+
+def _get_activity_regularizers(model):
+    activity_regularizers = []
+    for layer in model.layers:
+        a_reg = getattr(layer, 'activity_regularizer', None)
+        if a_reg is not None:
+            activity_regularizers.append(a_reg)
+    return activity_regularizers
+
+
+class ActivityRegularizer(Callback):
+    """ 'on_batch_end' gets automatically called by .fit when finishing
+    iterating over a batch. The model, and its attributes, are inherited by
+    'Callback' (except at __init__) and can be accessed via, e.g., self.model """
+
+    def __init__(self, model):
+        self.activity_regularizers = _get_activity_regularizers(model)
+
+    def on_epoch_end(self, epoch, logs=None):
+        print(f'epoch {epoch}')
+        # 'activity_regularizer' references model layer's activity_regularizer (in this
+        # case 'MyActivityRegularizer'), so its attributes ('a') can be set directly
+        for i, activity_regularizer in enumerate(self.activity_regularizers):
+            print(i)
+            print(f'output {i}', K.eval(activity_regularizer.pen))
+            print(f'cov {i}\n', K.eval(activity_regularizer.covariance))
 
 
 def heat_map(encoder_weights, show=False, save=False, save_dir=None, **kwargs):
@@ -94,7 +124,11 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
                  non_neg=False,
                  **kwargs
                  ):
-    kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, axis=0) if ortho_weights else None
+    use_cov = kwargs.get('use_cov', True)
+    batch_size = kwargs.get('batch_size', None)
+    weightage_ortho = kwargs.get('weightage_ortho', 1.)
+    kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, weightage=weightage_ortho,
+                                                        axis=0) if ortho_weights else None
     if non_neg_unit_norm:
         assert not non_neg
         kernel_constraint = NonNegAndUnitNorm(axis=0)
@@ -105,34 +139,39 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
     if activity_regularizer is None:
         weightage = kwargs.get('weightage', 1.)
         activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
+                                                              use_cov=use_cov,
                                                               weightage=weightage) if uncorr_features else None
+        # activity_regularizer = PositiveSkewnessConstraint(encoding_dim,
+        #                                                   weightage=weightage) if uncorr_features else None
+
     else:
         assert not uncorr_features
 
-    input_ = tf.keras.layers.Input(input_dim, dtype=tf.float32, name='input')
-    encoder_layer = tf.keras.layers.Dense(encoding_dim,
-                                          activation=activation,
-                                          kernel_initializer=kernel_initializer,
-                                          kernel_regularizer=kernel_regularizer,
-                                          activity_regularizer=activity_regularizer,
-                                          kernel_constraint=kernel_constraint,
-                                          use_bias=True,
-                                          name='encoder',
-                                          dtype=tf.float32)
-    decoder_layer = DenseTied(input_dim,
-                              tied_to=encoder_layer,
-                              activation='linear',
-                              kernel_initializer=kernel_initializer,
-                              kernel_regularizer=kernel_regularizer,
-                              use_bias=True,
-                              dtype=tf.float32,
-                              name='decoder')
-    output = decoder_layer(encoder_layer(input_))
-    encoding = encoder_layer(input_)
-    autoencoder = tf.keras.models.Model(input_, output)
-    encoder = tf.keras.models.Model(input_, encoding)
+    with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
+        input_ = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='input')
+        encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                              activation=activation,
+                                              kernel_initializer=kernel_initializer,
+                                              kernel_regularizer=kernel_regularizer,
+                                              activity_regularizer=activity_regularizer,
+                                              kernel_constraint=kernel_constraint,
+                                              use_bias=True,
+                                              name='encoder',
+                                              dtype=tf.float32)
+        decoder_layer = DenseTied(input_dim,
+                                  tied_to=encoder_layer,
+                                  activation='linear',
+                                  kernel_initializer=kernel_initializer,
+                                  kernel_regularizer=kernel_regularizer,
+                                  use_bias=True,
+                                  dtype=tf.float32,
+                                  name='decoder')
+        output = decoder_layer(encoder_layer(input_))
+        encoding = encoder_layer(input_)
+        autoencoder = tf.keras.models.Model(input_, output)
+        encoder = tf.keras.models.Model(input_, encoding)
 
-    return autoencoder, encoder
+        return autoencoder, encoder
 
 
 def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
@@ -145,7 +184,6 @@ def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'li
                         pooling=None,
                         **kwargs
                         ):
-
     inputs = repeat_layers(Input, [(1,) for i in range(input_dim)])  # [a, b, c]
     perm_layer1 = PermutationalLayer(
         PermutationalEncoder(
@@ -167,7 +205,6 @@ def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'li
     permutation_model = Model(inputs, perm_output, name='permutation')
     print("# Multi-layer model summary")
     print(permutation_model.summary())
-
 
     kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, axis=0) if ortho_weights else None
     if non_neg_unit_norm:
