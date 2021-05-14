@@ -1,6 +1,8 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.constraints import Constraint
+import tensorflow_probability as tfp
+from dl_portfolio.pymarkowitz.Moments import MomentGenerator
 
 
 class WeightsOrthogonalityConstraint(Constraint):
@@ -67,7 +69,7 @@ class NonNegAndUnitNorm(Constraint):
 
 
 class UncorrelatedFeaturesConstraint(Constraint):
-    def __init__(self, encoding_dim, weightage=1.0):
+    def __init__(self, encoding_dim, weightage=1.0, **kwargs):
         self.encoding_dim = encoding_dim
         self.weightage = weightage
 
@@ -89,9 +91,88 @@ class UncorrelatedFeaturesConstraint(Constraint):
         if (self.encoding_dim <= 1):
             return 0.0
         else:
-            output = K.sum(K.square(
-                covariance - tf.math.multiply(covariance, tf.eye(self.encoding_dim))))
+            # lower triangular part minus diagonals
+            output = K.sum(K.square(tf.linalg.band_part(covariance, -1, 0) - tf.linalg.band_part(covariance, 0, 0)))
+            # K.sum(K.square(covariance - tf.math.multiply(covariance, tf.eye(self.encoding_dim))))
             return output
 
     def __call__(self, x):
         return self.weightage * self.uncorrelated_feature(x)
+
+
+class NewUncorrelatedFeaturesConstraint(Constraint):
+    def __init__(self, encoding_dim, weightage=1.0, use_cov=True):
+        self.encoding_dim = encoding_dim
+        self.weightage = weightage
+        self.use_cov = use_cov
+
+    def get_covariance(self, x):
+        x_centered_list = []
+
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+
+        x_centered = tf.stack(x_centered_list)
+
+        covariance = tfp.stats.covariance(
+            K.transpose(x_centered)
+        )
+
+        return covariance
+
+    def get_corr(self, x):
+        x_centered_list = []
+
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+
+        x_centered = tf.stack(x_centered_list)
+
+        correlation = tfp.stats.correlation(
+            K.transpose(x_centered)
+        )
+
+        return correlation
+
+    # Constraint penalty
+    def uncorrelated_feature(self, x):
+        if self.use_cov:
+            m = self.get_covariance(x)
+        else:
+            m = self.get_corr(x)
+
+        if (self.encoding_dim <= 1):
+            return 0.0
+        else:
+            output = K.sum(K.square(
+                m - tf.math.multiply(m, tf.eye(self.encoding_dim))))
+            return output
+
+    def __call__(self, x):
+        return self.weightage * self.uncorrelated_feature(x)
+
+
+class PositiveSkewnessConstraint(Constraint):
+    def __init__(self, encoding_dim, weightage=1.0):
+        self.encoding_dim = encoding_dim
+        self.weightage = weightage
+
+    def positive_skewed_features(self, x):
+        coskew = tf.convert_to_tensor(
+            MomentGenerator(tf.make_ndarray(x)).calc_coskew_mat(ret_format='raw'),
+            dtype=tf.float32
+        )
+        output = []
+        for i in range(self.encoding_dim):
+            pen_i = - (tf.linalg.band_part(coskew[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], -1,
+                                           0) - tf.linalg.band_part(
+                coskew[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], 0, 0))
+            pen_i = K.sum(K.square(pen_i))
+            output.append(pen_i)
+
+        output = K.sum(output)  # K.mean(output)
+
+        return output
+
+    def __call__(self, x):
+        return self.weightage * self.positive_skewed_features(x)
