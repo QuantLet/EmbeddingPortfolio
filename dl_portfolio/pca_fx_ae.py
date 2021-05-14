@@ -6,15 +6,17 @@ from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
 
-from dl_portfolio.pca_ae import NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_layer_by_name, heat_map, pca_permut_ae_model
+from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_layer_by_name, heat_map, pca_permut_ae_model
 from typing import List
 from sklearn import preprocessing
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from shutil import copyfile
+from dl_portfolio.data import drop_remainder
+import tensorflow as tf
+
 
 LOG_DIR = 'dl_portfolio/log_fx_AE'
-
 
 # coefficient of determination (R^2) for regression  (only for Keras tensors)
 def r_square(y_true, y_pred):
@@ -67,7 +69,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates
 
 
-def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
+def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends=False):
     data = pd.DataFrame()
     assets = []
     END = '2021-01-30 12:30:00'
@@ -119,8 +121,11 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
 
     data = data.loc[:END]
     if 'crypto' in type:
-        data = data.fillna(method='ffill')
-        data = data.dropna()
+        if drop_weekends:
+            data = data.dropna()
+        else:
+            data = data.fillna(method='ffill')
+            data = data.dropna()
     else:
         data = data.dropna()
     data = data.loc[:, assets]
@@ -130,10 +135,13 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto']):
 
 if __name__ == "__main__":
     from dl_portfolio.config.ae_config import *
+
+
     random_seed = np.random.randint (0, 100)
     np.random.seed(seed)
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
+
     if save:
         subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_s%H%M%S')
         if model_name is not None and model_name != '':
@@ -144,20 +152,37 @@ if __name__ == "__main__":
                  os.path.join(save_dir, 'ae_config.py'))
 
     for cv in data_specs:
+        cv_callbacks = [c for c in callbacks]
+
         LOGGER.info(f'Starting with cv: {cv}')
         if save:
             os.mkdir(f"{save_dir}/{cv}")
         data_spec = data_specs[cv]
 
-        data, assets = load_data(type=data_type)
+        data, assets = load_data(type=data_type, drop_weekends=drop_weekends)
+
+        # assets_mapping =
 
         if shuffle_columns:
             LOGGER.info('Shuffle assets order')
-            base_asset_order = assets.copy()
-            np.random.seed(random_seed)
-            np.random.shuffle(assets)
-            np.random.seed(seed)
+
+            # np.random.seed(random_seed)
+            # np.random.shuffle(assets)
+            # np.random.seed(seed)
+            if cv == 0:
+                random_assets = assets.copy()
+                np.random.seed(random_seed)
+                np.random.shuffle(random_assets)
+                np.random.seed(seed)
+            else:
+                np.random.seed(random_seed)
+                np.random.shuffle(random_assets)
+                np.random.seed(seed)
+
+        assets = random_assets
         LOGGER.info(f'Assets order: {assets}')
+
+        print(assets)
 
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
@@ -194,15 +219,48 @@ if __name__ == "__main__":
                                           ortho_weights=ortho_weights,
                                           non_neg_unit_norm=non_neg_unit_norm,
                                           uncorr_features=uncorr_features,
+                                          use_cov=use_cov,
                                           activity_regularizer=activity_regularizer,
                                           non_neg=non_neg,
-                                          weightage=weightage
+                                          weightage=weightage,
+                                          batch_size=batch_size if drop_remainder_obs else None,
+                                          weightage_ortho=weightage_ortho
                                           )
             train_input = train_data
             val_input = val_data
             test_input = test_data
         else:
             raise NotImplementedError()
+
+        if save:
+            cv_callbacks.append(
+                [
+                    tf.keras.callbacks.ModelCheckpoint(
+                        f"{save_dir}/{cv}/best_model.h5",
+                        verbose=1,
+                        save_best_only=True,
+                        mode='max',
+                        monitor="val_r_square")
+                ]
+
+            )
+
+        if callback_activity_regularizer:
+            tf.config.run_functions_eagerly(True)
+            cv_callbacks.append(ActivityRegularizer(model))
+
+        if drop_remainder_obs:
+            indices = list(range(train_input.shape[0]))
+            indices = drop_remainder(indices, batch_size, last=False)
+            train_input = train_input[indices, :]
+            train_data = train_data[indices, :]
+            dates['train'] = dates['train'][indices]
+            indices = list(range(val_input.shape[0]))
+            indices = drop_remainder(indices, batch_size, last=False)
+            val_input = val_input[indices, :]
+            val_data = val_data[indices, :]
+            dates['val'] = dates['val'][indices]
+
 
         print(model.summary())
         # Train
@@ -214,24 +272,13 @@ if __name__ == "__main__":
                                r_square,
                                tf.keras.metrics.RootMeanSquaredError(name='rmse')]
                       )
-        if save:
-            callbacks.append(
-                [
-                    tf.keras.callbacks.ModelCheckpoint(
-                        f"{save_dir}/{cv}/best_model.h5",
-                        verbose=1,
-                        save_best_only=True,
-                        mode='max',
-                        monitor="val_r_square")
-                ]
-            )
 
         history = model.fit(train_input, train_data,
                             epochs=epochs,
                             batch_size=batch_size,
                             validation_data=(val_input, val_data),
                             validation_batch_size=batch_size,
-                            callbacks=callbacks,
+                            callbacks=cv_callbacks,
                             shuffle=False,
                             verbose=1)
         if save:
@@ -285,6 +332,7 @@ if __name__ == "__main__":
 
         # Results
         val_prediction = model.predict(val_input)
+        val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
         # indices = np.random.choice(list(range(len(val_data))), 5).tolist()
         # xticks = assets
