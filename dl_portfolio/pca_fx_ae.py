@@ -6,7 +6,8 @@ from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
 
-from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, get_layer_by_name, heat_map, pca_permut_ae_model
+from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, \
+    get_layer_by_name, heat_map, pca_permut_ae_model
 from typing import List
 from sklearn import preprocessing
 import tensorflow as tf
@@ -15,8 +16,8 @@ from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 import tensorflow as tf
 
-
 LOG_DIR = 'dl_portfolio/log_fx_AE'
+
 
 # coefficient of determination (R^2) for regression  (only for Keras tensors)
 def r_square(y_true, y_pred):
@@ -69,10 +70,10 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates
 
 
-def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends=False):
+def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], drop_weekends=False):
     data = pd.DataFrame()
     assets = []
-    END = '2021-01-30 12:30:00'
+    end = '2021-01-30 12:30:00'
     for asset_class in type:
         if asset_class == 'crypto':
             LOGGER.info('Loading crypto data')
@@ -89,7 +90,7 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends
             del crypto_data
         elif asset_class == 'forex':
             LOGGER.info('Loading forex data')
-            fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD']
+            fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD', 'HKDUSD']
             fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
             fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
             data = pd.concat([data, fxdata], 1)
@@ -106,12 +107,20 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends
             assets = assets + fx_metals_assets
         elif asset_class == 'indices':
             LOGGER.info('Loading indices data')
-            indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD']
+            indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD', 'NSXUSD', 'HKXUSD', 'AUXUSD']
             indices_data = pd.read_pickle('./data/histdatacom/indices_f_3600_2014_2021_close_index.p')
             indices_data = indices_data.loc[:, pd.IndexSlice[indices, 'close']].droplevel(1, 1)
             data = pd.concat([data, indices_data], 1)
             del indices_data
             assets = assets + indices
+        elif asset_class == 'commodities':
+            LOGGER.info('Loading commodities data')
+            com_assets = ['WTIUSD', 'BCOUSD']
+            com_data = pd.read_pickle('./data/histdatacom/commodities_f_3600_2014_2021_close_index.p')
+            com_data = com_data.loc[:, pd.IndexSlice[com_assets, 'close']].droplevel(1, 1)
+            data = pd.concat([data, com_data], 1)
+            del com_data
+            assets = assets + com_assets
         else:
             raise ValueError(asset_class)
 
@@ -119,7 +128,7 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends
     # data = data.loc[:, pd.IndexSlice[assets, 'price']]
     # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
 
-    data = data.loc[:END]
+    data = data.loc[:end]
     if 'crypto' in type:
         if drop_weekends:
             data = data.dropna()
@@ -136,8 +145,7 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto'], drop_weekends
 if __name__ == "__main__":
     from dl_portfolio.config.ae_config import *
 
-
-    random_seed = np.random.randint (0, 100)
+    random_seed = np.random.randint(0, 100)
     np.random.seed(seed)
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
@@ -150,6 +158,10 @@ if __name__ == "__main__":
         os.mkdir(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
+    data, assets = load_data(type=data_type, drop_weekends=drop_weekends)
+    base_asset_order = assets.copy()
+    assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
+
 
     for cv in data_specs:
         cv_callbacks = [c for c in callbacks]
@@ -159,40 +171,29 @@ if __name__ == "__main__":
             os.mkdir(f"{save_dir}/{cv}")
         data_spec = data_specs[cv]
 
-        data, assets = load_data(type=data_type, drop_weekends=drop_weekends)
-
-        # assets_mapping =
-
         if shuffle_columns:
             LOGGER.info('Shuffle assets order')
-
-            # np.random.seed(random_seed)
-            # np.random.shuffle(assets)
-            # np.random.seed(seed)
             if cv == 0:
                 random_assets = assets.copy()
                 np.random.seed(random_seed)
                 np.random.shuffle(random_assets)
                 np.random.seed(seed)
+                assets = random_assets
             else:
                 np.random.seed(random_seed)
-                np.random.shuffle(random_assets)
+                np.random.shuffle(assets)
                 np.random.seed(seed)
 
-        assets = random_assets
         LOGGER.info(f'Assets order: {assets}')
-
-        print(assets)
-
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
 
-        if shuffle_columns_while_training:
-            train_data = np.transpose(train_data)
-            np.random.seed(random_seed)
-            np.random.shuffle(train_data)
-            np.random.seed(seed)
-            train_data = np.transpose(train_data)
+        # if shuffle_columns_while_training:
+        #     train_data = np.transpose(train_data)
+        #     np.random.seed(random_seed)
+        #     np.random.shuffle(train_data)
+        #     np.random.seed(seed)
+        #     train_data = np.transpose(train_data)
 
         LOGGER.info(f'Train shape: {train_data.shape}')
         LOGGER.info(f'Validation shape: {val_data.shape}')
@@ -200,31 +201,23 @@ if __name__ == "__main__":
         input_dim = len(assets)
         if model_type == 'pca_permut_ae_model':
             model, encoder = pca_permut_ae_model(input_dim, encoding_dim, activation=activation,
-                                          kernel_initializer=kernel_initializer,
-                                          ortho_weights=ortho_weights,
-                                          non_neg_unit_norm=non_neg_unit_norm,
-                                          uncorr_features=uncorr_features,
-                                          activity_regularizer=activity_regularizer,
-                                          non_neg=non_neg,
-                                          weightage=weightage,
-                                          pooling=pooling
-                                          )
-            train_input = [train_data[:,i].reshape(-1,1) for i in range(len(assets))]
-            val_input = [val_data[:,i].reshape(-1,1) for i in range(len(assets))]
-            test_input = [test_data[:,i].reshape(-1,1) for i in range(len(assets))]
+                                                 kernel_initializer=kernel_initializer,
+                                                 kernel_constraint=kernel_constraint,
+                                                 kernel_regularizer=kernel_regularizer,
+                                                 activity_regularizer=activity_regularizer,
+                                                 pooling=pooling
+                                                 )
+            train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+            val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+            test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
 
         elif model_type == 'pca_ae_model':
             model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
                                           kernel_initializer=kernel_initializer,
-                                          ortho_weights=ortho_weights,
-                                          non_neg_unit_norm=non_neg_unit_norm,
-                                          uncorr_features=uncorr_features,
-                                          use_cov=use_cov,
+                                          kernel_constraint=kernel_constraint,
+                                          kernel_regularizer=kernel_regularizer,
                                           activity_regularizer=activity_regularizer,
-                                          non_neg=non_neg,
-                                          weightage=weightage,
                                           batch_size=batch_size if drop_remainder_obs else None,
-                                          weightage_ortho=weightage_ortho
                                           )
             train_input = train_data
             val_input = val_data
@@ -260,7 +253,6 @@ if __name__ == "__main__":
             val_input = val_input[indices, :]
             val_data = val_data[indices, :]
             dates['val'] = dates['val'][indices]
-
 
         print(model.summary())
         # Train
@@ -309,39 +301,10 @@ if __name__ == "__main__":
         model.evaluate(train_input, train_data)
         model.evaluate(val_input, val_data)
 
-        # PCA baseline
-        # pca = PCA(n_components=encoding_dim, random_state=seed)
-        # pca.fit(train_data)
-        # encoding_pca = pca.components_.T
-        # encoding_pca = pd.DataFrame(encoding_pca, index=assets)
-        #
-        # train_pca_cluster_portfolio = pca.transform(train_data)
-        # train_pca_cluster_portfolio = pd.DataFrame(train_pca_cluster_portfolio, index=dates['train'])
-        #
-        # val_pca_cluster_portfolio = pca.transform(val_data)
-        # val_pca_cluster_portfolio = pd.DataFrame(val_pca_cluster_portfolio, index=dates['val'])
-        #
-        # test_pca_cluster_portfolio = pca.transform(test_data)
-        # test_pca_cluster_portfolio = pd.DataFrame(test_pca_cluster_portfolio, index=dates['test'])
-        #
-        # pca_cluster_portfolio = {
-        #     'train': train_pca_cluster_portfolio,
-        #     'val': val_pca_cluster_portfolio,
-        #     'test': test_pca_cluster_portfolio
-        # }
-
         # Results
         val_prediction = model.predict(val_input)
         val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
-        # indices = np.random.choice(list(range(len(val_data))), 5).tolist()
-        # xticks = assets
-        # for i in indices:
-        #     plt.figure()
-        #     plt.scatter(xticks, val_data[i], label='truth')
-        #     plt.scatter(xticks, val_prediction.values[i], label='prediction')
-        #     plt.legend()
-        #     plt.show()
 
         encoder_layer = get_layer_by_name(name='encoder', model=model)
         encoder_weights = encoder_layer.get_weights()
@@ -394,7 +357,6 @@ if __name__ == "__main__":
             'val': val_cluster_portfolio,
             'test': test_cluster_portfolio
         }
-
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.info(f"Unit norm constraint:\n{encoder.layers[-1].kernel.numpy().sum(0)}")

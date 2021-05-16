@@ -1,44 +1,51 @@
+import tensorflow as tf
 import numpy as np
 from dl_portfolio.pca_ae import NonNegAndUnitNormInit
-import tensorflow as tf
+from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm, WeightsOrthogonalityConstraint,
+                                      PositiveSkewnessConstraint)
 
 # seed = np.random.randint(100)
-data_type = ['indices', 'forex', 'forex_metals', 'crypto']
-shuffle_columns = False  # True
+data_type = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities']
+shuffle_columns = True  # True
+drop_weekends = False
 shuffle_columns_while_training = False
 model_type = 'pca_ae_model'
-seed = 69
+seed = np.random.randint(0, 100)
 fx = True
 save = True
-model_name = f'New_cov'
+model_name = f'coskew_encoding_4_nokernel_reg_no_const'
+encoding_dim = 4
 learning_rate = 1e-3
-epochs = 250
-batch_size = 128
+epochs = 1000
+batch_size = 256
+drop_remainder_obs = True
 activation = 'elu'
-encoding_dim = 3
 val_size = 30 * 3 * 24
-uncorr_features = True
-weightage = 1e-2  # 1e-4  # 1e-2
-activity_regularizer = None  # tf.keras.regularizers.l1(1e-3)
 loss = 'mae'
 rescale = None
+
+# Constraints and regularizer
+# activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim, norm='1/2', weightage=1.)
+# activity_regularizer = tf.keras.regularizers.l1(1e-3)
+activity_regularizer = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1')
+callback_activity_regularizer = False
 kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
-ortho_weights = True
-non_neg_unit_norm = False
-non_neg = True
+kernel_regularizer = None # WeightsOrthogonalityConstraint(encoding_dim, weightage=1e-2, axis=0)
+kernel_constraint = tf.keras.constraints.NonNeg() # NonNegAndUnitNorm(axis=0)  # tf.keras.constraints.NonNeg()
+
+
 # pooling = 'average'
 
-
 def scheduler(epoch):
-    return 1e-3 * np.exp(-epoch / 3000)
+    return 1e-3 * np.exp(-epoch / 5000)
 
 
 callbacks = [
     tf.keras.callbacks.EarlyStopping(
-        monitor='val_r_square', min_delta=1e-4, patience=100, verbose=1,
-        mode='max', baseline=None, restore_best_weights=True
+        monitor='val_r_square', min_delta=1e-3, patience=50, verbose=1,
+        mode='max', restore_best_weights=True
     ),
-    tf.keras.callbacks.LearningRateScheduler(scheduler, verbose=1)
+    # tf.keras.callbacks.LearningRateScheduler(scheduler, verbose=1),
 ]
 
 data_specs = {
