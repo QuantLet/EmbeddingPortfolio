@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.constraints import Constraint
 import tensorflow_probability as tfp
+import numpy as np
 
 
 class WeightsOrthogonalityConstraint(Constraint):
@@ -117,10 +118,12 @@ class OldUncorrelatedFeaturesConstraint(Constraint):
 
 
 class UncorrelatedFeaturesConstraint(Constraint):
-    def __init__(self, encoding_dim, weightage=1.0, use_cov=True):
+    def __init__(self, encoding_dim: int, weightage: float = 1., norm: str = '1', use_cov: bool = True):
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.use_cov = use_cov
+        self.norm = norm
+        self.m = None
 
     def get_covariance(self, x):
         x_centered_list = []
@@ -157,16 +160,21 @@ class UncorrelatedFeaturesConstraint(Constraint):
     # Y
     def uncorrelated_feature(self, x):
         if self.use_cov:
-            self.covariance = self.get_covariance(x)
+            self.m = self.get_covariance(x)
         else:
-            self.covariance = self.get_corr(x)
+            self.m = self.get_corr(x)
 
         if self.encoding_dim <= 1:
             return 0.0
         else:
-            # take sqrt => avoid overweighting fat tails
-            output = K.sum(K.square(self.covariance - tf.math.multiply(self.covariance, tf.eye(self.encoding_dim)))) / 2
-            return output
+            output = K.sum(K.square(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim)))) / 2
+            if self.norm == '1':
+                return output
+            elif self.norm == '1/2':
+                # avoid overweighting fat tails
+                return K.sqrt(output)
+            else:
+                raise NotImplementedError("norm must be '1' or '1/2' ")
 
     def __call__(self, x):
         self.pen = self.weightage * self.uncorrelated_feature(x)
@@ -174,17 +182,18 @@ class UncorrelatedFeaturesConstraint(Constraint):
 
     # def get_config(self):  # required class method
     #     return {"uncorr": float(K.get_value(self.pen)),
-    #             "covariance": float(K.get_value(self.covariance))}
+    #             "covariance": float(K.get_value(self.m))}
 
 
 class PositiveSkewnessConstraint(Constraint):
-    def __init__(self, encoding_dim, normalize=True, weightage=1.0):
+    def __init__(self, encoding_dim, normalize=True, weightage=1.0, norm='1'):
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.normalize = normalize
+        self.norm = norm
+        self.m = None
 
-    def positive_skewed_features(self, x):
-
+    def get_coskew(self, x):
         x = K.transpose(x)
         x = x - K.mean(x, axis=1, keepdims=True)
         num_obs = x.shape[1]
@@ -206,17 +215,54 @@ class PositiveSkewnessConstraint(Constraint):
             std_mat = K.dot(std_mat, kron_mat)
             coskew = coskew / std_mat
 
+        return coskew
+
+    def skewed_features(self, x):
+        """
+        Idea: penalize for coskewness near 0: get two clusters: one of highly positive skew, one of highly negative skew
+        :param x:
+        :return:
+        """
+        self.m = self.get_coskew(x)
+        self.m = 1 / self.m
+
         output = []
         for i in range(self.encoding_dim):
-            pen_i = - (tf.linalg.band_part(coskew[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], -1,
-                                           0) - tf.linalg.band_part(
-                coskew[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], 0, 0))
-            pen_i = K.sum(K.square(pen_i))
-            output.append(pen_i)
+            block = self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim] \
+                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], tf.eye(self.encoding_dim))
+            block = K.sum(K.square(block))
+            output.append(block)
 
-        output = K.sum(output)  # tf.reduce_mean(output) # tf.reduce_sum(output)
+        if self.norm == '1':
+            pass
+        elif self.norm == '1/2':
+            output = [K.sqrt(out) for out in output]
 
-        return output
+        return K.sum(output)  # K.reduce_mean ?
+
+    def positive_skewed_features(self, x):
+        """
+        Idea: penalized for negative coskewness
+        :param x:
+        :return:
+        """
+        self.m = self.get_coskew(x)
+        output = []
+        for i in range(self.encoding_dim):
+            block = self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim] \
+                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], tf.eye(self.encoding_dim))
+            block = tf.clip_by_value(block, -1e6, 1e6)
+            block = tf.clip_by_value(- block, 0, 1e6)
+            block = K.sum(block) / 2 # since symmetric matrix
+            output.append(block)
+
+        # if self.norm == '1':
+        #     pass
+        # elif self.norm == '1/2':
+        #     output = [K.sqrt(out) for out in output]
+
+        return K.sum(output)  # K.reduce_mean ?
 
     def __call__(self, x):
-        return self.weightage * self.positive_skewed_features(x)
+        self.pen = self.weightage * self.positive_skewed_features(x)
+        return self.pen
