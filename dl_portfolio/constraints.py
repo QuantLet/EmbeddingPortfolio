@@ -132,11 +132,104 @@ class UncorrelatedFeaturesConstraint(Constraint):
             x_centered_list.append(x[:, i] - K.mean(x[:, i]))
 
         x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
         # random_perturb = tf.random.normal(tf.shape(x_centered), 0, 1e-6, dtype=tf.float32)
         # x_centered = x_centered + random_perturb
 
         covariance = tfp.stats.covariance(
-            K.transpose(x_centered)
+            x_centered
+        )
+
+        return covariance
+
+    def get_corr(self, x):
+        x_centered_list = []
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        # random_perturb = tf.random.normal(tf.shape(x_centered), 0, 1e-6, dtype=tf.float32)
+        # x_centered = x_centered + random_perturb
+
+        correlation = tfp.stats.correlation(
+            x_centered
+        )
+
+        return correlation
+
+    # Constraint penalty => Could we look at conditional covariance: on tail
+    # Y
+    def uncorrelated_feature(self, x):
+        if self.use_cov:
+            self.m = self.get_covariance(x)
+        else:
+            self.m = self.get_corr(x)
+
+        if self.encoding_dim <= 1:
+            return 0.0
+        else:
+            output = K.sum(K.square(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim)))) / 2
+            if self.norm == '1':
+                return output
+            elif self.norm == '1/2':
+                # avoid overweighting fat tails
+                return K.sqrt(output)
+            else:
+                raise NotImplementedError("norm must be '1' or '1/2' ")
+
+    def __call__(self, x):
+        self.pen = self.weightage * self.uncorrelated_feature(x)
+        return self.pen
+
+    # def get_config(self):  # required class method
+    #     return {"uncorr": float(K.get_value(self.pen)),
+    #             "covariance": float(K.get_value(self.m))}
+
+
+class TailUncorrelatedFeaturesConstraint(Constraint):
+    def __init__(self, encoding_dim: int, q: float, side: str, weightage: float = 1., norm: str = '1',
+                 use_cov: bool = True):
+        self.encoding_dim = encoding_dim
+        self.weightage = weightage
+        self.use_cov = use_cov
+        self.norm = norm
+        self.m = None
+        self.q = q
+        self.side = side
+        self.num_quantiles = int(100 / (self.q * 100))
+        assert side in ['left', 'right']
+
+    def get_quantiles(self, x):
+        quantiles = []
+        for i in range(self.encoding_dim):
+            quantiles.append(tfp.stats.quantiles(x[:, i], num_quantiles=self.num_quantiles)[1])
+        return quantiles
+
+    def get_covariance(self, x):
+        x_centered_list = []
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        # random_perturb = tf.random.normal(tf.shape(x_centered), 0, 1e-6, dtype=tf.float32)
+        # x_centered = x_centered + random_perturb
+
+        quantiles = self.get_quantiles(x_centered)
+        x_centered_list = []
+        for i in range(self.encoding_dim):
+            if self.side == 'left':
+                x_centered_list.append(tf.clip_by_value(x_centered[:, i], -1e12, quantiles[i]))
+            elif self.side == 'right':
+                x_centered_list.append(tf.clip_by_value(x_centered[:, i], quantiles[i], 1e12))
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        covariance = tfp.stats.covariance(
+            x_centered
         )
 
         return covariance
@@ -229,7 +322,8 @@ class PositiveSkewnessConstraint(Constraint):
         output = []
         for i in range(self.encoding_dim):
             block = self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim] \
-                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], tf.eye(self.encoding_dim))
+                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim],
+                                       tf.eye(self.encoding_dim))
             block = K.sum(K.square(block))
             output.append(block)
 
@@ -250,10 +344,11 @@ class PositiveSkewnessConstraint(Constraint):
         output = []
         for i in range(self.encoding_dim):
             block = self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim] \
-                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim], tf.eye(self.encoding_dim))
+                    - tf.math.multiply(self.m[:, i * self.encoding_dim:(i + 1) * self.encoding_dim],
+                                       tf.eye(self.encoding_dim))
             block = tf.clip_by_value(block, -1e6, 1e6)
             block = tf.clip_by_value(- block, 0, 1e6)
-            block = K.sum(block) / 2 # since symmetric matrix
+            block = K.sum(block) / 2  # since symmetric matrix
             output.append(block)
 
         # if self.norm == '1':
