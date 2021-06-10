@@ -5,7 +5,7 @@ import json, os, pickle
 from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
-
+from dl_portfolio.pymarkowitz.Moments import MomentGenerator
 from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, \
     get_layer_by_name, heat_map, pca_permut_ae_model
 from typing import List
@@ -15,6 +15,8 @@ from tensorflow.keras import backend as K
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 import tensorflow as tf
+from tensorboard.plugins import projector
+from dl_portfolio.losses import weighted_mae, weighted_mse
 
 LOG_DIR = 'dl_portfolio/log_fx_AE'
 
@@ -162,7 +164,6 @@ if __name__ == "__main__":
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
-
     for cv in data_specs:
         cv_callbacks = [c for c in callbacks]
 
@@ -218,6 +219,7 @@ if __name__ == "__main__":
                                           kernel_regularizer=kernel_regularizer,
                                           activity_regularizer=activity_regularizer,
                                           batch_size=batch_size if drop_remainder_obs else None,
+                                          loss=loss
                                           )
             train_input = train_data
             val_input = val_data
@@ -258,12 +260,37 @@ if __name__ == "__main__":
         # Train
         LOGGER.info('Start training')
         print(input_dim)
-        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
-                      loss=tf.keras.losses.MeanSquaredError(),
-                      metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
-                               r_square,
-                               tf.keras.metrics.RootMeanSquaredError(name='rmse')]
-                      )
+
+        if loss == 'mse_with_covariance_penalty':
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
+                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
+                                   r_square,
+                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+                          )
+        elif loss == 'mse':
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
+                          loss=tf.keras.losses.MeanSquaredError(),
+                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
+                                   r_square,
+                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+                          )
+        elif loss == 'weighted_mse':
+            raise NotImplementedError()
+            weights = tf.Variable(
+                np.random.normal(size=train_data.shape[0] * train_data.shape[1]).reshape(train_data.shape[0],
+                                                                                         train_data.shape[1]),
+                dtype=tf.float32
+            )
+            def custom_loss(y_true, y_pred):
+                return weighted_mse(y_true, y_pred, weights)
+
+
+            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
+                          loss=custom_loss,
+                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
+                                   r_square,
+                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+                          )
 
         history = model.fit(train_input, train_data,
                             epochs=epochs,
@@ -275,6 +302,31 @@ if __name__ == "__main__":
                             verbose=1)
         if save:
             model.save(f"{save_dir}/{cv}/model.h5")
+
+            # Tensorboard Embedding visualization
+            # Set up a logs directory, so Tensorboard knows where to look for files.
+            log_dir = f"{save_dir}/{cv}/tensorboard/"
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+
+            # Save Labels separately on a line-by-line manner.
+            with open(os.path.join(log_dir, 'metadata.tsv'), "w") as f:
+                for asset in assets:
+                    f.write("{}\n".format(asset))
+
+            # Save the weights we want to analyze as a variable.
+            encoder_layer = get_layer_by_name(name='encoder', model=model)
+            encoder_weights = tf.Variable(encoder_layer.get_weights()[0])
+            # Create a checkpoint from embedding, the filename and key are the name of the tensor.
+            checkpoint = tf.train.Checkpoint(embedding=encoder_weights)
+            checkpoint.save(os.path.join(log_dir, "embedding.ckpt"))
+            # Set up config.
+            config = projector.ProjectorConfig()
+            embedding = config.embeddings.add()
+            # The name of the tensor will be suffixed by `/.ATTRIBUTES/VARIABLE_VALUE`.
+            embedding.tensor_name = "embedding/.ATTRIBUTES/VARIABLE_VALUE"
+            embedding.metadata_path = 'metadata.tsv'
+            projector.visualize_embeddings(log_dir, config)
 
         fix, axs = plt.subplots(1, 4, figsize=(15, 5))
         axs[0].plot(history.history['loss'], label='loss')
@@ -289,6 +341,7 @@ if __name__ == "__main__":
         axs[3].plot(history.history['r_square'], label='R2')
         axs[3].plot(history.history['val_r_square'], label='val_R2')
         axs[3].legend()
+
         if save:
             plt.savefig(f"{save_dir}/{cv}/history.png")
         plt.show()
@@ -298,8 +351,8 @@ if __name__ == "__main__":
             model.load_weights(f"{save_dir}/{cv}/best_model.h5")
 
         # Evaluate
-        model.evaluate(train_input, train_data)
-        model.evaluate(val_input, val_data)
+        # model.evaluate(train_input, train_data)
+        # model.evaluate(val_input, val_data)
 
         # Results
         val_prediction = model.predict(val_input)
@@ -316,13 +369,6 @@ if __name__ == "__main__":
         test_prediction = scaler.inverse_transform(test_prediction)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
 
-        train_data = scaler.inverse_transform(train_data)
-        train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
-        val_data = scaler.inverse_transform(val_data)
-        val_data = pd.DataFrame(val_data, index=dates['val'], columns=assets)
-        test_data = scaler.inverse_transform(test_data)
-        test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
-
         # train_cluster_portfolio = encoder.predict(train_data)
         # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
         train_cluster_portfolio = pd.DataFrame(np.dot(train_data, encoder_weights / encoder_weights.sum()),
@@ -333,10 +379,23 @@ if __name__ == "__main__":
         val_cluster_portfolio = pd.DataFrame(np.dot(val_data, encoder_weights / encoder_weights.sum()),
                                              index=dates['val'])
 
+        coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
+        LOGGER.info(
+            f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
+
         # test_cluster_portfolio = encoder.predict(test_data)
         # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
         test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
                                               index=dates['test'])
+
+        LOGGER.info(
+            f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
+        train_data = scaler.inverse_transform(train_data)
+        train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
+        val_data = scaler.inverse_transform(val_data)
+        val_data = pd.DataFrame(val_data, index=dates['val'], columns=assets)
+        test_data = scaler.inverse_transform(test_data)
+        test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
 
         if shuffle_columns:
             LOGGER.info('Reorder results with base asset order')
@@ -347,10 +406,17 @@ if __name__ == "__main__":
             test_prediction = test_prediction.loc[:, base_asset_order]
             encoder_weights = encoder_weights.loc[base_asset_order, :]
 
-        if save:
-            heat_map(encoder_weights, show=True, save=save, save_dir=f"{save_dir}/{cv}", vmax=1., vmin=0.)
+        if kernel_constraint is not None:
+            vmax = 1.
+            vmin = 0.
         else:
-            heat_map(encoder_weights, show=True, vmax=1., vmin=0.)
+            vmax = None
+            vmin = None
+
+        if save:
+            heat_map(encoder_weights, show=True, save=save, save_dir=f"{save_dir}/{cv}", vmax=vmax, vmin=vmin)
+        else:
+            heat_map(encoder_weights, show=True, vmax=vmax, vmin=vmin)
 
         cluster_portfolio = {
             'train': train_cluster_portfolio,
