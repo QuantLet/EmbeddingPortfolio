@@ -348,16 +348,29 @@ class PositiveSkewnessConstraint(Constraint):
                                        tf.eye(self.encoding_dim))
             block = tf.clip_by_value(block, -1e6, 1e6)
             block = tf.clip_by_value(- block, 0, 1e6)
-            block = K.sum(block) / 2  # since symmetric matrix
+            block = K.sum(block) / 2 # tf.reduce_mean(block)  # K.sum(K.square(block)) / 2  # since symmetric matrix
             output.append(block)
 
-        # if self.norm == '1':
-        #     pass
-        # elif self.norm == '1/2':
-        #     output = [K.sqrt(out) for out in output]
+        if self.norm == '1':
+            pass
+        elif self.norm == '1/2':
+            output = [K.sqrt(out) for out in output]
 
-        return K.sum(output)  # K.reduce_mean ?
+        return tf.reduce_mean(output)  # K.mean(output) # K.sum(output)  # K.reduce_mean ?
 
     def __call__(self, x):
         self.pen = self.weightage * self.positive_skewed_features(x)
+        return self.pen
+
+
+class PositiveSkewnessUncorrConstraint(PositiveSkewnessConstraint, UncorrelatedFeaturesConstraint):
+    def __init__(self, encoding_dim, coske_weightage=1.0, uncorr_weightage=1.0):
+        super(PositiveSkewnessConstraint).__init__(encoding_dim, normalize=False, weightage=coske_weightage,
+                                                         norm='1')
+        super(UncorrelatedFeaturesConstraint).__init__(encoding_dim, weightage=uncorr_weightage, norm='1/2')
+
+    def __call__(self, x):
+        coskew = self.coske_weightage * self.positive_skewed_features(x)
+        uncorr = self.uncorr_weightage * self.uncorrelated_feature(x)
+        self.pen = (coskew + uncorr) / 2
         return self.pen
