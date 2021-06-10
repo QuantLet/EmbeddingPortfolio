@@ -17,8 +17,50 @@ import seaborn as sns
 from superkeras.permutational_layer import *
 from tensorflow.keras.utils import CustomObjectScope
 from tensorflow.keras.callbacks import Callback
+import tensorflow_probability as tfp
 
 LOG_DIR = 'dl_portfolio/log_AE'
+
+def covariance_penalty(x, x_hat):
+    weightage = 1.
+    norm = '1/2'
+    encoding_dim = x.shape[-1]
+
+    def get_covariance(x):
+        x_centered_list = []
+        for i in range(encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        covariance = tfp.stats.covariance(
+            x_centered
+        )
+        return covariance
+
+    def uncorrelated_feature(x):
+        m = get_covariance(x)
+        if encoding_dim <= 1:
+            return 0.0
+        else:
+            output = K.sum(K.square(m - tf.math.multiply(m, tf.eye(encoding_dim)))) / 2
+            if norm == '1':
+                return output
+            elif norm == '1/2':
+                # avoid overweighting fat tails
+                return K.sqrt(output)
+            else:
+                raise NotImplementedError("norm must be '1' or '1/2' ")
+
+    pen = weightage * uncorrelated_feature(x)
+    return pen
+
+def mse_with_covariance_penalty(x, x_hat: List):
+
+    loss = K.mean(K.square(x - x_hat[0])) + covariance_penalty(x_hat[1], '')
+
+    return loss
 
 
 def _get_activity_regularizers(model):
@@ -39,13 +81,12 @@ class ActivityRegularizer(Callback):
         self.activity_regularizers = _get_activity_regularizers(model)
 
     def on_epoch_end(self, epoch, logs=None):
-        print(f'epoch {epoch}')
+        LOGGER.info(f'epoch {epoch}')
         # 'activity_regularizer' references model layer's activity_regularizer (in this
         # case 'MyActivityRegularizer'), so its attributes ('a') can be set directly
         for i, activity_regularizer in enumerate(self.activity_regularizers):
-            print(i)
-            print(f'output {i}', K.eval(activity_regularizer.pen))
-            print(f'cov {i}\n', K.eval(activity_regularizer.covariance))
+            LOGGER.info(f'pen: {K.eval(activity_regularizer.pen)}')
+            LOGGER.info(f'm:\n {K.eval(activity_regularizer.m)}')
 
 
 def heat_map(encoder_weights, show=False, save=False, save_dir=None, **kwargs):
@@ -118,34 +159,25 @@ class NonNegAndUnitNormInit(tf.keras.initializers.Initializer):
 def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
                  kernel_initializer: str = 'glorot_uniform',
                  ortho_weights: bool = True,
-                 non_neg_unit_norm: bool = True,
-                 uncorr_features: bool = True,
                  activity_regularizer=None,
-                 non_neg=False,
+                 kernel_constraint=None,
+                 kernel_regularizer=None,
                  **kwargs
                  ):
-    use_cov = kwargs.get('use_cov', True)
     batch_size = kwargs.get('batch_size', None)
-    weightage_ortho = kwargs.get('weightage_ortho', 1.)
-    kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, weightage=weightage_ortho,
-                                                        axis=0) if ortho_weights else None
-    if non_neg_unit_norm:
-        assert not non_neg
-        kernel_constraint = NonNegAndUnitNorm(axis=0)
-    elif non_neg:
-        kernel_constraint = tf.keras.constraints.NonNeg()
-    else:
-        kernel_constraint = None
-    if activity_regularizer is None:
-        weightage = kwargs.get('weightage', 1.)
-        activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
-                                                              use_cov=use_cov,
-                                                              weightage=weightage) if uncorr_features else None
-        # activity_regularizer = PositiveSkewnessConstraint(encoding_dim,
-        #                                                   weightage=weightage) if uncorr_features else None
+    loss = kwargs.get('loss', None)
 
-    else:
-        assert not uncorr_features
+    # if activity_regularizer is None:
+    #     weightage = kwargs.get('weightage', 1.)
+    #     activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
+    #                                                           use_cov=use_cov,
+    #                                                           norm=norm,
+    #                                                           weightage=weightage) if uncorr_features else None
+    #     # activity_regularizer = PositiveSkewnessConstraint(encoding_dim,
+    #     #                                                   weightage=weightage) if uncorr_features else None
+    #
+    # else:
+    #     assert not uncorr_features
 
     with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
         input_ = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='input')
@@ -170,6 +202,10 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
         encoding = encoder_layer(input_)
         autoencoder = tf.keras.models.Model(input_, output)
         encoder = tf.keras.models.Model(input_, encoding)
+
+        if loss == 'mse_with_covariance_penalty':
+            loss = mse_with_covariance_penalty(input_, [output, encoding])
+            autoencoder.add_loss(loss)
 
         return autoencoder, encoder
 
