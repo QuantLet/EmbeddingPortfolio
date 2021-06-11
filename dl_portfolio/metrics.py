@@ -1,5 +1,49 @@
 import tensorflow as tf
 import numpy as np
+import tensorflow.keras.backend as K
+
+def r_square(y_true, y_pred):
+    SS_res = K.sum(K.square(y_true - y_pred))
+    SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
+    return (1 - SS_res / (SS_tot + K.epsilon()))
+
+class RSquare(tf.keras.metrics.Metric):
+    def __init__(self, name='r_square', **kwargs):
+        super(RSquare, self).__init__(name=name, **kwargs)
+
+        self.r_square = self.add_weight(name='r_square', initializer='zeros')
+        self.squared_sum = self.add_weight(
+            name="squared_sum", initializer="zeros")
+        self.sum = self.add_weight(
+            name="sum",  initializer="zeros"
+        )
+        self.res = self.add_weight(
+            name="residual", initializer="zeros"
+        )
+        self.count = self.add_weight(
+            name="count", initializer="zeros"
+        )
+        self.num_samples = self.add_weight(name="num_samples", dtype=tf.int32)
+
+    def update_state(self, y_true, y_pred):
+        # y_true = tf.cast(y_true, dtype=self._dtype)
+        # y_pred = tf.cast(y_pred, dtype=self._dtype)
+
+        self.sum.assign_add(tf.reduce_sum(y_true, axis=0))
+        self.squared_sum.assign_add(tf.reduce_sum(y_true, axis=0))
+        self.res.assign_add(
+            tf.reduce_sum((y_true - y_pred) ** 2, axis=0)
+        )
+        self.total.assign_add(K.sum(K.square(y_true - K.mean(y_true))))
+        # self.count.assign_add(tf.reduce_sum(sample_weight, axis=0))
+        self.count = y_true.shape[0]
+        self.num_samples.assign_add(tf.size(y_true))
+
+    def result(self):
+        mean = self.sum / self.count
+        total = self.squared_sum - mean
+        raw_scores = 1 - (self.res / total)
+        raw_scores = tf.where(tf.math.is_inf(raw_scores), 0.0, raw_scores)
 
 
 # TODO: what about edgeworth expansion for sharpe ratio => estimate variance with expansion, maybe more differentiable or look at probabilistic sharpe ratio
