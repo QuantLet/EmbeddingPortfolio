@@ -10,7 +10,7 @@ from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 from tensorboard.plugins import projector
 from dl_portfolio.losses import weighted_mae, weighted_mse
-from dl_portfolio.ae_data import get_features, load_data
+from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_from_df, labelQuantile
 
 LOG_DIR = 'dl_portfolio/log_fx_AE'
 
@@ -72,6 +72,20 @@ if __name__ == "__main__":
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
+    if loss == 'weighted_mse':
+        LOGGER.info('Computing sample weights ...')
+        d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], drop_weekends=True)
+        t_sample_weights = get_sample_weights_from_df(d, labelQuantile, **label_param)
+        d, _ = load_data(type=['crypto'], drop_weekends=False)
+        c_sample_weights = get_sample_weights_from_df(d, labelQuantile, **label_param)
+        df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
+        df_sample_weights = df_sample_weights.fillna(0.0)
+        df_sample_weights = df_sample_weights[assets]
+        del d
+        del c_sample_weights
+        del t_sample_weights
+        LOGGER.info('Done')
+
     for cv in data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
         if save:
@@ -92,8 +106,12 @@ if __name__ == "__main__":
                 np.random.seed(seed)
 
         LOGGER.info(f'Assets order: {assets}')
+        if loss == 'weighted_mse':
+            # reorder columns
+            df_sample_weights = df_sample_weights[assets]
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
                                                                       assets, val_size=val_size, rescale=rescale)
+
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
@@ -168,30 +186,14 @@ if __name__ == "__main__":
         elif loss == 'mse':
             loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
         elif loss == 'weighted_mse':
-            # weights = tf.Variable(
-            #     np.random.normal(size=train_data.shape[0] * train_data.shape[1]).reshape(train_data.shape[0],
-            #                                                                              train_data.shape[1]),
-            #     dtype=tf.float32
-            # )
-            # def custom_loss(y_true, y_pred):
-            #     return weighted_mse(y_true, y_pred, weights)
-            # loss_fn = custom_loss
             loss_fn = weighted_mse
 
-
         if loss == 'weighted_mse':
-            # sample_weights = np.ones_like(train_data, dtype=np.float32)
+            sample_weights = df_sample_weights.loc[dates['train']]
             sample_weights = tf.Variable(
-                np.random.normal(size=train_data.shape[0] * train_data.shape[1]).reshape(train_data.shape[0],
-                                                                                         train_data.shape[1]),
+                sample_weights.values,
                 dtype=tf.float32
             )
-            sample_weights = tf.Variable(
-                np.ones_like(train_data),
-                dtype=tf.float32
-            )
-
-
             train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
             train_dataset = train_dataset.batch(batch_size)
             val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
@@ -311,9 +313,9 @@ if __name__ == "__main__":
                             "Model has not improved from {0:8.4f}".format(np.min(history['val_loss'])))
 
                     stop_training = EarlyStopping(history[early_stopping['monitor']],
-                                                           min_delta=early_stopping['min_delta'],
-                                                           patience=early_stopping['patience'],
-                                                           mode=early_stopping['mode'])
+                                                  min_delta=early_stopping['min_delta'],
+                                                  patience=early_stopping['patience'],
+                                                  mode=early_stopping['mode'])
 
             history['val_loss'].append(val_epoch_loss)
             # Display metrics at the end of each epoch and reset
