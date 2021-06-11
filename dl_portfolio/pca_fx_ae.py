@@ -10,11 +10,39 @@ from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 from tensorboard.plugins import projector
 from dl_portfolio.losses import weighted_mae, weighted_mse
-from dl_portfolio.train import train_step
 from dl_portfolio.ae_data import get_features, load_data
 
-
 LOG_DIR = 'dl_portfolio/log_fx_AE'
+
+
+def Callback_EarlyStopping(MetricList, min_delta=0.1, patience=20, mode='min'):
+    # https://stackoverflow.com/questions/59438904/applying-callbacks-in-a-custom-training-loop-in-tensorflow-2-0
+    # No early stopping for the first patience epochs
+    if len(MetricList) <= patience:
+        return False
+
+    min_delta = abs(min_delta)
+    if mode == 'min':
+        min_delta *= -1
+    else:
+        min_delta *= 1
+
+    # last patience epochs
+    last_patience_epochs = [x + min_delta for x in MetricList[::-1][1:patience + 1]]
+    current_metric = MetricList[::-1][0]
+
+    if mode == 'min':
+        if current_metric >= max(last_patience_epochs):
+            print(f'Metric did not decrease for the last {patience} epochs.')
+            return True
+        else:
+            return False
+    else:
+        if current_metric <= min(last_patience_epochs):
+            print(f'Metric did not increase for the last {patience} epochs.')
+            return True
+        else:
+            return False
 
 
 # coefficient of determination (R^2) for regression  (only for Keras tensors)
@@ -22,7 +50,6 @@ def r_square(y_true, y_pred):
     SS_res = K.sum(K.square(y_true - y_pred))
     SS_tot = K.sum(K.square(y_true - K.mean(y_true)))
     return (1 - SS_res / (SS_tot + K.epsilon()))
-
 
 
 if __name__ == "__main__":
@@ -46,8 +73,6 @@ if __name__ == "__main__":
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
     for cv in data_specs:
-        cv_callbacks = [c for c in callbacks]
-
         LOGGER.info(f'Starting with cv: {cv}')
         if save:
             os.mkdir(f"{save_dir}/{cv}")
@@ -108,19 +133,6 @@ if __name__ == "__main__":
         else:
             raise NotImplementedError()
 
-        if save:
-            cv_callbacks.append(
-                [
-                    tf.keras.callbacks.ModelCheckpoint(
-                        f"{save_dir}/{cv}/best_model.h5",
-                        verbose=1,
-                        save_best_only=True,
-                        mode='max',
-                        monitor="val_r_square")
-                ]
-
-            )
-
         if callback_activity_regularizer:
             tf.config.run_functions_eagerly(True)
             cv_callbacks.append(ActivityRegularizer(model))
@@ -142,19 +154,19 @@ if __name__ == "__main__":
         LOGGER.info('Start training')
         print(input_dim)
 
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        # Prepare the metrics.
+        train_metric = [tf.keras.metrics.MeanSquaredError(name='mse'),
+                        # tfa.metrics.r_square.RSquare(),  # r_square
+                        tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+        val_metric = [tf.keras.metrics.MeanSquaredError(name='mse'),
+                      # tfa.metrics.r_square.RSquare(),  # r_square
+                      tf.keras.metrics.RootMeanSquaredError(name='rmse')]
+
         if loss == 'mse_with_covariance_penalty':
-            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
-                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
-                                   r_square,
-                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
-                          )
+            pass
         elif loss == 'mse':
-            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
-                          loss=tf.keras.losses.MeanSquaredError(),
-                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
-                                   r_square,
-                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
-                          )
+            loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
         elif loss == 'weighted_mse':
             raise NotImplementedError()
             weights = tf.Variable(
@@ -162,25 +174,151 @@ if __name__ == "__main__":
                                                                                          train_data.shape[1]),
                 dtype=tf.float32
             )
+
+
             def custom_loss(y_true, y_pred):
                 return weighted_mse(y_true, y_pred, weights)
 
 
-            model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=learning_rate),  # Very low learning rate
-                          loss=custom_loss,
-                          metrics=[tf.keras.metrics.MeanSquaredError(name='mse'),
-                                   r_square,
-                                   tf.keras.metrics.RootMeanSquaredError(name='rmse')]
-                          )
+            loss_fn = custom_loss
 
-        history = model.fit(train_input, train_data,
-                            epochs=epochs,
-                            batch_size=batch_size,
-                            validation_data=(val_input, val_data),
-                            validation_batch_size=batch_size,
-                            callbacks=cv_callbacks,
-                            shuffle=False,
-                            verbose=1)
+        train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+        train_dataset = train_dataset.batch(batch_size)
+        val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
+        val_dataset = val_dataset.batch(batch_size)
+
+
+        # test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
+
+        # history = model.fit(train_dataset, # train_input, train_data,
+        #                     epochs=epochs,
+        #                     batch_size=batch_size,
+        #                     validation_data=val_dataset, # (val_input, val_data),
+        #                     validation_batch_size=batch_size,
+        #                     callbacks=cv_callbacks,
+        #                     shuffle=False,
+        #                     verbose=1)
+
+        @tf.function
+        def train_step(x, y):
+            with tf.GradientTape() as tape:
+                pred = model(x, training=True)
+                loss_value = loss_fn(y, pred)
+
+            grads = tape.gradient(loss_value, model.trainable_weights)
+            optimizer.apply_gradients(zip(grads, model.trainable_weights))
+
+            if isinstance(train_metric, list):
+                [m.update_state(y, pred) for m in train_metric]
+            else:
+                train_metric.update_state(y, pred)
+
+            return loss_value
+
+
+        @tf.function
+        def test_step(x, y):
+            pred = model(x, training=False)
+            loss_value = loss_fn(y, pred)
+            if isinstance(val_metric, list):
+                [m.update_state(y, pred) for m in val_metric]
+            else:
+                val_metric.update_state(y, pred)
+
+            return loss_value
+
+
+        early_stopping = callbacks.get('EarlyStopping')
+        if early_stopping is not None:
+            restore_best_weights = early_stopping['restore_best_weights']
+        else:
+            restore_best_weights = False
+        history = {'loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_mse': [], 'val_rmse': []}
+        best_weights = None
+        stop_training = False
+        for epoch in range(epochs):
+            # Iterate over the batches of the dataset.
+            batch_loss = []
+            for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                loss_value = train_step(x_batch_train, y_batch_train)
+                batch_loss.append(float(loss_value))
+                # Log every 200 batches.
+                if step % 200 == 0 and step > 0:
+                    print(
+                        "Training loss (for one batch) at step %d: %.4f"
+                        % (step, float(loss_value))
+                    )
+                    print("Seen so far: %d samples" % ((step + 1) * batch_size))
+            if restore_best_weights and best_weights is None:
+                best_epoch = epoch
+                best_weights = model.get_weights()
+
+            # Compute loss over epoch
+            epoch_loss = np.mean(batch_loss)
+            history['loss'].append(epoch_loss)
+
+            # Run a validation loop at the end of each epoch.
+            batch_loss = []
+            for x_batch_val, y_batch_val in val_dataset:
+                val_loss_value = test_step(x_batch_val, y_batch_val)
+                batch_loss.append(float(val_loss_value))
+            # Compute loss over epoch
+            val_epoch_loss = np.mean(batch_loss)
+
+            # Early stopping
+            if early_stopping:
+                if epoch >= early_stopping['patience']:
+                    if val_epoch_loss <= np.min(history['val_loss']):
+                        LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(np.min(history['val_loss']),
+                                                                                          val_epoch_loss))
+                        best_epoch = epoch
+                        best_loss = val_epoch_loss
+                        if restore_best_weights:
+                            LOGGER.info(
+                                f"Restoring best weights from epoch {best_epoch} with loss {np.round(best_loss, 4)}")
+                            best_weights = model.get_weights()
+                            if save:
+                                model.save(f"{save_dir}/{cv}/best_model_stopped.h5")
+                    else:
+                        LOGGER.info(
+                            "Model has not improved from {0:8.4f}".format(np.min(history['val_loss'])))
+
+                    stop_training = Callback_EarlyStopping(history[early_stopping['monitor']],
+                                                           min_delta=early_stopping['min_delta'],
+                                                           patience=early_stopping['patience'],
+                                                           mode=early_stopping['mode'])
+
+            history['val_loss'].append(val_epoch_loss)
+            # Display metrics at the end of each epoch and reset
+            if isinstance(train_metric, list):
+                history['mse'].append(float(train_metric[0].result().numpy()))
+                history['rmse'].append(float(train_metric[1].result().numpy()))
+                [m.reset_states() for m in train_metric]
+            else:
+                train_eval = train_metric.result().numpy()
+                train_metric.reset_states()
+            if isinstance(val_metric, list):
+                history['val_mse'].append(float(val_metric[0].result().numpy()))
+                history['val_rmse'].append(float(val_metric[1].result().numpy()))
+                [m.reset_states() for m in val_metric]
+            else:
+                val_eval = val_metric.result().numpy()
+                val_metric.reset_states()
+
+            LOGGER.info(
+                f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
+                f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
+
+            if save:
+                epoch_val_rmse = history['val_rmse'][-1]
+                if epoch_val_rmse == np.min(history['val_rmse']):
+                    LOGGER.info('Saving best model')
+                    model.save(f"{save_dir}/{cv}/best_model.h5")
+
+            if stop_training:
+                LOGGER.info(f"Stopping training at epoch {epoch}")
+                break
+
         if save:
             model.save(f"{save_dir}/{cv}/model.h5")
 
@@ -209,19 +347,16 @@ if __name__ == "__main__":
             embedding.metadata_path = 'metadata.tsv'
             projector.visualize_embeddings(log_dir, config)
 
-        fix, axs = plt.subplots(1, 4, figsize=(15, 5))
-        axs[0].plot(history.history['loss'], label='loss')
-        axs[0].plot(history.history['val_loss'], label='val loss')
+        fix, axs = plt.subplots(1, 3, figsize=(15, 5))
+        axs[0].plot(history['loss'], label='loss')
+        axs[0].plot(history['val_loss'], label='val loss')
         axs[0].legend()
-        axs[1].plot(history.history['mse'], label='mse')
-        axs[1].plot(history.history['val_mse'], label='val_mse')
+        axs[1].plot(history['mse'], label='mse')
+        axs[1].plot(history['val_mse'], label='val_mse')
         axs[1].legend()
-        axs[2].plot(history.history['rmse'], label='rmse')
-        axs[2].plot(history.history['val_rmse'], label='val_rmse')
+        axs[2].plot(history['rmse'], label='rmse')
+        axs[2].plot(history['val_rmse'], label='val_rmse')
         axs[2].legend()
-        axs[3].plot(history.history['r_square'], label='R2')
-        axs[3].plot(history.history['val_r_square'], label='val_R2')
-        axs[3].legend()
 
         if save:
             plt.savefig(f"{save_dir}/{cv}/history.png")
