@@ -2,6 +2,8 @@ import pandas as pd
 from dl_portfolio.logger import LOGGER
 from typing import List
 from sklearn import preprocessing
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 
 def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, randomize_columns=False):
@@ -118,3 +120,91 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities']
     data = data.loc[:, assets]
 
     return data, assets
+
+
+def labelQuantile(close,
+                  lq=0.1,
+                  uq=0.9,
+                  window=30,
+                  log=True,
+                  binary=False):
+    """
+    # label_t = 1 if we hit the upper band in the next lookfront steps: r_t+l >= upper_band where 1 <= l <= lookfront
+    # label_t = 2 if we hit the lower band in the next lookfront steps: r_t+l >= upper_band where 1 <= l <= lookfront
+    # else label = 0
+    :param close: numpy, close price
+    :param lq: float, lower quantile
+    :param uq: float, upper quantile
+    :param lookfront: int, horizon forecast
+    :param window: int, rolling window size for computing the quantile
+    :param log: boolean, log scale or simple
+    :param fee: float, fee
+    :param binary: boolean, output is two classes or three classes
+    :return:
+    """
+
+    hist_returns = np.zeros(len(close), dtype=float)
+
+    if log:
+        hist_returns[1:] = np.log(close[1:] / close[0:-1])
+    else:
+        hist_returns[1:] = close[1:] / close[0:-1] - 1
+
+    labels = np.zeros(len(close), dtype=int)
+    returns = np.zeros(len(close), dtype=float)
+    lower_q = np.zeros(len(close), dtype=float)
+    upper_q = np.zeros(len(close), dtype=float)
+
+    for t in range(window, len(close)):
+        data_w = hist_returns[t - window: t + 1]  # select past window
+        lower_q_t = np.quantile(data_w, lq)
+        upper_q_t = np.quantile(data_w, uq)
+
+        r_t = hist_returns[t].copy()
+
+        if r_t <= lower_q_t:
+            if binary:
+                labels[t] = 1
+            else:
+                labels[t] = 2
+        elif r_t >= upper_q_t:
+            labels[t] = 1
+
+        returns[t] = hist_returns[t]
+        lower_q[t] = lower_q_t
+        upper_q[t] = upper_q_t
+
+    quantiles = np.concatenate([lower_q.reshape(-1, 1),
+                                upper_q.reshape(-1, 1)],
+                               axis=1)
+
+    quantiles[:window, 0] = lower_q[window]
+    quantiles[:window, 1] = upper_q[window]
+    returns[:window] = hist_returns[:window]
+
+    return labels, returns, quantiles
+
+
+def get_sample_weights(close, label_func, **kwargs):
+    binary = kwargs.get('binary', False)
+    labels, returns, quantiles = label_func(close, **kwargs)
+    if binary:
+        classes = [0, 1]
+    else:
+        classes = [0, 1, 2]
+    class_weights = compute_class_weight('balanced', classes=classes, y=labels)
+    class_weights = {
+        c: class_weights[c] for c in classes
+    }
+    sample_weights = np.zeros_like(labels, dtype=np.float32)
+    for c in class_weights:
+        sample_weights[labels == c] = class_weights[c]
+
+    return sample_weights, labels, returns, quantiles
+
+
+def get_sample_weights_from_df(data: pd.DataFrame, label_func, **kwargs):
+    sample_weights = pd.DataFrame(columns=data.columns, index=data.index)
+    for c in data.columns:
+        sample_weights[c], _, _, _ = get_sample_weights(data[c].values, label_func, **kwargs)
+    return sample_weights
