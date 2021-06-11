@@ -15,7 +15,7 @@ from dl_portfolio.ae_data import get_features, load_data
 LOG_DIR = 'dl_portfolio/log_fx_AE'
 
 
-def Callback_EarlyStopping(MetricList, min_delta=0.1, patience=20, mode='min'):
+def EarlyStopping(MetricList, min_delta=0.1, patience=20, mode='min'):
     # https://stackoverflow.com/questions/59438904/applying-callbacks-in-a-custom-training-loop-in-tensorflow-2-0
     # No early stopping for the first patience epochs
     if len(MetricList) <= patience:
@@ -168,24 +168,39 @@ if __name__ == "__main__":
         elif loss == 'mse':
             loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
         elif loss == 'weighted_mse':
-            raise NotImplementedError()
-            weights = tf.Variable(
+            # weights = tf.Variable(
+            #     np.random.normal(size=train_data.shape[0] * train_data.shape[1]).reshape(train_data.shape[0],
+            #                                                                              train_data.shape[1]),
+            #     dtype=tf.float32
+            # )
+            # def custom_loss(y_true, y_pred):
+            #     return weighted_mse(y_true, y_pred, weights)
+            # loss_fn = custom_loss
+            loss_fn = weighted_mse
+
+
+        if loss == 'weighted_mse':
+            # sample_weights = np.ones_like(train_data, dtype=np.float32)
+            sample_weights = tf.Variable(
                 np.random.normal(size=train_data.shape[0] * train_data.shape[1]).reshape(train_data.shape[0],
                                                                                          train_data.shape[1]),
                 dtype=tf.float32
             )
+            sample_weights = tf.Variable(
+                np.ones_like(train_data),
+                dtype=tf.float32
+            )
 
 
-            def custom_loss(y_true, y_pred):
-                return weighted_mse(y_true, y_pred, weights)
-
-
-            loss_fn = custom_loss
-
-        train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
-        train_dataset = train_dataset.batch(batch_size)
-        val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
-        val_dataset = val_dataset.batch(batch_size)
+            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
+            train_dataset = train_dataset.batch(batch_size)
+            val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
+            val_dataset = val_dataset.batch(batch_size)
+        else:
+            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+            train_dataset = train_dataset.batch(batch_size)
+            val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
+            val_dataset = val_dataset.batch(batch_size)
 
 
         # test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
@@ -200,10 +215,10 @@ if __name__ == "__main__":
         #                     verbose=1)
 
         @tf.function
-        def train_step(x, y):
+        def train_step(x, y, *args, **kwargs):
             with tf.GradientTape() as tape:
                 pred = model(x, training=True)
-                loss_value = loss_fn(y, pred)
+                loss_value = loss_fn(y, pred, *args, **kwargs)
 
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
@@ -217,9 +232,9 @@ if __name__ == "__main__":
 
 
         @tf.function
-        def test_step(x, y):
+        def test_step(x, y, *args, **kwargs):
             pred = model(x, training=False)
-            loss_value = loss_fn(y, pred)
+            loss_value = loss_fn(y, pred, *args, **kwargs)
             if isinstance(val_metric, list):
                 [m.update_state(y, pred) for m in val_metric]
             else:
@@ -239,16 +254,28 @@ if __name__ == "__main__":
         for epoch in range(epochs):
             # Iterate over the batches of the dataset.
             batch_loss = []
-            for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                loss_value = train_step(x_batch_train, y_batch_train)
-                batch_loss.append(float(loss_value))
-                # Log every 200 batches.
-                if step % 200 == 0 and step > 0:
-                    print(
-                        "Training loss (for one batch) at step %d: %.4f"
-                        % (step, float(loss_value))
-                    )
-                    print("Seen so far: %d samples" % ((step + 1) * batch_size))
+            if loss == 'weighted_mse':
+                for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
+                    loss_value = train_step(x_batch_train, y_batch_train, weights_batch)
+                    batch_loss.append(float(loss_value))
+                    # Log every 200 batches.
+                    if step % 200 == 0 and step > 0:
+                        print(
+                            "Training loss (for one batch) at step %d: %.4f"
+                            % (step, float(loss_value))
+                        )
+                        print("Seen so far: %d samples" % ((step + 1) * batch_size))
+            else:
+                for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                    loss_value = train_step(x_batch_train, y_batch_train)
+                    batch_loss.append(float(loss_value))
+                    # Log every 200 batches.
+                    if step % 200 == 0 and step > 0:
+                        print(
+                            "Training loss (for one batch) at step %d: %.4f"
+                            % (step, float(loss_value))
+                        )
+                        print("Seen so far: %d samples" % ((step + 1) * batch_size))
             if restore_best_weights and best_weights is None:
                 best_epoch = epoch
                 best_weights = model.get_weights()
@@ -283,7 +310,7 @@ if __name__ == "__main__":
                         LOGGER.info(
                             "Model has not improved from {0:8.4f}".format(np.min(history['val_loss'])))
 
-                    stop_training = Callback_EarlyStopping(history[early_stopping['monitor']],
+                    stop_training = EarlyStopping(history[early_stopping['monitor']],
                                                            min_delta=early_stopping['min_delta'],
                                                            patience=early_stopping['patience'],
                                                            mode=early_stopping['mode'])
