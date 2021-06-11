@@ -11,7 +11,7 @@ from dl_portfolio.utils import create_log_dir, get_best_model_from_dir
 from dl_portfolio.data import build_delayed_window, features_generator, DataLoader, SeqDataLoader, reshape_to_2d_data, \
     drop_remainder
 from dl_portfolio.evaluate import plot_train_history
-from dl_portfolio.train import train, pretrain, online_training
+from dl_portfolio.portfolio_train import train, pretrain, online_training
 from dl_portfolio.config import config
 import logging, pickle
 from dl_portfolio.benchmark import market_cap_returns, equally_weighted_returns
