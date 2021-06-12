@@ -196,6 +196,7 @@ def get_sample_weights(close, label_func, **kwargs):
     class_weights = {
         c: class_weights[c] for c in classes
     }
+    LOGGER.info(f"Class weights:\n{class_weights}")
     sample_weights = np.zeros_like(labels, dtype=np.float32)
     for c in class_weights:
         sample_weights[labels == c] = class_weights[c]
