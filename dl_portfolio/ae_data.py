@@ -6,7 +6,7 @@ from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 
 
-def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, randomize_columns=False):
+def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, scaler='StandardScaler', **kwargs):
     data = data.loc[start:end, assets]
 
     # Train/val/test split
@@ -31,7 +31,13 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     test_data = test_data.values
 
     # standardization
-    scaler = preprocessing.StandardScaler(with_std=True, with_mean=True)
+    if scaler == 'StandardScaler':
+        kwargs['with_std'] = kwargs.get('with_std', True)
+        kwargs['with_mean'] = kwargs.get('with_mean', True)
+        scaler = preprocessing.StandardScaler(**kwargs)
+    elif scaler == 'MinMaxScaler':
+        assert 'feature_range' in kwargs
+        scaler = preprocessing.MinMaxScaler(**kwargs)
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
     val_data = scaler.transform(val_data)
@@ -181,18 +187,21 @@ def labelQuantile(close,
     quantiles[:window, 0] = lower_q[window]
     quantiles[:window, 1] = upper_q[window]
     returns[:window] = hist_returns[:window]
+    labels[:window] = np.nan
 
     return labels, returns, quantiles
 
 
 def get_sample_weights(close, label_func, **kwargs):
+    window = kwargs.get('window')
     binary = kwargs.get('binary', False)
     labels, returns, quantiles = label_func(close, **kwargs)
     if binary:
         classes = [0, 1]
     else:
         classes = [0, 1, 2]
-    class_weights = compute_class_weight('balanced', classes=classes, y=labels)
+
+    class_weights = compute_class_weight('balanced', classes=classes, y=labels if window is None else labels[window:])
     class_weights = {
         c: class_weights[c] for c in classes
     }
@@ -206,6 +215,8 @@ def get_sample_weights(close, label_func, **kwargs):
 
 def get_sample_weights_from_df(data: pd.DataFrame, label_func, **kwargs):
     sample_weights = pd.DataFrame(columns=data.columns, index=data.index)
+    labels = pd.DataFrame(columns=data.columns, index=data.index)
     for c in data.columns:
-        sample_weights[c], _, _, _ = get_sample_weights(data[c].values, label_func, **kwargs)
-    return sample_weights
+        sample_weights[c], labels[c], _, _ = get_sample_weights(data[c].values, label_func, **kwargs)
+    labels = labels.astype(int)
+    return sample_weights, labels
