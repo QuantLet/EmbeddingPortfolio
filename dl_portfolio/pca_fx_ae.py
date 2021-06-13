@@ -61,9 +61,11 @@ if __name__ == "__main__":
     LOGGER.info(f"Set seed: {seed}")
 
     if save:
-        subdir = dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_s%H%M%S')
         if model_name is not None and model_name != '':
-            subdir = subdir + '_' + model_name
+            subdir = model_name
+        else:
+            subdir = 'model'
+        subdir = subdir + '_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')
         save_dir = f"{LOG_DIR}/{subdir}"
         os.mkdir(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
@@ -73,18 +75,27 @@ if __name__ == "__main__":
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
     if loss == 'weighted_mse':
-        LOGGER.info('Computing sample weights ...')
-        d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], drop_weekends=True)
-        t_sample_weights = get_sample_weights_from_df(d, labelQuantile, **label_param)
-        d, _ = load_data(type=['crypto'], drop_weekends=False)
-        c_sample_weights = get_sample_weights_from_df(d, labelQuantile, **label_param)
-        df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
-        df_sample_weights = df_sample_weights.fillna(0.0)
-        df_sample_weights = df_sample_weights[assets]
-        del d
-        del c_sample_weights
-        del t_sample_weights
-        LOGGER.info('Done')
+        file_name = f"./data/sample_weights_lq_{label_param['lq']}_uq_{label_param['uq']}_w_{label_param['window']}.p"
+        if os.path.isfile(file_name):
+            LOGGER.info(f'Loading sample weights from {file_name}')
+            df_sample_weights = pd.read_pickle(file_name)
+            df_sample_weights = df_sample_weights[assets]
+        else:
+            LOGGER.info('Computing sample weights ...')
+            d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], drop_weekends=True)
+            t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **label_param)
+            d, _ = load_data(type=['crypto'], drop_weekends=False)
+            c_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **label_param)
+            df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
+            df_sample_weights = df_sample_weights.fillna(0.0)
+            df_sample_weights = df_sample_weights[assets]
+            del d
+            del c_sample_weights
+            del t_sample_weights
+            LOGGER.info(f'Saving sample weights to {file_name}')
+            df_sample_weights.to_pickle(
+                file_name)
+            LOGGER.info('Done')
 
     for cv in data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
@@ -110,8 +121,8 @@ if __name__ == "__main__":
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
         train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
-                                                                      assets, val_size=val_size, rescale=rescale)
-
+                                                                      assets, val_size=val_size,rescale=rescale,
+                                                                      scaler=scaler_func['name'], **scaler_func.get('params', {}))
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
@@ -221,7 +232,6 @@ if __name__ == "__main__":
             with tf.GradientTape() as tape:
                 pred = model(x, training=True)
                 loss_value = loss_fn(y, pred, *args, **kwargs)
-
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
@@ -237,6 +247,7 @@ if __name__ == "__main__":
         def test_step(x, y, *args, **kwargs):
             pred = model(x, training=False)
             loss_value = loss_fn(y, pred, *args, **kwargs)
+
             if isinstance(val_metric, list):
                 [m.update_state(y, pred) for m in val_metric]
             else:
