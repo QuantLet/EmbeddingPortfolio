@@ -4,7 +4,7 @@ import os, pickle
 from dl_portfolio.logger import LOGGER
 import datetime as dt
 from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, \
-    get_layer_by_name, heat_map, pca_permut_ae_model
+    get_layer_by_name, heat_map, pca_permut_ae_model, pca_ae_model_with_extra_features
 from tensorflow.keras import backend as K
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
@@ -120,9 +120,14 @@ if __name__ == "__main__":
         if loss == 'weighted_mse':
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
-        train_data, val_data, test_data, scaler, dates = get_features(data, data_spec['start'], data_spec['end'],
-                                                                      assets, val_size=val_size,rescale=rescale,
-                                                                      scaler=scaler_func['name'], **scaler_func.get('params', {}))
+
+        train_data, val_data, test_data, scaler, dates, features = get_features(data, data_spec['start'],
+                                                                                data_spec['end'],
+                                                                                assets, val_size=val_size,
+                                                                                rescale=rescale,
+                                                                                scaler=scaler_func['name'],
+                                                                                features_config=features_config,
+                                                                                **scaler_func.get('params', {}))
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
@@ -135,6 +140,7 @@ if __name__ == "__main__":
         LOGGER.info(f'Validation shape: {val_data.shape}')
         # Build model
         input_dim = len(assets)
+        n_features = None
         if model_type == 'pca_permut_ae_model':
             model, encoder = pca_permut_ae_model(input_dim, encoding_dim, activation=activation,
                                                  kernel_initializer=kernel_initializer,
@@ -159,6 +165,25 @@ if __name__ == "__main__":
             train_input = train_data
             val_input = val_data
             test_input = test_data
+
+        elif model_type == 'pca_ae_model_with_extra_features':
+            n_features = features['train'].shape[-1]
+            model, encoder, extra_features = pca_ae_model_with_extra_features(input_dim,
+                                                                              n_features,
+                                                                              encoding_dim,
+                                                                              extra_features_dim=1,
+                                                                              activation=activation,
+                                                                              kernel_initializer=kernel_initializer,
+                                                                              kernel_constraint=kernel_constraint,
+                                                                              kernel_regularizer=kernel_regularizer,
+                                                                              activity_regularizer=activity_regularizer,
+                                                                              batch_size=batch_size if drop_remainder_obs else None,
+                                                                              loss=loss
+                                                                              )
+            train_input = train_data
+            val_input = val_data
+            test_input = test_data
+
         else:
             raise NotImplementedError()
 
@@ -172,11 +197,19 @@ if __name__ == "__main__":
             train_input = train_input[indices, :]
             train_data = train_data[indices, :]
             dates['train'] = dates['train'][indices]
+            if features:
+                train_input = [train_data, features['train'][indices, :]]
             indices = list(range(val_input.shape[0]))
             indices = drop_remainder(indices, batch_size, last=False)
             val_input = val_input[indices, :]
             val_data = val_data[indices, :]
             dates['val'] = dates['val'][indices]
+            if features:
+                val_input = [val_data, features['val'][indices, :]]
+        else:
+            if features:
+                train_input = [train_data, features['train']]
+                val_input = [val_data, features['val']]
 
         print(model.summary())
         # Train
@@ -205,15 +238,25 @@ if __name__ == "__main__":
                 sample_weights.values,
                 dtype=tf.float32
             )
-            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
-            train_dataset = train_dataset.batch(batch_size)
-            val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
-            val_dataset = val_dataset.batch(batch_size)
+            if n_features:
+                train_dataset = tf.data.Dataset.from_tensor_slices(
+                    (train_input[0], train_input[1], train_data, sample_weights))
+            else:
+                train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
         else:
-            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
-            train_dataset = train_dataset.batch(batch_size)
+            if n_features:
+                train_dataset = tf.data.Dataset.from_tensor_slices(
+                    (train_input[0], train_input[1], train_data))
+            else:
+                train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+
+        if n_features:
+            val_dataset = tf.data.Dataset.from_tensor_slices((val_input[0], val_input[1], val_data))
+        else:
             val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
-            val_dataset = val_dataset.batch(batch_size)
+
+        train_dataset = train_dataset.batch(batch_size)
+        val_dataset = val_dataset.batch(batch_size)
 
 
         # test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
@@ -268,27 +311,52 @@ if __name__ == "__main__":
             # Iterate over the batches of the dataset.
             batch_loss = []
             if loss == 'weighted_mse':
-                for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
-                    loss_value = train_step(x_batch_train, y_batch_train, weights_batch)
-                    batch_loss.append(float(loss_value))
-                    # Log every 200 batches.
-                    if step % 200 == 0 and step > 0:
-                        print(
-                            "Training loss (for one batch) at step %d: %.4f"
-                            % (step, float(loss_value))
-                        )
-                        print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                if n_features:
+                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train, weights_batch) in enumerate(
+                            train_dataset):
+                        loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train, weights_batch)
+                        batch_loss.append(float(loss_value))
+                        # Log every 200 batches.
+                        if step % 200 == 0 and step > 0:
+                            print(
+                                "Training loss (for one batch) at step %d: %.4f"
+                                % (step, float(loss_value))
+                            )
+                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                else:
+                    for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
+                        loss_value = train_step(x_batch_train, y_batch_train, weights_batch)
+                        batch_loss.append(float(loss_value))
+                        # Log every 200 batches.
+                        if step % 200 == 0 and step > 0:
+                            print(
+                                "Training loss (for one batch) at step %d: %.4f"
+                                % (step, float(loss_value))
+                            )
+                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
             else:
-                for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                    loss_value = train_step(x_batch_train, y_batch_train)
-                    batch_loss.append(float(loss_value))
-                    # Log every 200 batches.
-                    if step % 200 == 0 and step > 0:
-                        print(
-                            "Training loss (for one batch) at step %d: %.4f"
-                            % (step, float(loss_value))
-                        )
-                        print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                if n_features:
+                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
+                        loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
+                        batch_loss.append(float(loss_value))
+                        # Log every 200 batches.
+                        if step % 200 == 0 and step > 0:
+                            print(
+                                "Training loss (for one batch) at step %d: %.4f"
+                                % (step, float(loss_value))
+                            )
+                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                else:
+                    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                        loss_value = train_step(x_batch_train, y_batch_train)
+                        batch_loss.append(float(loss_value))
+                        # Log every 200 batches.
+                        if step % 200 == 0 and step > 0:
+                            print(
+                                "Training loss (for one batch) at step %d: %.4f"
+                                % (step, float(loss_value))
+                            )
+                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
             if restore_best_weights and best_weights is None:
                 best_epoch = epoch
                 best_weights = model.get_weights()
@@ -299,9 +367,14 @@ if __name__ == "__main__":
 
             # Run a validation loop at the end of each epoch.
             batch_loss = []
-            for x_batch_val, y_batch_val in val_dataset:
-                val_loss_value = test_step(x_batch_val, y_batch_val)
-                batch_loss.append(float(val_loss_value))
+            if n_features:
+                for x_batch_val_0, x_batch_val_1, y_batch_val in val_dataset:
+                    val_loss_value = test_step([x_batch_val_0, x_batch_val_1], y_batch_val)
+                    batch_loss.append(float(val_loss_value))
+            else:
+                for x_batch_val, y_batch_val in val_dataset:
+                    val_loss_value = test_step(x_batch_val, y_batch_val)
+                    batch_loss.append(float(val_loss_value))
             # Compute loss over epoch
             val_epoch_loss = np.mean(batch_loss)
 
@@ -421,6 +494,8 @@ if __name__ == "__main__":
         encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
         LOGGER.info(f"Encoder weights:\n{encoder_weights}")
 
+        if features:
+            test_input = [test_data, features['test']]
         test_prediction = model.predict(test_input)
         test_prediction = scaler.inverse_transform(test_prediction)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])

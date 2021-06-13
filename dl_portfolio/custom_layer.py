@@ -570,21 +570,45 @@ class DynamicSmoothRNN(RNN):
 
 
 class DenseTied(tf.keras.layers.Dense):
-    def __init__(self, units, tied_to, **kwargs):
+    def __init__(self, units, tied_to, n_features=None,
+                 use_bias=True,
+                 kernel_initializer='glorot_uniform',
+                 bias_initializer='zeros',
+                 kernel_regularizer=None,
+                 bias_regularizer=None,
+                 activity_regularizer=None,
+                 kernel_constraint=None,
+                 bias_constraint=None,
+                 **kwargs):
+        if n_features is not None:
+            assert n_features > 0
         self.tied_to = tied_to
-        super(DenseTied, self).__init__(units, **kwargs)
+        self.n_features = n_features
+        super(DenseTied, self).__init__(units, use_bias=use_bias, kernel_initializer=kernel_initializer,
+                                        bias_initializer=bias_initializer, kernel_regularizer=kernel_regularizer,
+                                        bias_regularizer=bias_regularizer, activity_regularizer=activity_regularizer,
+                                        kernel_constraint=kernel_constraint, bias_constraint=bias_constraint, **kwargs)
 
     def build(self, input_shape):
         assert len(input_shape) >= 2
         input_dim = input_shape[-1]
-        # self.kernel = K.transpose(self.tied_to.kernel)
-        # self._non_trainable_weights.append(self.kernel)
+        print('input_shape', input_shape)
+        if self.n_features:
+            self.features_kernel = self.add_weight("kernel",
+                                                   shape=[int(self.n_features), self.units],
+                                                   initializer=self.kernel_initializer,
+                                                   regularizer=self.kernel_regularizer,
+                                                   constraint=self.kernel_constraint,
+                                                   dtype=self.dtype,
+                                                   trainable=True)
         if self.use_bias:
-            self.bias = self.add_weight(shape=(self.units,),
+            self.bias = self.add_weight('bias',
+                                        shape=(self.units,),
                                         initializer=self.bias_initializer,
-                                        name='bias',
                                         regularizer=self.bias_regularizer,
-                                        constraint=self.bias_constraint)
+                                        constraint=self.bias_constraint,
+                                        dtype=self.dtype,
+                                        trainable=True)
         else:
             self.bias = None
         self.input_spec = InputSpec(min_ndim=2, axes={-1: input_dim})
@@ -592,7 +616,12 @@ class DenseTied(tf.keras.layers.Dense):
 
     def call(self, inputs):
         # self.kernel =
-        output = K.dot(inputs, K.transpose(self.tied_to.kernel))
+        if self.n_features:
+            weights = tf.concat([K.transpose(self.tied_to.kernel), self.features_kernel], 0, name='concat')
+            output = K.dot(inputs, weights)
+        else:
+            output = K.dot(inputs, K.transpose(self.tied_to.kernel))
+
         if self.use_bias:
             output = K.bias_add(output, self.bias, data_format='channels_last')
         if self.activation is not None:

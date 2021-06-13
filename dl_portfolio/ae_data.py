@@ -1,12 +1,20 @@
 import pandas as pd
 from dl_portfolio.logger import LOGGER
-from typing import List
+from typing import List, Optional
 from sklearn import preprocessing
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
+import datetime as dt
 
 
-def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, scaler='StandardScaler', **kwargs):
+def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
+    hinw = np.array([date.weekday() * 24 + date.hour for date in dates], dtype=np.float32)
+    hinw = np.round(np.sin(2 * np.pi * hinw / 168), 4)
+    return hinw
+
+
+def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, scaler='StandardScaler',
+                 features_config: Optional[List] = None, **kwargs):
     data = data.loc[start:end, assets]
 
     # Train/val/test split
@@ -53,7 +61,35 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
         'val': val_dates,
         'test': test_dates
     }
-    return train_data, val_data, test_data, scaler, dates
+
+    if features_config:
+        n_features = len(features_config)
+        features = {
+            'train': [],
+            'val': [],
+            'test': [],
+        }
+        for feature_config in features_config:
+            if feature_config['name'] == 'hour_in_week':
+                f = {
+                    'train': hour_in_week(dates['train']),
+                    'val': hour_in_week(dates['val']),
+                    'test': hour_in_week(dates['test'])
+
+                }
+            features['train'].append(f['train'])
+            features['val'].append(f['val'])
+            features['test'].append(f['test'])
+        if n_features == 1:
+            features['train'] = features['train'][0].reshape(-1, 1)
+            features['val'] = features['val'][0].reshape(-1, 1)
+            features['test'] = features['test'][0].reshape(-1, 1)
+        else:
+            raise NotImplementedError()
+    else:
+        features = None
+
+    return train_data, val_data, test_data, scaler, dates, features
 
 
 def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], drop_weekends=False):

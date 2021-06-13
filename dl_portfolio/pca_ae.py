@@ -21,6 +21,7 @@ import tensorflow_probability as tfp
 
 LOG_DIR = 'dl_portfolio/log_AE'
 
+
 def covariance_penalty(x, x_hat):
     weightage = 1.
     norm = '1/2'
@@ -56,8 +57,8 @@ def covariance_penalty(x, x_hat):
     pen = weightage * uncorrelated_feature(x)
     return pen
 
-def mse_with_covariance_penalty(x, x_hat: List):
 
+def mse_with_covariance_penalty(x, x_hat: List):
     loss = K.mean(K.square(x - x_hat[0])) + covariance_penalty(x_hat[1], '')
 
     return loss
@@ -156,9 +157,9 @@ class NonNegAndUnitNormInit(tf.keras.initializers.Initializer):
         return {"initializer": self.initializer}
 
 
-def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
+def pca_ae_model(input_dim: int,
+                 encoding_dim: int, activation: str = 'linear',
                  kernel_initializer: str = 'glorot_uniform',
-                 ortho_weights: bool = True,
                  activity_regularizer=None,
                  kernel_constraint=None,
                  kernel_regularizer=None,
@@ -166,18 +167,6 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
                  ):
     batch_size = kwargs.get('batch_size', None)
     loss = kwargs.get('loss', None)
-
-    # if activity_regularizer is None:
-    #     weightage = kwargs.get('weightage', 1.)
-    #     activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
-    #                                                           use_cov=use_cov,
-    #                                                           norm=norm,
-    #                                                           weightage=weightage) if uncorr_features else None
-    #     # activity_regularizer = PositiveSkewnessConstraint(encoding_dim,
-    #     #                                                   weightage=weightage) if uncorr_features else None
-    #
-    # else:
-    #     assert not uncorr_features
 
     with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
         input_ = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='input')
@@ -208,6 +197,62 @@ def pca_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
             autoencoder.add_loss(loss)
 
         return autoencoder, encoder
+
+
+def pca_ae_model_with_extra_features(input_dim: int,
+                                     n_features: int,
+                                     encoding_dim: int,
+                                     extra_features_dim: int = 1,
+                                     activation: str = 'linear',
+                                     kernel_initializer: str = 'glorot_uniform',
+                                     activity_regularizer=None,
+                                     kernel_constraint=None,
+                                     kernel_regularizer=None,
+                                     **kwargs
+                                     ):
+    batch_size = kwargs.get('batch_size', None)
+    loss = kwargs.get('loss', None)
+
+    with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
+        asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
+        encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                              activation=activation,
+                                              kernel_initializer=kernel_initializer,
+                                              kernel_regularizer=kernel_regularizer,
+                                              activity_regularizer=activity_regularizer,
+                                              kernel_constraint=kernel_constraint,
+                                              use_bias=True,
+                                              name='encoder',
+                                              dtype=tf.float32)
+        decoder_layer = DenseTied(input_dim,
+                                  tied_to=encoder_layer,
+                                  n_features=n_features,
+                                  activation='linear',
+                                  kernel_initializer=kernel_initializer,
+                                  kernel_regularizer=kernel_regularizer,
+                                  use_bias=True,
+                                  dtype=tf.float32,
+                                  name='decoder')
+        # Extra input
+        extra_input = tf.keras.layers.Input(n_features, batch_size=batch_size, dtype=tf.float32, name='extra_input')
+        extra_features_layer = tf.keras.layers.Dense(extra_features_dim,
+                                                     activation='linear',
+                                                     use_bias=True,
+                                                     name='extra_features',
+                                                     dtype=tf.float32)
+
+        encoding = encoder_layer(asset_input)
+        extra_features = extra_features_layer(extra_input)
+        hidden_layer = tf.keras.layers.concatenate([encoding, extra_features])
+        output = decoder_layer(hidden_layer)
+        autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
+        encoder = tf.keras.models.Model(asset_input, encoding)
+
+        if loss == 'mse_with_covariance_penalty':
+            loss = mse_with_covariance_penalty([asset_input, extra_input], [output, encoding])
+            autoencoder.add_loss(loss)
+
+        return autoencoder, encoder, extra_features
 
 
 def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
