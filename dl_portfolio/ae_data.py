@@ -92,7 +92,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates, features
 
 
-def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], drop_weekends=False):
+def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan=False, fillnan=True):
     data = pd.DataFrame()
     assets = []
     end = '2021-01-30 12:30:00'
@@ -152,13 +152,15 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities']
 
     data = data.loc[:end]
     if 'crypto' in type:
-        if drop_weekends:
+        if dropnan:
             data = data.dropna()
         else:
-            data = data.fillna(method='ffill')
-            data = data.dropna()
+            if fillnan:
+                data = data.fillna(method='ffill')
+                data = data.dropna()
     else:
-        data = data.dropna()
+        if dropnan:
+            data = data.dropna()
     data = data.loc[:, assets]
 
     return data, assets

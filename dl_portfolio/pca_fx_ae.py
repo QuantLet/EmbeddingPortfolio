@@ -4,7 +4,7 @@ import os, pickle
 from dl_portfolio.logger import LOGGER
 import datetime as dt
 from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, \
-    get_layer_by_name, heat_map, pca_permut_ae_model, pca_ae_model_with_extra_features
+    get_layer_by_name, heat_map, pca_permut_ae_model, ae_model
 from tensorflow.keras import backend as K
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         os.mkdir(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-    data, assets = load_data(type=data_type, drop_weekends=drop_weekends)
+    data, assets = load_data(type=data_type, dropnan=dropnan)
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
@@ -82,9 +82,9 @@ if __name__ == "__main__":
             df_sample_weights = df_sample_weights[assets]
         else:
             LOGGER.info('Computing sample weights ...')
-            d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], drop_weekends=True)
+            d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], dropnan=True)
             t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **label_param)
-            d, _ = load_data(type=['crypto'], drop_weekends=False)
+            d, _ = load_data(type=['crypto'], dropnan=False)
             c_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **label_param)
             df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
             df_sample_weights = df_sample_weights.fillna(0.0)
@@ -153,33 +153,44 @@ if __name__ == "__main__":
             val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
             test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
 
-        elif model_type == 'pca_ae_model':
-            model, encoder = pca_ae_model(input_dim, encoding_dim, activation=activation,
-                                          kernel_initializer=kernel_initializer,
-                                          kernel_constraint=kernel_constraint,
-                                          kernel_regularizer=kernel_regularizer,
-                                          activity_regularizer=activity_regularizer,
-                                          batch_size=batch_size if drop_remainder_obs else None,
-                                          loss=loss
-                                          )
+        elif model_type == 'ae_model':
+            if features:
+                n_features = features['train'].shape[-1]
+            else:
+                n_features = None
+            model, encoder, extra_features = ae_model(input_dim,
+                                                      encoding_dim,
+                                                      n_features=n_features,
+                                                      extra_features_dim=1,
+                                                      activation=activation,
+                                                      kernel_initializer=kernel_initializer,
+                                                      kernel_constraint=kernel_constraint,
+                                                      kernel_regularizer=kernel_regularizer,
+                                                      activity_regularizer=activity_regularizer,
+                                                      batch_size=batch_size if drop_remainder_obs else None,
+                                                      loss=loss
+                                                      )
             train_input = train_data
             val_input = val_data
             test_input = test_data
 
-        elif model_type == 'pca_ae_model_with_extra_features':
-            n_features = features['train'].shape[-1]
-            model, encoder, extra_features = pca_ae_model_with_extra_features(input_dim,
-                                                                              n_features,
-                                                                              encoding_dim,
-                                                                              extra_features_dim=1,
-                                                                              activation=activation,
-                                                                              kernel_initializer=kernel_initializer,
-                                                                              kernel_constraint=kernel_constraint,
-                                                                              kernel_regularizer=kernel_regularizer,
-                                                                              activity_regularizer=activity_regularizer,
-                                                                              batch_size=batch_size if drop_remainder_obs else None,
-                                                                              loss=loss
-                                                                              )
+        elif model_type == 'pca_ae_model':
+            if features:
+                n_features = features['train'].shape[-1]
+            else:
+                n_features = None
+            model, encoder, extra_features = pca_ae_model(input_dim,
+                                                          encoding_dim,
+                                                          n_features=n_features,
+                                                          extra_features_dim=1,
+                                                          activation=activation,
+                                                          kernel_initializer=kernel_initializer,
+                                                          kernel_constraint=kernel_constraint,
+                                                          kernel_regularizer=kernel_regularizer,
+                                                          activity_regularizer=activity_regularizer,
+                                                          batch_size=batch_size if drop_remainder_obs else None,
+                                                          loss=loss
+                                                          )
             train_input = train_data
             val_input = val_data
             test_input = test_data
