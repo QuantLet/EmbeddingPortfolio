@@ -70,7 +70,8 @@ if __name__ == "__main__":
         os.mkdir(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-    data, assets = load_data(type=data_type, dropnan=dropnan)
+    data, assets = load_data(type=data_type, dropnan=dropnan, freq=freq)
+
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
@@ -328,46 +329,46 @@ if __name__ == "__main__":
                         loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train, weights_batch)
                         batch_loss.append(float(loss_value))
                         # Log every 200 batches.
-                        if step % 200 == 0 and step > 0:
-                            print(
-                                "Training loss (for one batch) at step %d: %.4f"
-                                % (step, float(loss_value))
-                            )
-                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        # if step % 200 == 0 and step > 0:
+                        #     print(
+                        #         "Training loss (for one batch) at step %d: %.4f"
+                        #         % (step, float(loss_value))
+                        #     )
+                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
                 else:
                     for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
                         loss_value = train_step(x_batch_train, y_batch_train, weights_batch)
                         batch_loss.append(float(loss_value))
                         # Log every 200 batches.
-                        if step % 200 == 0 and step > 0:
-                            print(
-                                "Training loss (for one batch) at step %d: %.4f"
-                                % (step, float(loss_value))
-                            )
-                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        # if step % 200 == 0 and step > 0:
+                        #     print(
+                        #         "Training loss (for one batch) at step %d: %.4f"
+                        #         % (step, float(loss_value))
+                        #     )
+                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
             else:
                 if n_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
                         loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
                         batch_loss.append(float(loss_value))
                         # Log every 200 batches.
-                        if step % 200 == 0 and step > 0:
-                            print(
-                                "Training loss (for one batch) at step %d: %.4f"
-                                % (step, float(loss_value))
-                            )
-                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        # if step % 200 == 0 and step > 0:
+                        #     print(
+                        #         "Training loss (for one batch) at step %d: %.4f"
+                        #         % (step, float(loss_value))
+                        #     )
+                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
                 else:
                     for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
                         loss_value = train_step(x_batch_train, y_batch_train)
                         batch_loss.append(float(loss_value))
                         # Log every 200 batches.
-                        if step % 200 == 0 and step > 0:
-                            print(
-                                "Training loss (for one batch) at step %d: %.4f"
-                                % (step, float(loss_value))
-                            )
-                            print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        # if step % 200 == 0 and step > 0:
+                        #     print(
+                        #         "Training loss (for one batch) at step %d: %.4f"
+                        #         % (step, float(loss_value))
+                        #     )
+                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
             if restore_best_weights and best_weights is None:
                 best_epoch = epoch
                 best_weights = model.get_weights()
@@ -495,9 +496,22 @@ if __name__ == "__main__":
         # model.evaluate(val_input, val_data)
 
         # Results
+        if n_features:
+            train_features = encoder.predict(train_input[0])
+        else:
+            train_features = encoder.predict(train_input)
+        train_features = pd.DataFrame(train_features, index=dates['train'])
+
         val_prediction = model.predict(val_input)
         val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
+
+        if n_features:
+            val_features = encoder.predict(val_input[0])
+        else:
+            val_features = encoder.predict(val_input)
+        val_features = pd.DataFrame(val_features, index=dates['val'])
+
 
         encoder_layer = get_layer_by_name(name='encoder', model=model)
         encoder_weights = encoder_layer.get_weights()
@@ -510,6 +524,12 @@ if __name__ == "__main__":
         test_prediction = model.predict(test_input)
         test_prediction = scaler.inverse_transform(test_prediction)
         test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
+
+        if n_features:
+            test_features = encoder.predict(test_input[0])
+        else:
+            test_features = encoder.predict(test_input)
+        test_features = pd.DataFrame(test_features, index=dates['test'])
 
         # train_cluster_portfolio = encoder.predict(train_data)
         # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
@@ -576,9 +596,15 @@ if __name__ == "__main__":
             val_prediction.to_pickle(f"{save_dir}/{cv}/val_prediction.p")
             test_prediction.to_pickle(f"{save_dir}/{cv}/test_prediction.p")
             encoder_weights.to_pickle(f"{save_dir}/{cv}/encoder_weights.p")
+            train_features.to_pickle(f"{save_dir}/{cv}/train_features.p")
+            val_features.to_pickle(f"{save_dir}/{cv}/val_features.p")
+            test_features.to_pickle(f"{save_dir}/{cv}/test_features.p")
             # encoding_pca.to_pickle(f"{save_dir}/{cv}/encoding_pca.p")
             pickle.dump(cluster_portfolio, open(f"{save_dir}/{cv}/cluster_portfolio.p", "wb"))
             # pickle.dump(pca_cluster_portfolio, open(f"{save_dir}/{cv}/pca_cluster_portfolio.p", "wb"))
+
+            scaler_func['attributes'] = scaler.__dict__
+            pickle.dump(scaler_func, open(f"{save_dir}/{cv}/scaler.p", "wb"))
 
     if save:
         heat_map_cluster(save_dir, show=True, save=save, vmax=1., vmin=0.)
