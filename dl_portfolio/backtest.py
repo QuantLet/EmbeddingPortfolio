@@ -2,34 +2,46 @@ import numpy as np
 import pandas as pd
 
 
-def cluster_portfolio(test_returns, train_cluster_port, encoding_weights):
-    n_clusters = encoding_weights.shape[1]
-    cov = np.cov(train_cluster_port, rowvar=False)
+def cluster_portfolio(returns, features, embedding, no_leverage=True):
+    n_clusters = features.shape[1]
+    cov = np.cov(features, rowvar=False)
     cluster_weights = getIVP(cov)
-    norm_encoding_weights = (encoding_weights / encoding_weights.sum())
+    if no_leverage:
+        asset_weights = (embedding / embedding.sum())
+    else:
+        asset_weights = embedding.copy()
 
-    port_returns = pd.Series(np.zeros(len(test_returns)), index=test_returns.index)
+    port_returns = pd.Series(np.zeros(len(returns)), index=returns.index)
     for i in range(n_clusters):
-        cluster_ret = cluster_weights[i] * (
-                test_returns * norm_encoding_weights.iloc[:, i].values.reshape(-1, 1).T).sum(1)
+        cluster_ret = ((cluster_weights[i] * asset_weights.iloc[:,i]) * returns).sum(1)
         port_returns = port_returns + cluster_ret.values
 
-    return port_returns
+    return port_returns, cluster_weights, asset_weights
 
 
-def get_portfolio_perf(train_returns, test_returns, train_cluster_port, encoding_weights, fx_levrage=1.):
+def get_portfolio_perf(train_returns, returns, features, embedding, fx_levrage=1.):
     # AE port
-    ae_port_returns = cluster_portfolio(test_returns, train_cluster_port, encoding_weights)
+    port_returns, cluster_weights, asset_weights = cluster_portfolio(returns, features, embedding)
 
+    ae = {
+        'returns': port_returns,
+        'cluster_weights': cluster_weights,
+        'asset_weights': asset_weights
+    }
     # ivp
     cov = np.cov(train_returns, rowvar=False)
     weights = getIVP(cov)
-    ivp_returns = (test_returns * weights).sum(1)
-
+    port_returns = (returns * weights).sum(1)
+    ivp = {
+        'returns': port_returns,
+        'weights': weights
+    }
     # equally
-    equally_weighted = test_returns.mean(1)
-
-    return equally_weighted, ivp_returns, ae_port_returns
+    port_returns = returns.mean(1)
+    equally_weighted = {
+        'returns': port_returns
+    }
+    return equally_weighted, ivp, ae
 
 
 def getIVP(cov):
