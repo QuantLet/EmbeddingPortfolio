@@ -18,6 +18,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     data = data.loc[start:end, assets]
 
     # Train/val/test split
+    assert 2*val_size < len(data) / 2, 'Validation and test size larger than half of data'
     train_data = data.iloc[:-val_size * 2, :]
     val_data = data.loc[train_data.index[-1]:, :].iloc[1:val_size]
 
@@ -92,7 +93,9 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates, features
 
 
-def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan=False, fillnan=True):
+def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan: bool = False,
+              fillnan: bool = True, freq: str = '1H'):
+    assert isinstance(freq, str)
     data = pd.DataFrame()
     assets = []
     end = '2021-01-30 12:30:00'
@@ -149,6 +152,14 @@ def load_data(type=['indices', 'forex', 'forex_metals', 'crypto', 'commodities']
     # assets = np.random.choice(assets, len(assets), replace=False).tolist()
     # data = data.loc[:, pd.IndexSlice[assets, 'price']]
     # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
+
+    if freq not in ["1H", "H"]:
+        # TODO
+        raise NotImplementedError('You must verify logic')
+        LOGGER.info(f"Resampling to {freq} frequency")
+        data = data.resample(freq,
+                             closed='right',
+                             label='right').agg('last')
 
     data = data.loc[:end]
     if 'crypto' in type:
