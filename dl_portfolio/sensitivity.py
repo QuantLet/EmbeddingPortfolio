@@ -26,11 +26,13 @@ def feature_sensitivity(model, data, loss_func, features=None):
     return sensitivity
 
 
-def plot_sensitivity(sensitivity: pd.DataFrame, save_path=None, show=False, max_xticks=50):
-    plt.figure(figsize=(20, 10))
+def plot_sensitivity(sensitivity: pd.DataFrame, save_path=None, show=False, max_xticks=50, **kwargs):
+    cmap = kwargs.get('cmap', 'gray')
+    figsize = kwargs.get('figsize', (20, 10))
+    plt.figure(figsize=figsize)
     c = plt.imshow(sensitivity.T,
                    aspect="auto",
-                   cmap="gray",
+                   cmap=cmap,
                    interpolation="nearest")
     plt.colorbar(c)
 
