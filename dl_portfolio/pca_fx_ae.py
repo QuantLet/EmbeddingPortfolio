@@ -243,15 +243,6 @@ if __name__ == "__main__":
 
         # test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
 
-        # history = model.fit(train_dataset, # train_input, train_data,
-        #                     epochs=epochs,
-        #                     batch_size=batch_size,
-        #                     validation_data=val_dataset, # (val_input, val_data),
-        #                     validation_batch_size=batch_size,
-        #                     callbacks=cv_callbacks,
-        #                     shuffle=False,
-        #                     verbose=1)
-
         @tf.function
         def train_step(x, y, *args, **kwargs):
             with tf.GradientTape() as tape:

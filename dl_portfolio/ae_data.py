@@ -115,7 +115,7 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             del crypto_data
         elif asset_class == 'forex':
             LOGGER.info('Loading forex data')
-            fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD', 'HKDUSD']
+            fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
             fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
             fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
             data = pd.concat([data, fxdata], 1)
