@@ -2,10 +2,9 @@ import numpy as np
 import pandas as pd
 
 
-def cluster_portfolio(returns, features, embedding, no_leverage=True):
-    n_clusters = features.shape[1]
-    cov = np.cov(features, rowvar=False)
-    cluster_weights = getIVP(cov)
+def cluster_portfolio(returns, features_cov, embedding, no_leverage=True):
+    n_clusters = features_cov.shape[0]
+    cluster_weights = getIVP(features_cov)
     if no_leverage:
         asset_weights = (embedding / embedding.sum())
     else:
@@ -21,7 +20,8 @@ def cluster_portfolio(returns, features, embedding, no_leverage=True):
 
 def get_portfolio_perf(train_returns, returns, features, embedding, fx_levrage=1.):
     # AE port
-    port_returns, cluster_weights, asset_weights = cluster_portfolio(returns, features, embedding)
+    features_cov =  features.cov()
+    port_returns, cluster_weights, asset_weights = cluster_portfolio(returns,features_cov, embedding)
 
     ae = {
         'returns': port_returns,
