@@ -3,8 +3,7 @@ import matplotlib.pyplot as plt
 import os, pickle
 from dl_portfolio.logger import LOGGER
 import datetime as dt
-from dl_portfolio.pca_ae import ActivityRegularizer, NonNegAndUnitNormInit, heat_map_cluster, pca_ae_model, \
-    get_layer_by_name, heat_map, pca_permut_ae_model, ae_model
+from dl_portfolio.pca_ae import ActivityRegularizer, heat_map_cluster, get_layer_by_name, heat_map, build_model
 from tensorflow.keras import backend as K
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
