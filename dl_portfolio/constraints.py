@@ -2,6 +2,7 @@ import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.constraints import Constraint
 import tensorflow_probability as tfp
+from tensorflow.python.ops import math_ops
 import numpy as np
 
 
@@ -60,8 +61,8 @@ class NonNegAndUnitNorm(Constraint):
             output = non_neg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(non_neg), axis=self.axis, keepdims=True)))
             w = tf.concat([output, w[:, self.max_dim:]], axis=-1)
         else:
-            non_neg = w * tf.cast(tf.greater_equal(w, 0.), K.floatx())
-            w = non_neg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(non_neg), axis=self.axis, keepdims=True)))
+            w = w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
+            w = w / (K.epsilon() + K.sqrt(math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True)))
         return w
 
     def get_config(self):
@@ -348,7 +349,7 @@ class PositiveSkewnessConstraint(Constraint):
                                        tf.eye(self.encoding_dim))
             block = tf.clip_by_value(block, -1e6, 1e6)
             block = tf.clip_by_value(- block, 0, 1e6)
-            block = K.sum(block) / 2 # tf.reduce_mean(block)  # K.sum(K.square(block)) / 2  # since symmetric matrix
+            block = K.sum(block) / 2  # tf.reduce_mean(block)  # K.sum(K.square(block)) / 2  # since symmetric matrix
             output.append(block)
 
         if self.norm == '1':
@@ -366,7 +367,7 @@ class PositiveSkewnessConstraint(Constraint):
 class PositiveSkewnessUncorrConstraint(PositiveSkewnessConstraint, UncorrelatedFeaturesConstraint):
     def __init__(self, encoding_dim, coske_weightage=1.0, uncorr_weightage=1.0):
         super(PositiveSkewnessConstraint).__init__(encoding_dim, normalize=False, weightage=coske_weightage,
-                                                         norm='1')
+                                                   norm='1')
         super(UncorrelatedFeaturesConstraint).__init__(encoding_dim, weightage=uncorr_weightage, norm='1/2')
 
     def __call__(self, x):
