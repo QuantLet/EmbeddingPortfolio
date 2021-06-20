@@ -143,55 +143,26 @@ if __name__ == "__main__":
         input_dim = len(assets)
         n_features = None
         if model_type == 'pca_permut_ae_model':
-            model, encoder = pca_permut_ae_model(input_dim, encoding_dim, activation=activation,
-                                                 kernel_initializer=kernel_initializer,
-                                                 kernel_constraint=kernel_constraint,
-                                                 kernel_regularizer=kernel_regularizer,
-                                                 activity_regularizer=activity_regularizer,
-                                                 pooling=pooling
-                                                 )
+            raise NotImplementedError()
             train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
             val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
             test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
 
-        elif model_type == 'ae_model':
+        elif model_type in ['ae_model', 'pca_ae_model']:
             if features:
                 n_features = features['train'].shape[-1]
             else:
                 n_features = None
-            model, encoder, extra_features = ae_model(input_dim,
-                                                      encoding_dim,
-                                                      n_features=n_features,
-                                                      extra_features_dim=1,
-                                                      activation=activation,
-                                                      kernel_initializer=kernel_initializer,
-                                                      kernel_constraint=kernel_constraint,
-                                                      kernel_regularizer=kernel_regularizer,
-                                                      activity_regularizer=activity_regularizer,
-                                                      batch_size=batch_size if drop_remainder_obs else None,
-                                                      loss=loss
-                                                      )
-            train_input = train_data
-            val_input = val_data
-            test_input = test_data
-
-        elif model_type == 'pca_ae_model':
-            if features:
-                n_features = features['train'].shape[-1]
-            else:
-                n_features = None
-            model, encoder, extra_features = pca_ae_model(input_dim,
-                                                          encoding_dim,
-                                                          n_features=n_features,
-                                                          extra_features_dim=1,
-                                                          activation=activation,
-                                                          kernel_initializer=kernel_initializer,
-                                                          kernel_constraint=kernel_constraint,
-                                                          kernel_regularizer=kernel_regularizer,
-                                                          activity_regularizer=activity_regularizer,
-                                                          batch_size=batch_size if drop_remainder_obs else None,
-                                                          loss=loss
-                                                          )
+            model, encoder, extra_features = build_model(model_type, input_dim, encoding_dim,
+                                                         n_features=n_features,
+                                                         extra_features_dim=1,
+                                                         activation=activation,
+                                                         kernel_initializer=kernel_initializer,
+                                                         kernel_constraint=kernel_constraint,
+                                                         kernel_regularizer=kernel_regularizer,
+                                                         activity_regularizer=activity_regularizer,
+                                                         batch_size=batch_size if drop_remainder_obs else None,
+                                                         loss=loss)
             train_input = train_data
             val_input = val_data
             test_input = test_data
@@ -511,7 +482,6 @@ if __name__ == "__main__":
         else:
             val_features = encoder.predict(val_input)
         val_features = pd.DataFrame(val_features, index=dates['val'])
-
 
         encoder_layer = get_layer_by_name(name='encoder', model=model)
         encoder_weights = encoder_layer.get_weights()

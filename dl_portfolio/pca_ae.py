@@ -22,6 +22,39 @@ import tensorflow_probability as tfp
 LOG_DIR = 'dl_portfolio/log_AE'
 
 
+def build_model(model_type, input_dim, encoding_dim, **kwargs):
+    if model_type == 'pca_permut_ae_model':
+        raise NotImplementedError()
+        # model, encoder = pca_permut_ae_model(input_dim,
+        #                                      encoding_dim,
+        #                                      activation=activation,
+        #                                      kernel_initializer=kernel_initializer,
+        #                                      kernel_constraint=kernel_constraint,
+        #                                      kernel_regularizer=kernel_regularizer,
+        #                                      activity_regularizer=activity_regularizer,
+        #                                      pooling=pooling
+        #                                      )
+        # train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+        # val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+        # test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+
+    elif model_type == 'ae_model':
+        model, encoder, extra_features = ae_model(input_dim,
+                                                  encoding_dim,
+                                                  **kwargs
+                                                  )
+    elif model_type == 'pca_ae_model':
+        model, encoder, extra_features = pca_ae_model(input_dim,
+                                                      encoding_dim,
+                                                      **kwargs
+                                                      )
+
+    else:
+        raise NotImplementedError()
+
+    return model, encoder, extra_features
+
+
 def covariance_penalty(x, x_hat):
     weightage = 1.
     norm = '1/2'
