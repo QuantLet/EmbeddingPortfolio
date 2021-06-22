@@ -2,13 +2,14 @@ from setuptools import setup, find_packages
 
 setup(
     name='dl_portfolio',
-    version='0.1.1',
+    version='0.1.2',
     url='https://github.com/BrunoSpilak/dl-portfolio.git',
     author='Bruno Spilak',
     author_email='bruno.spilak@gmail.com',
     dependency_links=[],
     install_requires=[
         "tensorflow==2.4.0",
+        "tensorflow-probability==0.12.2",
         "numpy==1.19.4",
         "pandas==1.1.4",
         "scipy==1.5.4",
