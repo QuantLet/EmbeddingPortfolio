@@ -66,7 +66,7 @@ if __name__ == "__main__":
             subdir = 'model'
         subdir = subdir + '_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')
         save_dir = f"{LOG_DIR}/{subdir}"
-        os.mkdir(save_dir)
+        os.makedirs(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
     data, assets = load_data(type=data_type, dropnan=dropnan, freq=freq)

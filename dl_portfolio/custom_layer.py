@@ -613,6 +613,14 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
 
         return correlation
 
+    def get_config(self):
+        return {
+            "encoding_dim": self.encoding_dim,
+            "weightage": self.weightage,
+            "norm": self.norm,
+            "use_cov": self.use_cov
+        }
+
     # Constraint penalty => Could we look at conditional covariance: on tail
     # Y
     def uncorrelated_feature(self, x):

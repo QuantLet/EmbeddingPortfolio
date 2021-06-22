@@ -45,6 +45,14 @@ class WeightsOrthogonality(Regularizer):
             regularization += self.weights_orthogonality(w)
         return regularization
 
+    def get_config(self):
+        return {'encoding_dim': self.encoding_dim,
+                'weightage': self.weightage,
+                'axis': self.axis,
+                'max_dim': self.max_dim,
+                'regularizer': self.regularizer
+                }
+
 
 def add_l1_regularization(model, layers, penalty=0.01):
     for layer in model.layers:
