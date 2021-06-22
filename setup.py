@@ -13,7 +13,8 @@ setup(
         "pandas==1.1.4",
         "scipy==1.5.4",
         "matplotlib==3.3.3",
-        "seaborn==0.11.1"
+        "seaborn==0.11.1",
+        "pyportfolioopt==1.4.1"
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
