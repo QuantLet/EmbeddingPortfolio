@@ -3,33 +3,6 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.constraints import Constraint
 import tensorflow_probability as tfp
 from tensorflow.python.ops import math_ops
-import numpy as np
-
-
-class WeightsOrthogonalityConstraint(Constraint):
-    def __init__(self, encoding_dim, weightage=1., axis=0, max_dim=None):
-        self.encoding_dim = encoding_dim
-        self.weightage = weightage
-        self.axis = axis
-        self.max_dim = max_dim
-
-    def weights_orthogonality(self, w):
-        if self.axis == 1:
-            w = tf.transpose(w)
-        if self.encoding_dim > 1:
-            m = K.dot(K.transpose(w), w) - tf.eye(self.encoding_dim)
-            return self.weightage * K.sqrt(K.sum(K.square(m)))
-        else:
-            m = K.sum(w ** 2) - 1.
-            return m
-
-    def __call__(self, w):
-        if self.max_dim is not None:
-            w_reg = w[:, :self.max_dim]
-            m = self.weights_orthogonality(w_reg)
-        else:
-            m = self.weights_orthogonality(w)
-        return m
 
 
 class NonNegAndUnitNorm(Constraint):

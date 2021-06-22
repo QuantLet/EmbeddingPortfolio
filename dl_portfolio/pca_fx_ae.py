@@ -547,7 +547,7 @@ if __name__ == "__main__":
         }
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
-        LOGGER.info(f"Unit norm constraint:\n{encoder.layers[-1].kernel.numpy().sum(0)}")
+        LOGGER.info(f"Unit norm constraint:\n{(encoder.layers[-1].kernel.numpy() ** 2).sum(0)}")
 
         if save:
             train_data.to_pickle(f"{save_dir}/{cv}/train_returns.p")

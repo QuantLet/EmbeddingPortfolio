@@ -6,8 +6,9 @@ from sklearn import preprocessing
 import tensorflow as tf
 from tensorflow.keras import backend as K
 from dl_portfolio.custom_layer import DenseTied, TransposeDense
-from dl_portfolio.constraints import WeightsOrthogonalityConstraint, PositiveSkewnessConstraint, NonNegAndUnitNorm, \
+from dl_portfolio.constraints import PositiveSkewnessConstraint, NonNegAndUnitNorm, \
     UncorrelatedFeaturesConstraint
+from dl_portfolio.regularizers import WeightsOrthogonality
 from typing import List
 from dl_portfolio.logger import LOGGER
 import tensorflow as tf
@@ -342,7 +343,7 @@ def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'li
     print("# Multi-layer model summary")
     print(permutation_model.summary())
 
-    kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, axis=0) if ortho_weights else None
+    kernel_regularizer = WeightsOrthogonality(encoding_dim, axis=0) if ortho_weights else None
     if non_neg_unit_norm:
         assert not non_neg
         kernel_constraint = NonNegAndUnitNorm(axis=0)
