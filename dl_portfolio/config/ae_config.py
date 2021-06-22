@@ -1,9 +1,12 @@
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.pca_ae import NonNegAndUnitNormInit
-from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm, WeightsOrthogonalityConstraint,
+from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm,
                                       PositiveSkewnessConstraint, TailUncorrelatedFeaturesConstraint,
                                       PositiveSkewnessUncorrConstraint)
+from dl_portfolio.regularizers import WeightsOrthogonality
+
+# tf.config.run_functions_eagerly(True)
 
 # seed = np.random.randint(100)
 data_type = ['indices', 'forex', 'forex_metals', 'commodities', 'crypto']
@@ -22,7 +25,7 @@ model_type = 'pca_ae_model'
 seed = np.random.randint(0, 100)
 fx = True
 save = False
-model_name = f'RELU_encoding5_mse_time_feature_weightage_1'
+model_name = f'RELU_encoding4_mse_time_feature_weightage_1_NO_HKUSD'
 encoding_dim = 5
 learning_rate = 1e-3
 epochs = 1000
@@ -40,18 +43,19 @@ label_param = None
 rescale = None
 
 # Constraints and regularizer
-activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim, norm='1/2', weightage=1.)
-# activity_regularizer = tf.keras.regularizers.l1(2e-5)
-# activity_regularizer = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
-# activity_regularizer = PositiveSkewnessUncorrConstraint(encoding_dim, coske_weightage=1.0, uncorr_weightage=1.0)
-# activity_regularizer = TailUncorrelatedFeaturesConstraint(encoding_dim, q=0.05, side='left', norm='1/2', weightage=1000.)
-callback_activity_regularizer = False
+# activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim, norm='1/2', weightage=1.)
+activity_regularizer = None  # tf.keras.regularizers.l1(2e-5)
+uncorrelated_features = True
+weightage = 1e-1
+
 kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
-kernel_regularizer = WeightsOrthogonalityConstraint(encoding_dim, weightage=1., axis=0)
+kernel_regularizer = WeightsOrthogonality(encoding_dim,
+                                          weightage=1e-2,
+                                          axis=0,
+                                          regularizer={'name': 'l2', 'params': {'l2': 1e-2}})
+callback_activity_regularizer = False
 kernel_constraint = NonNegAndUnitNorm(axis=0)  # tf.keras.constraints.NonNeg()#
 
-
-# pooling = 'average'
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
@@ -60,9 +64,9 @@ def scheduler(epoch):
 callbacks = {
     'EarlyStopping': {
         'monitor': 'val_loss',
-        'min_delta': 1e-3,
+        'min_delta': 1e-2,
         'mode': 'min',
-        'patience': 50,
+        'patience': 200,
         'verbose': 1,
         'restore_best_weights': True
     }
@@ -98,6 +102,6 @@ data_specs = {
 # data_specs = {
 #     0: {
 #         'start': '2015-08-07',
-#         'end': '2021-01-30'
+#         'end': '2019-10-30'
 #     }
 # }
