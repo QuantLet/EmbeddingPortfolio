@@ -9,6 +9,7 @@ from tensorflow.keras import constraints
 from tensorflow.keras import initializers
 from tensorflow.keras import regularizers
 from tensorflow.keras.layers import InputSpec
+import tensorflow_probability as tfp
 
 
 # https://keras.io/guides/making_new_layers_and_models_via_subclassing/
@@ -567,6 +568,75 @@ class DynamicSmoothRNN(RNN):
         if 'implementation' in config:
             config.pop('implementation')
         return cls(**config)
+
+
+class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
+    def __init__(self, encoding_dim: int, weightage: float = 1., norm: str = '1/2', use_cov: bool = True, **kwargs):
+        super(UncorrelatedFeaturesLayer, self).__init__(**kwargs)
+        self.encoding_dim = encoding_dim
+        self.weightage = weightage
+        self.use_cov = use_cov
+        self.norm = norm
+        self.m = None
+
+    def get_covariance(self, x):
+        x_centered_list = []
+
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        # random_perturb = tf.random.normal(tf.shape(x_centered), 0, 1e-6, dtype=tf.float32)
+        # x_centered = x_centered + random_perturb
+
+        covariance = tfp.stats.covariance(
+            x_centered
+        )
+
+        return covariance
+
+    def get_corr(self, x):
+        x_centered_list = []
+        for i in range(self.encoding_dim):
+            x_centered_list.append(x[:, i] - K.mean(x[:, i]))
+        x_centered = tf.stack(x_centered_list)
+        x_centered = K.transpose(x_centered)
+
+        # random_perturb = tf.random.normal(tf.shape(x_centered), 0, 1e-6, dtype=tf.float32)
+        # x_centered = x_centered + random_perturb
+
+        correlation = tfp.stats.correlation(
+            x_centered
+        )
+
+        return correlation
+
+    # Constraint penalty => Could we look at conditional covariance: on tail
+    # Y
+    def uncorrelated_feature(self, x):
+        if self.use_cov:
+            self.m = self.get_covariance(x)
+        else:
+            self.m = self.get_corr(x)
+
+        if self.encoding_dim <= 1:
+            return 0.0
+        else:
+            output = K.sum(K.square(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim)))) / 2
+            if self.norm == '1':
+                return output
+            elif self.norm == '1/2':
+                # avoid overweighting fat tails
+                return K.sqrt(output)
+            else:
+                raise NotImplementedError("norm must be '1' or '1/2' ")
+
+    def call(self, x):
+        self.pen = self.weightage * self.uncorrelated_feature(x)
+        self.add_loss(self.pen)
+        return x
 
 
 class DenseTied(tf.keras.layers.Dense):

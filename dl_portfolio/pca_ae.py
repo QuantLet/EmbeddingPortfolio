@@ -5,7 +5,7 @@ import json
 from sklearn import preprocessing
 import tensorflow as tf
 from tensorflow.keras import backend as K
-from dl_portfolio.custom_layer import DenseTied, TransposeDense
+from dl_portfolio.custom_layer import DenseTied, TransposeDense, UncorrelatedFeaturesLayer
 from dl_portfolio.constraints import PositiveSkewnessConstraint, NonNegAndUnitNorm, \
     UncorrelatedFeaturesConstraint
 from dl_portfolio.regularizers import WeightsOrthogonality
@@ -259,56 +259,63 @@ def pca_ae_model(input_dim: int,
                  kernel_regularizer=None,
                  **kwargs
                  ):
+    uncorrelated_features = kwargs.get('uncorrelated_features', True)
+    weightage = kwargs.get('weightage', 1.)
     batch_size = kwargs.get('batch_size', None)
     loss = kwargs.get('loss', None)
 
-    with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
-        asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
-        encoder_layer = tf.keras.layers.Dense(encoding_dim,
-                                              activation=activation,
-                                              kernel_initializer=kernel_initializer,
-                                              kernel_regularizer=kernel_regularizer,
-                                              activity_regularizer=activity_regularizer,
-                                              kernel_constraint=kernel_constraint,
-                                              use_bias=True,
-                                              name='encoder',
-                                              dtype=tf.float32)
-        decoder_layer = DenseTied(input_dim,
-                                  tied_to=encoder_layer,
-                                  n_features=n_features,
-                                  activation='linear',
-                                  kernel_initializer=kernel_initializer,
-                                  kernel_regularizer=kernel_regularizer,
-                                  use_bias=True,
-                                  dtype=tf.float32,
-                                  name='decoder')
-        encoding = encoder_layer(asset_input)
-        encoder = tf.keras.models.Model(asset_input, encoding)
+    # with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
+    asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
+    encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                          activation=activation,
+                                          kernel_initializer=kernel_initializer,
+                                          kernel_regularizer=kernel_regularizer,
+                                          # activity_regularizer=activity_regularizer,
+                                          kernel_constraint=kernel_constraint,
+                                          use_bias=True,
+                                          name='encoder',
+                                          dtype=tf.float32)
 
-        if n_features:
-            # Extra input
-            extra_input = tf.keras.layers.Input(n_features, batch_size=batch_size, dtype=tf.float32, name='extra_input')
-            extra_features_layer = tf.keras.layers.Dense(extra_features_dim,
-                                                         activation='linear',
-                                                         use_bias=True,
-                                                         name='extra_features',
-                                                         dtype=tf.float32)
-            extra_features = extra_features_layer(extra_input)
-            hidden_layer = tf.keras.layers.concatenate([encoding, extra_features])
-            output = decoder_layer(hidden_layer)
-            autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
-            if loss == 'mse_with_covariance_penalty':
-                loss = mse_with_covariance_penalty([asset_input, extra_input], [output, encoding])
-                autoencoder.add_loss(loss)
-        else:
-            output = decoder_layer(encoding)
-            autoencoder = tf.keras.models.Model(asset_input, output)
-            extra_features = None
-            if loss == 'mse_with_covariance_penalty':
-                loss = mse_with_covariance_penalty(asset_input, [output, encoding])
-                autoencoder.add_loss(loss)
+    decoder_layer = DenseTied(input_dim,
+                              tied_to=encoder_layer,
+                              n_features=n_features,
+                              activation='linear',
+                              use_bias=True,
+                              dtype=tf.float32,
+                              name='decoder')
 
-        return autoencoder, encoder, extra_features
+    encoding = encoder_layer(asset_input)
+    if uncorrelated_features:
+        activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
+                                                               weightage=weightage)
+
+        encoding = activity_regularizer_layer(encoding)
+    encoder = tf.keras.models.Model(asset_input, encoding)
+
+    if n_features:
+        # Extra input
+        extra_input = tf.keras.layers.Input(n_features, batch_size=batch_size, dtype=tf.float32, name='extra_input')
+        extra_features_layer = tf.keras.layers.Dense(extra_features_dim,
+                                                     activation='linear',
+                                                     use_bias=True,
+                                                     name='extra_features',
+                                                     dtype=tf.float32)
+        extra_features = extra_features_layer(extra_input)
+        hidden_layer = tf.keras.layers.concatenate([encoding, extra_features])
+        output = decoder_layer(hidden_layer)
+        autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
+        if loss == 'mse_with_covariance_penalty':
+            loss = mse_with_covariance_penalty([asset_input, extra_input], [output, encoding])
+            autoencoder.add_loss(loss)
+    else:
+        output = decoder_layer(encoding)
+        autoencoder = tf.keras.models.Model(asset_input, output)
+        extra_features = None
+        if loss == 'mse_with_covariance_penalty':
+            loss = mse_with_covariance_penalty(asset_input, [output, encoding])
+            autoencoder.add_loss(loss)
+
+    return autoencoder, encoder, extra_features
 
 
 def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',

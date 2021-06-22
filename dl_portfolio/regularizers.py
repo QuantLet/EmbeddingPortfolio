@@ -43,19 +43,20 @@ class WeightsOrthogonality(Regularizer):
             if self.regularizer:
                 regularization += self.regularizer(w)
             regularization += self.weights_orthogonality(w)
-
         return regularization
 
 
 def add_l1_regularization(model, layers, penalty=0.01):
     for layer in model.layers:
         if layer.name in layers:
-            model.add_loss(lambda: penalty * math_ops.reduce_sum(math_ops.abs(layer.trainable_variables[0])))
+            model.add_loss(
+                lambda: penalty * tf.reduce_mean(math_ops.reduce_sum(math_ops.abs(layer.trainable_variables[0]))))
     return
 
 
 def add_l2_regularization(model, layers, penalty=0.01):
     for layer in model.layers:
         if layer.name in layers:
-            model.add_loss(lambda: penalty * math_ops.reduce_sum(math_ops.square(layer.trainable_variables[0])))
+            model.add_loss(
+                lambda: penalty * tf.reduce_mean(math_ops.reduce_sum(math_ops.square(layer.trainable_variables[0]))))
     return

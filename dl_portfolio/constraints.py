@@ -93,6 +93,7 @@ class OldUncorrelatedFeaturesConstraint(Constraint):
 
 class UncorrelatedFeaturesConstraint(Constraint):
     def __init__(self, encoding_dim: int, weightage: float = 1., norm: str = '1', use_cov: bool = True):
+        raise NotImplementedError('You must use the Layer implementation')
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.use_cov = use_cov
@@ -165,6 +166,7 @@ class UncorrelatedFeaturesConstraint(Constraint):
 class TailUncorrelatedFeaturesConstraint(Constraint):
     def __init__(self, encoding_dim: int, q: float, side: str, weightage: float = 1., norm: str = '1',
                  use_cov: bool = True):
+        raise NotImplementedError('You must create activaity reg layer')
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.use_cov = use_cov
@@ -254,6 +256,7 @@ class TailUncorrelatedFeaturesConstraint(Constraint):
 
 class PositiveSkewnessConstraint(Constraint):
     def __init__(self, encoding_dim, normalize=True, weightage=1.0, norm='1'):
+        raise NotImplementedError('You must create activaity reg layer')
         self.encoding_dim = encoding_dim
         self.weightage = weightage
         self.normalize = normalize
@@ -339,6 +342,8 @@ class PositiveSkewnessConstraint(Constraint):
 
 class PositiveSkewnessUncorrConstraint(PositiveSkewnessConstraint, UncorrelatedFeaturesConstraint):
     def __init__(self, encoding_dim, coske_weightage=1.0, uncorr_weightage=1.0):
+        raise NotImplementedError('You must create activaity reg layer')
+
         super(PositiveSkewnessConstraint).__init__(encoding_dim, normalize=False, weightage=coske_weightage,
                                                    norm='1')
         super(UncorrelatedFeaturesConstraint).__init__(encoding_dim, weightage=uncorr_weightage, norm='1/2')
