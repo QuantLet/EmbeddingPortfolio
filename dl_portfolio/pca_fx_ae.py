@@ -161,7 +161,9 @@ if __name__ == "__main__":
                                                          kernel_regularizer=kernel_regularizer,
                                                          activity_regularizer=activity_regularizer,
                                                          batch_size=batch_size if drop_remainder_obs else None,
-                                                         loss=loss)
+                                                         loss=loss,
+                                                         uncorrelated_features=uncorrelated_features,
+                                                         weightage=weightage)
             train_input = train_data
             val_input = val_data
             test_input = test_data
@@ -248,6 +250,9 @@ if __name__ == "__main__":
             with tf.GradientTape() as tape:
                 pred = model(x, training=True)
                 loss_value = loss_fn(y, pred, *args, **kwargs)
+                # Add any extra losses created during the forward pass.
+                reg_loss = tf.reduce_sum(model.losses)
+                loss_value = loss_value + reg_loss
             grads = tape.gradient(loss_value, model.trainable_weights)
             optimizer.apply_gradients(zip(grads, model.trainable_weights))
 
@@ -256,7 +261,7 @@ if __name__ == "__main__":
             else:
                 train_metric.update_state(y, pred)
 
-            return loss_value
+            return loss_value, reg_loss
 
 
         @tf.function
@@ -273,70 +278,52 @@ if __name__ == "__main__":
 
 
         early_stopping = callbacks.get('EarlyStopping')
+        if early_stopping.get('monitor') != 'val_loss':
+            raise NotImplementedError()
         if early_stopping is not None:
             restore_best_weights = early_stopping['restore_best_weights']
         else:
             restore_best_weights = False
-        history = {'loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_mse': [], 'val_rmse': []}
+        history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_mse': [], 'val_rmse': []}
         best_weights = None
         stop_training = False
         for epoch in range(epochs):
             # Iterate over the batches of the dataset.
             batch_loss = []
+            batch_reg_loss = []
             if loss == 'weighted_mse':
                 if n_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train, weights_batch) in enumerate(
                             train_dataset):
-                        loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train, weights_batch)
+                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train, weights_batch)
                         batch_loss.append(float(loss_value))
-                        # Log every 200 batches.
-                        # if step % 200 == 0 and step > 0:
-                        #     print(
-                        #         "Training loss (for one batch) at step %d: %.4f"
-                        #         % (step, float(loss_value))
-                        #     )
-                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        batch_reg_loss.append(float(reg_loss))
                 else:
                     for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
-                        loss_value = train_step(x_batch_train, y_batch_train, weights_batch)
+                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train, weights_batch)
                         batch_loss.append(float(loss_value))
-                        # Log every 200 batches.
-                        # if step % 200 == 0 and step > 0:
-                        #     print(
-                        #         "Training loss (for one batch) at step %d: %.4f"
-                        #         % (step, float(loss_value))
-                        #     )
-                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        batch_reg_loss.append(float(reg_loss))
             else:
                 if n_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
-                        loss_value = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
+                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
                         batch_loss.append(float(loss_value))
-                        # Log every 200 batches.
-                        # if step % 200 == 0 and step > 0:
-                        #     print(
-                        #         "Training loss (for one batch) at step %d: %.4f"
-                        #         % (step, float(loss_value))
-                        #     )
-                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        batch_reg_loss.append(float(reg_loss))
                 else:
                     for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                        loss_value = train_step(x_batch_train, y_batch_train)
+                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
                         batch_loss.append(float(loss_value))
-                        # Log every 200 batches.
-                        # if step % 200 == 0 and step > 0:
-                        #     print(
-                        #         "Training loss (for one batch) at step %d: %.4f"
-                        #         % (step, float(loss_value))
-                        #     )
-                        #     print("Seen so far: %d samples" % ((step + 1) * batch_size))
+                        batch_reg_loss.append(float(reg_loss))
             if restore_best_weights and best_weights is None:
                 best_epoch = epoch
                 best_weights = model.get_weights()
 
             # Compute loss over epoch
             epoch_loss = np.mean(batch_loss)
+            epoch_reg_loss = np.mean(batch_reg_loss)
             history['loss'].append(epoch_loss)
+            history['reg_loss'].append(epoch_reg_loss)
+
 
             # Run a validation loop at the end of each epoch.
             batch_loss = []
@@ -392,7 +379,7 @@ if __name__ == "__main__":
                 val_metric.reset_states()
 
             LOGGER.info(
-                f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
+                f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - reg_loss = {np.round(history['reg_loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
                 f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
 
             if save:
@@ -501,17 +488,18 @@ if __name__ == "__main__":
         val_cluster_portfolio = pd.DataFrame(np.dot(val_data, encoder_weights / encoder_weights.sum()),
                                              index=dates['val'])
 
-        coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
-        LOGGER.info(
-            f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
+        # coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
+        # LOGGER.info(
+        #     f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
 
         # test_cluster_portfolio = encoder.predict(test_data)
         # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
         test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
                                               index=dates['test'])
 
-        LOGGER.info(
-            f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
+        # LOGGER.info(
+        #     f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
+
         train_data = scaler.inverse_transform(train_data)
         train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
         val_data = scaler.inverse_transform(val_data)
@@ -547,7 +535,7 @@ if __name__ == "__main__":
         }
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
-        LOGGER.info(f"Unit norm constraint:\n{(encoder.layers[-1].kernel.numpy() ** 2).sum(0)}")
+        LOGGER.info(f"Unit norm constraint:\n{(get_layer_by_name('encoder', encoder).kernel.numpy() ** 2).sum(0)}")
 
         if save:
             train_data.to_pickle(f"{save_dir}/{cv}/train_returns.p")
