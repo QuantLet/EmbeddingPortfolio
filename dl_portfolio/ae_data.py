@@ -18,7 +18,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     data = data.loc[start:end, assets]
 
     # Train/val/test split
-    assert 2*val_size < len(data) / 2, 'Validation and test size larger than half of data'
+    assert 2 * val_size < len(data) / 2, 'Validation and test size larger than half of data'
     train_data = data.iloc[:-val_size * 2, :]
     val_data = data.loc[train_data.index[-1]:, :].iloc[1:val_size]
 
@@ -93,12 +93,13 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     return train_data, val_data, test_data, scaler, dates, features
 
 
-def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan: bool = False,
-              fillnan: bool = True, freq: str = '1H'):
+def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan: bool = False,
+                  fillnan: bool = True, freq: str = '1H'):
     assert isinstance(freq, str)
     data = pd.DataFrame()
     assets = []
     end = '2021-01-30 12:30:00'
+    start_date = []
     for asset_class in type:
         if asset_class == 'crypto':
             LOGGER.info('Loading crypto data')
@@ -110,6 +111,7 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             crypto_data = crypto_data.resample('1H',
                                                closed='right',
                                                label='right').agg('last')
+            start_date.append(crypto_data.dropna().index[0])
             data = pd.concat([data, crypto_data], 1)
             assets = assets + crypto_assets
             del crypto_data
@@ -118,6 +120,7 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
             fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
             fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
+            start_date.append(fxdata.dropna().index[0])
             data = pd.concat([data, fxdata], 1)
             del fxdata
             assets = assets + fx_assets
@@ -127,6 +130,7 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             fx_metals_assets = ['XAUUSD', 'XAGUSD']
             fx_m_data = pd.read_pickle('./data/histdatacom/forex_metals_f_3600_2014_2021_close_index.p')
             fx_m_data = fx_m_data.loc[:, pd.IndexSlice[fx_metals_assets, 'close']].droplevel(1, 1)
+            start_date.append(fx_m_data.dropna().index[0])
             data = pd.concat([data, fx_m_data], 1)
             del fx_m_data
             assets = assets + fx_metals_assets
@@ -134,7 +138,10 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             LOGGER.info('Loading indices data')
             indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD', 'NSXUSD', 'HKXUSD', 'AUXUSD']
             indices_data = pd.read_pickle('./data/histdatacom/indices_f_3600_2014_2021_close_index.p')
+
             indices_data = indices_data.loc[:, pd.IndexSlice[indices, 'close']].droplevel(1, 1)
+            us_market_hours = indices_data['SPXUSD'].dropna().index
+            start_date.append(indices_data.dropna().index[0])
             data = pd.concat([data, indices_data], 1)
             del indices_data
             assets = assets + indices
@@ -143,12 +150,84 @@ def load_data(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commo
             com_assets = ['WTIUSD', 'BCOUSD']
             com_data = pd.read_pickle('./data/histdatacom/commodities_f_3600_2014_2021_close_index.p')
             com_data = com_data.loc[:, pd.IndexSlice[com_assets, 'close']].droplevel(1, 1)
+            start_date.append(com_data.dropna().index[0])
             data = pd.concat([data, com_data], 1)
             del com_data
             assets = assets + com_assets
         else:
             raise ValueError(asset_class)
 
+    start_date = max(start_date)
+    data = data.loc[start_date:, :]
+    # assets = np.random.choice(assets, len(assets), replace=False).tolist()
+    # data = data.loc[:, pd.IndexSlice[assets, 'price']]
+    # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
+
+    if freq not in ["1H", "H"]:
+        # TODO
+        raise NotImplementedError('You must verify logic')
+        LOGGER.info(f"Resampling to {freq} frequency")
+        data = data.resample(freq,
+                             closed='right',
+                             label='right').agg('last')
+
+    data = data.loc[:end]
+    if 'crypto' in type:
+        if dropnan:
+            data = data.dropna()
+        else:
+            if fillnan:
+                data = data.fillna(method='ffill')
+                data = data.dropna()
+    else:
+        if dropnan:
+            data = data.dropna()
+    data = data.loc[:, assets]
+
+    return data, assets
+
+
+def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H'):
+    assert isinstance(freq, str)
+    data = pd.DataFrame()
+    end = '2021-06-11 22:00:00'
+
+    crypto_assets = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP']
+    fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
+    fx_metals_assets = ['XAUUSD', 'XAGUSD']
+    indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD', 'NSXUSD', 'HKXUSD', 'AUXUSD']
+    com_assets = ['WTIUSD', 'BCOUSD']
+    available_assets = indices + fx_assets + fx_metals_assets + com_assets + crypto_assets
+
+    if assets:
+        assert any([a in available_assets for a in assets])
+
+    start_date = []
+    # Load crypto data
+    if assets is None or any([a in crypto_assets for a in assets]):
+        crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
+        crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
+        crypto_data.index = crypto_data.index.tz_localize('UTC')
+        crypto_data = crypto_data.resample('1H',
+                                           closed='right',
+                                           label='right').agg('last')
+        start_date.append(crypto_data.dropna().index[0])
+        data = pd.concat([data, crypto_data], 1)
+
+    if assets is None or any([a in indices + fx_assets + fx_metals_assets + com_assets for a in assets]):
+        trad_data = pd.read_pickle('./data/histdatacom/data_close_1H_20140102_20210611.p')
+        trad_data.index = trad_data.index.tz_localize('UTC')
+        start_date.append(trad_data.dropna().index[0])
+        data = pd.concat([data, trad_data], 1)
+
+    if assets is None:
+        data = data[available_assets]
+    else:
+        data = data[assets]
+
+
+    start_date = max(start_date)
+    data = data.loc[start_date:, :]
     # assets = np.random.choice(assets, len(assets), replace=False).tolist()
     # data = data.loc[:, pd.IndexSlice[assets, 'price']]
     # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
