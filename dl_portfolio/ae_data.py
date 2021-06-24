@@ -190,7 +190,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
 def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H'):
     assert isinstance(freq, str)
     data = pd.DataFrame()
-    end = '2021-06-11 22:00:00'
+    end = '2021-06-11 19:00:00'
 
     crypto_assets = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP']
     fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
@@ -207,7 +207,7 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
     if assets is None or any([a in crypto_assets for a in assets]):
         crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
         crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
-        crypto_data.index = crypto_data.index.tz_localize('UTC')
+        # crypto_data.index = crypto_data.index.tz_localize('UTC')
         crypto_data = crypto_data.resample('1H',
                                            closed='right',
                                            label='right').agg('last')
@@ -216,12 +216,13 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
 
     if assets is None or any([a in indices + fx_assets + fx_metals_assets + com_assets for a in assets]):
         trad_data = pd.read_pickle('./data/histdatacom/data_close_1H_20140102_20210611.p')
-        trad_data.index = trad_data.index.tz_localize('UTC')
+        # trad_data.index = trad_data.index.tz_localize('UTC')
         start_date.append(trad_data.dropna().index[0])
         data = pd.concat([data, trad_data], 1)
 
     if assets is None:
-        data = data[available_assets]
+        assets = available_assets
+        data = data[assets]
     else:
         data = data[assets]
 
@@ -241,7 +242,8 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
                              label='right').agg('last')
 
     data = data.loc[:end]
-    if 'crypto' in type:
+    if any([a in crypto_assets for a in data.columns]):
+        # We have cryptos in our table
         if dropnan:
             data = data.dropna()
         else:
@@ -251,7 +253,6 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
     else:
         if dropnan:
             data = data.dropna()
-    data = data.loc[:, assets]
 
     return data, assets
 
