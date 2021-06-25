@@ -69,7 +69,7 @@ if __name__ == "__main__":
         os.makedirs(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-    data, assets = load_data(dropnan=dropnan, freq=freq)
+    data, assets = load_data(assets=assets, dropnan=dropnan, freq=freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}

@@ -207,7 +207,6 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
     if assets is None or any([a in crypto_assets for a in assets]):
         crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
         crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
-        # crypto_data.index = crypto_data.index.tz_localize('UTC')
         crypto_data = crypto_data.resample('1H',
                                            closed='right',
                                            label='right').agg('last')
@@ -216,9 +215,13 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
 
     if assets is None or any([a in indices + fx_assets + fx_metals_assets + com_assets for a in assets]):
         trad_data = pd.read_pickle('./data/histdatacom/data_close_1H_20140102_20210611.p')
-        # trad_data.index = trad_data.index.tz_localize('UTC')
         start_date.append(trad_data.dropna().index[0])
         data = pd.concat([data, trad_data], 1)
+
+    if 'CRIX' in assets:
+        crix = pd.read_pickle('./data/crypto_data/crix_1H_20160630_20210614.p')
+        start_date.append(crix.dropna().index[0])
+        data = pd.concat([data, crix], 1)
 
     if assets is None:
         assets = available_assets
