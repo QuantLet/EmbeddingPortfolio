@@ -22,9 +22,10 @@ class NonNegAndUnitNorm(Constraint):
       `(rows, cols, input_depth)`.
     """
 
-    def __init__(self, axis=0, max_dim=None):
+    def __init__(self, axis=0, max_dim=None, norm='l2'):
         self.axis = axis
         self.max_dim = max_dim
+        self.norm = norm
 
     def __call__(self, w):
         if self.max_dim is not None:
@@ -35,7 +36,10 @@ class NonNegAndUnitNorm(Constraint):
             w = tf.concat([output, w[:, self.max_dim:]], axis=-1)
         else:
             w = w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
-            w = w / (K.epsilon() + K.sqrt(math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True)))
+            if self.norm == 'l2':
+                w = w / (K.epsilon() + K.sqrt(math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True)))
+            elif self.norm == 'l1':
+                w = w / (K.epsilon() + K.sqrt(math_ops.reduce_sum(w, axis=self.axis, keepdims=True)))
         return w
 
     def get_config(self):
