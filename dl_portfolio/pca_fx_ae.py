@@ -433,7 +433,9 @@ if __name__ == "__main__":
 
         if save:
             plt.savefig(f"{save_dir}/{cv}/history.png")
-        plt.show()
+
+        if show_plot:
+            plt.show()
 
         if save:
             LOGGER.info(f"Loading weights from {save_dir}/{cv}/best_model.h5")
@@ -524,9 +526,9 @@ if __name__ == "__main__":
             vmin = None
 
         if save:
-            heat_map(encoder_weights, show=True, save=save, save_dir=f"{save_dir}/{cv}", vmax=vmax, vmin=vmin)
+            heat_map(encoder_weights, show=show_plot, save=save, save_dir=f"{save_dir}/{cv}", vmax=vmax, vmin=vmin)
         else:
-            heat_map(encoder_weights, show=True, vmax=vmax, vmin=vmin)
+            heat_map(encoder_weights, show=show_plot, vmax=vmax, vmin=vmin)
 
         cluster_portfolio = {
             'train': train_cluster_portfolio,
