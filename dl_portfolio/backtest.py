@@ -9,8 +9,27 @@ from dl_portfolio.logger import LOGGER
 from typing import Union, Dict
 import pickle
 
+def get_timeseries_weights(cv_results):
+    weights = {}
+    portfolios = cv_results[0]['port'].keys()
+    for p in portfolios:
+        pweights= pd.DataFrame()
+        dates = []
+        for cv in cv_results.keys():
+            dates.append(cv_results[cv]['returns'].index[0])
+            w = cv_results[cv]['port'][p]
+            if w is None:
+                assets = cv_results[cv]['returns'].columns
+                w = pd.Series([None]*len(assets), index = assets)
+            pweights = pd.concat([pweights, w], 1)
+        pweights = pweights.T
+        pweights.index = dates
+        weights[p] = pweights
+    return weights
+
+
 def cv_portfolio_perf(cv_results: Dict,
-                      portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'hrp', 'rp', 'ae_rp']):
+                      portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -21,7 +40,10 @@ def cv_portfolio_perf(cv_results: Dict,
             if p == 'equal':
                 port_perf['equal'][cv] = (cv_results[cv]['returns']).mean(1)
             else:
-                port_perf[p][cv] = (cv_results[cv]['returns'] * cv_results[cv]['port'][p]).sum(1)
+                if cv_results[cv]['port'][p] is not None:
+                    port_perf[p][cv] = (cv_results[cv]['returns'] * cv_results[cv]['port'][p]).sum(1)
+                else:
+                    port_perf[p][cv] = cv_results[cv]['returns'] * np.nan
 
             port_perf[p]['total'] = pd.concat([port_perf[p]['total'], port_perf[p][cv]])
 
@@ -38,6 +60,8 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
         returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
         pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
         train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
+        val_features = pd.read_pickle(f'{base_dir}/{cv}/val_features.p')
+        test_features = pd.read_pickle(f'{base_dir}/{cv}/test_features.p')
 
         residuals = returns - pred
         std = np.sqrt(scaler['attributes']['var_'])
@@ -47,6 +71,9 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
 
         cv_results[cv]['embedding'] = embedding
         cv_results[cv]['scaled_embedding'] = scaled_embedding
+        cv_results[cv]['train_features'] = train_features
+        cv_results[cv]['val_features'] = val_features
+        cv_results[cv]['test_features'] = test_features
         cv_results[cv]['Sf'] = train_features.cov()
         cv_results[cv]['Su'] = scaled_residuals.cov()
         cv_results[cv]['H'] = pd.DataFrame(
@@ -64,7 +91,7 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
-                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'hrp', 'rp', 'ae_rp']):
+                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
     port_w = {}
 
     mu = returns.mean()
@@ -83,6 +110,11 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
     if 'ivp' in portfolio:
         LOGGER.info('Computing IVP weights...')
         port_w['ivp'] = ivp_weights(S)
+
+    if 'ae_ivp' in portfolio:
+        LOGGER.info('Computing AE IVP weights...')
+        assert embedding is not None
+        port_w['ae_ivp'] = ae_ivp_weights(returns, embedding)
 
     if 'hrp' in portfolio:
         LOGGER.info('Computing HRP weights...')
@@ -181,6 +213,34 @@ def ae_riskparity_weights(returns, embedding, market_budget):
     return weights
 
 
+def ae_ivp_weights(returns, embedding):
+    # First get cluster allocation to forget about small contribution
+    clusters = get_cluster_labels(embedding)
+
+    # Now get weights of assets inside each cluster
+    cluster_asset_weights = {}
+    cluster_weights = {}
+    cov = returns.cov()
+    for c in clusters:
+        cluster_items = clusters[c]
+        c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
+        cluster_var = get_cluster_var(cov, cluster_items, weights=cluster_weights)
+        cluster_asset_weights[c] = c_weights
+        cluster_weights[c] = cluster_var
+
+    cluster_weights = {c: 1 / cluster_weights[c] for c in cluster_weights}
+    cluster_weights = {c: cluster_weights[c] / np.sum(list(cluster_weights.values())) for c in cluster_weights}
+    cluster_weights = {c: cluster_weights[c] * cluster_asset_weights[c] for c in cluster_weights}
+
+    # Compute asset weight inside global portfolio
+    weights = pd.Series(dtype='float32')
+    for c in cluster_weights:
+        weights = pd.concat([weights, cluster_weights[c]])
+    weights = weights.loc[returns.columns]  # rerorder
+
+    return weights
+
+
 def get_cluster_var(cov, cluster_items, weights=None):
     """
     Compute the variance per cluster
@@ -192,31 +252,10 @@ def get_cluster_var(cov, cluster_items, weights=None):
     :return: the variance per cluster
     :rtype: float
     """
+    cov_slice = cov.loc[cluster_items, cluster_items]
     if weights is not None:
-        weights = get_cluster_inverse_var_weights(cov, cluster_items)
-    cov_slice = cov.loc[cluster_items, cluster_items]
-
+        weights = ivp_weights(cov_slice)
     return np.linalg.multi_dot((weights, cov_slice, weights))
-
-
-def get_cluster_inverse_var_weights(cov, cluster_items):
-    """
-    Compute the inverse variance weights of each asset in cluster_items
-
-    :param cov: covariance matrix
-    :type cov: np.ndarray
-    :param cluster_items: tickers in the cluster
-    :type cluster_items: list
-    :return: the variance per cluster
-    :rtype: float
-    """
-    # Compute variance per cluster
-    cov_slice = cov.loc[cluster_items, cluster_items]
-    weights = 1 / np.diag(cov_slice)  # Inverse variance weights
-    weights /= weights.sum()
-
-    weights = pd.Series(weights.astype(np.float32), index=cluster_items)
-    return weights
 
 
 def get_cluster_labels(embedding):

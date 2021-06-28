@@ -21,7 +21,6 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     assert 2 * val_size < len(data) / 2, 'Validation and test size larger than half of data'
     train_data = data.iloc[:-val_size * 2, :]
     val_data = data.loc[train_data.index[-1]:, :].iloc[1:val_size]
-
     test_data = data.loc[val_data.index[-1]:, :].iloc[1:]
 
     LOGGER.info(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
@@ -228,7 +227,6 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
         data = data[assets]
     else:
         data = data[assets]
-
 
     start_date = max(start_date)
     data = data.loc[start_date:, :]
