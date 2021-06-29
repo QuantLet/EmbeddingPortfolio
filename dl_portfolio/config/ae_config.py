@@ -7,23 +7,30 @@ from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndU
 from dl_portfolio.regularizers import WeightsOrthogonality
 from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_METALS_ASSETS, INDICES
 
-assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + ['CRIX']
-encoding_dim = 6
+# VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
+
+show_plot = True
+save = False
+
+# tf.config.run_functions_eagerly(True)
+seed = 10 # np.random.randint(0, 100)
+assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS # ['CRIX']
+encoding_dim = 5
 uncorrelated_features = True
 weightage = 1e-2
-ortho_weightage = 1e-2
+ortho_weightage = 0 # 1e-1
 l_name = 'l2'
-l = 1e-3
+l = 0 # 1e-3
 activation = 'relu'
 features_config = [{'name': 'hour_in_week'}]
-model_name = f'CRIX_activation_{activation}_encoding_{encoding_dim}_mse_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
+model_name = f'DAILY_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}_seed_{seed}'
 model_name = model_name.replace('.', 'd')
 
 # seed = np.random.randint(100)
 # data_type = ['indices', 'forex', 'forex_metals', 'commodities', 'crypto']
 shuffle_columns = False  # True
 dropnan = False
-freq = "1H"
+freq = "1D"
 drop_weekends = False
 shuffle_columns_while_training = False
 scaler_func = {
@@ -31,28 +38,27 @@ scaler_func = {
 }
 # features_config=None
 model_type = 'pca_ae_model'
-seed = np.random.randint(0, 100)
 
-show_plot = True
-save = True
+
 learning_rate = 1e-3
 epochs = 1000
-batch_size = 256
-drop_remainder_obs = True
-val_size = 30 * 24
+batch_size = 32
+drop_remainder_obs = False
+val_size = None # 22*6 # 30 * 24
+test_size = 0
 loss = 'mse'
 label_param = None
 # label_param = {
 #     'lq': 0.05,
 #     'uq': 0.95,
-#     'window': 24 * 7
+#     'window': 24
 # }
 # cov_loss = 'mse_with_covariance_penalty'
 rescale = None
 
 # Constraints and regularizer
 activity_regularizer = None
-kernel_initializer = NonNegAndUnitNormInit(initializer='glorot_uniform')
+kernel_initializer = NonNegAndUnitNormInit(initializer='orthogonal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
     encoding_dim,
     weightage=ortho_weightage,
@@ -81,82 +87,172 @@ callbacks = {
 data_specs = {
     0: {
         'start': '2015-08-07',
-        'end': '2019-12-11'
-    },
-    1: {
-        'start': '2015-08-07',
-        'end': '2020-01-11'
-    },
-    2: {
-        'start': '2015-08-07',
-        'end': '2020-02-11'
-    },
-    3: {
-        'start': '2015-08-07',
-        'end': '2020-03-11'
-    },
-    4: {
-        'start': '2015-08-07',
-        'end': '2020-04-11'
-    },
-    5: {
-        'start': '2015-08-07',
-        'end': '2020-05-11'
-    },
-    6: {
-        'start': '2015-08-07',
-        'end': '2020-06-11'
-    },
-    7: {
-        'start': '2015-08-07',
-        'end': '2020-07-11'
-    },
-    8: {
-        'start': '2015-08-07',
-        'end': '2020-08-11'
-    },
-    9: {
-        'start': '2015-08-07',
-        'end': '2020-09-11'
-    },
-    10: {
-        'start': '2015-08-07',
-        'end': '2020-10-11'
-    },
-    11: {
-        'start': '2015-08-07',
-        'end': '2020-11-11'
-    },
-    12: {
-        'start': '2015-08-07',
-        'end': '2020-12-11'
-    },
-    13: {
-        'start': '2015-08-07',
-        'end': '2021-01-11'
-    },
-    14: {
-        'start': '2015-08-07',
-        'end': '2021-02-11'
-    },
-    15: {
-        'start': '2015-08-07',
-        'end': '2021-03-11'
-    },
-    16: {
-        'start': '2015-08-07',
-        'end': '2021-04-11'
-    },
-    17: {
-        'start': '2015-08-07',
-        'end': '2021-05-11'
-    },
-    18: {
-        'start': '2015-08-07',
-        'end': '2021-06-11'
+        'val_start': '2018-12-11',
+        'end': '2019-01-11'
     }
-
 }
+#
+# data_specs = {
+#     0: {
+#         'start': '2015-08-07',
+#         'val_start': '2018-12-11',
+#         'end': '2019-01-11'
+#     },
+#     1: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-01-12',
+#         'end': '2019-02-11'
+#     },
+#     2: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-02-12',
+#         'end': '2019-03-11'
+#     },
+#     3: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-03-12',
+#         'end': '2019-04-11'
+#     },
+#     4: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-04-12',
+#         'end': '2019-05-11'
+#     },
+#     5: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-05-12',
+#         'end': '2019-06-11'
+#     },
+#     6: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-06-12',
+#         'end': '2019-07-11'
+#     },
+#     7: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-07-12',
+#         'end': '2019-08-11'
+#     },
+#     8: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-08-12',
+#         'end': '2019-09-11'
+#     },
+#     9: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-09-12',
+#         'end': '2019-10-11'
+#     },
+#     10: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-10-12',
+#         'end': '2019-11-11'
+#     },
+#     11: {
+#         'start': '2015-08-07',
+#         'val_start': '2019-11-12',
+#         'end': '2019-12-11'
+#     }
+# }
+
+# data_specs = {
+#     0: {
+#         'start': '2015-08-07',
+#         'end': '2020-01-11'
+#     },
+#     1: {
+#         'start': '2015-08-07',
+#         'end': '2020-07-11'
+#     },
+#     2: {
+#         'start': '2015-08-07',
+#         'end': '2021-01-11'
+#     },
+#     3: {
+#         'start': '2015-08-07',
+#         'end': '2021-06-11'
+#     }
+# }
+
+# data_specs = {
+#     0: {
+#         'start': '2015-08-07',
+#         'end': '2019-12-11'
+#     },
+#     1: {
+#         'start': '2015-08-07',
+#         'end': '2020-01-11'
+#     },
+#     2: {
+#         'start': '2015-08-07',
+#         'end': '2020-02-11'
+#     },
+#     3: {
+#         'start': '2015-08-07',
+#         'end': '2020-03-11'
+#     },
+#     4: {
+#         'start': '2015-08-07',
+#         'end': '2020-04-11'
+#     },
+#     5: {
+#         'start': '2015-08-07',
+#         'end': '2020-05-11'
+#     },
+#     6: {
+#         'start': '2015-08-07',
+#         'end': '2020-06-11'
+#     },
+#     7: {
+#         'start': '2015-08-07',
+#         'end': '2020-07-11'
+#     },
+#     8: {
+#         'start': '2015-08-07',
+#         'end': '2020-08-11'
+#     },
+#     9: {
+#         'start': '2015-08-07',
+#         'end': '2020-09-11'
+#     },
+#     10: {
+#         'start': '2015-08-07',
+#         'end': '2020-10-11'
+#     },
+#     11: {
+#         'start': '2015-08-07',
+#         'end': '2020-11-11'
+#     },
+#     12: {
+#         'start': '2015-08-07',
+#         'end': '2020-12-11'
+#     },
+#     13: {
+#         'start': '2015-08-07',
+#         'end': '2021-01-11'
+#     },
+#     14: {
+#         'start': '2015-08-07',
+#         'end': '2021-02-11'
+#     },
+#     15: {
+#         'start': '2015-08-07',
+#         'end': '2021-03-11'
+#     },
+#     16: {
+#         'start': '2015-08-07',
+#         'end': '2021-04-11'
+#     },
+#     17: {
+#         'start': '2015-08-07',
+#         'end': '2021-05-11'
+#     },
+#     18: {
+#         'start': '2015-08-07',
+#         'end': '2021-06-11'
+#     }
+#
+# }
 
 # data_specs = {
 #     0: {

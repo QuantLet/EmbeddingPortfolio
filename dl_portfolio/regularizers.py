@@ -27,6 +27,7 @@ class WeightsOrthogonality(Regularizer):
         if self.encoding_dim > 1:
             m = K.dot(K.transpose(w), w) - tf.eye(self.encoding_dim)
             return self.weightage * K.sqrt(K.sum(K.square(m)))
+            # return self.weightage * K.sum(K.square(m))
         else:
             m = K.sum(w ** 2) - 1.
             return m
