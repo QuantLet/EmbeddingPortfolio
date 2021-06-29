@@ -175,10 +175,19 @@ class NonNegAndUnitNormInit(tf.keras.initializers.Initializer):
 
     def __init__(self, initializer: str, **kwargs):
         if initializer == 'glorot_uniform':
-            self.initializer = tf.keras.initializers.GlorotUniform()
+            self.initializer = tf.keras.initializers.GlorotUniform(seed=kwargs.get('seed'))
         elif initializer == 'random_normal':
-            self.initializer = tf.keras.initializers.RandomNormal(mean=kwargs.get('mean', 0.0),
+            self.initializer = tf.keras.initializers.RandomNormal(mean=kwargs.get('mean', 0.2),
                                                                   stddev=kwargs.get('stddev', 0.05))
+        elif initializer == 'zeros':
+            self.initializer = tf.keras.initializers.Zeros()
+        elif initializer == 'ones':
+            self.initializer = tf.keras.initializers.Ones()
+
+        elif initializer == 'orthogonal':
+            self.initializer = tf.keras.initializers.Orthogonal(
+                gain=kwargs.get('gain', 1.0), seed=kwargs.get('seed')
+            )
         else:
             raise NotImplementedError()
 

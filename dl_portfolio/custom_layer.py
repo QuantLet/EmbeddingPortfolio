@@ -633,6 +633,8 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
             return 0.0
         else:
             output = K.sum(K.square(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim)))) / 2
+            # negativ cov
+            # output = K.sum(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim))) / 2
             if self.norm == '1':
                 return output
             elif self.norm == '1/2':
