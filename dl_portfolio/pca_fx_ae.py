@@ -269,12 +269,16 @@ if __name__ == "__main__":
             pred = model(x, training=False)
             loss_value = loss_fn(y, pred, *args, **kwargs)
 
+            # Add any extra losses created during the forward pass.
+            reg_loss = tf.reduce_sum(model.losses)
+            loss_value = loss_value + reg_loss
+
             if isinstance(val_metric, list):
                 [m.update_state(y, pred) for m in val_metric]
             else:
                 val_metric.update_state(y, pred)
 
-            return loss_value
+            return loss_value, reg_loss
 
 
         early_stopping = callbacks.get('EarlyStopping')
@@ -284,7 +288,7 @@ if __name__ == "__main__":
             restore_best_weights = early_stopping['restore_best_weights']
         else:
             restore_best_weights = False
-        history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_mse': [], 'val_rmse': []}
+        history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_reg_loss': [], 'val_mse': [], 'val_rmse': []}
         best_weights = None
         stop_training = False
         for epoch in range(epochs):
@@ -327,16 +331,23 @@ if __name__ == "__main__":
 
             # Run a validation loop at the end of each epoch.
             batch_loss = []
+            batch_reg_loss = []
             if n_features:
                 for x_batch_val_0, x_batch_val_1, y_batch_val in val_dataset:
-                    val_loss_value = test_step([x_batch_val_0, x_batch_val_1], y_batch_val)
+                    val_loss_value, val_reg_loss_value = test_step([x_batch_val_0, x_batch_val_1], y_batch_val)
                     batch_loss.append(float(val_loss_value))
+                    batch_reg_loss.append(float(val_reg_loss_value))
             else:
                 for x_batch_val, y_batch_val in val_dataset:
-                    val_loss_value = test_step(x_batch_val, y_batch_val)
+                    val_loss_value, val_reg_loss_value = test_step(x_batch_val, y_batch_val)
                     batch_loss.append(float(val_loss_value))
+                    batch_reg_loss.append(float(val_reg_loss_value))
             # Compute loss over epoch
             val_epoch_loss = np.mean(batch_loss)
+            val_epoch_reg_loss = np.mean(batch_reg_loss)
+
+            history['val_loss'].append(val_epoch_loss)
+            history['val_reg_loss'].append(val_epoch_reg_loss)
 
             # Early stopping
             if early_stopping:
@@ -361,7 +372,7 @@ if __name__ == "__main__":
                                                   patience=early_stopping['patience'],
                                                   mode=early_stopping['mode'])
 
-            history['val_loss'].append(val_epoch_loss)
+
             # Display metrics at the end of each epoch and reset
             if isinstance(train_metric, list):
                 history['mse'].append(float(train_metric[0].result().numpy()))
@@ -380,7 +391,7 @@ if __name__ == "__main__":
 
             LOGGER.info(
                 f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - reg_loss = {np.round(history['reg_loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
-                f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
+                f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_reg_loss = {np.round(history['val_reg_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
 
             if save:
                 epoch_val_rmse = history['val_rmse'][-1]
