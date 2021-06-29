@@ -186,7 +186,8 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
     return data, assets
 
 
-def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H'):
+def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H', base='SPXUSD'):
+    assert freq in ['1H', '1D']
     assert isinstance(freq, str)
     data = pd.DataFrame()
     end = '2021-06-11 19:00:00'
@@ -230,17 +231,32 @@ def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: boo
 
     start_date = max(start_date)
     data = data.loc[start_date:, :]
+
+    if freq == '1D':
+        if base != 'SPXUSD':
+            raise NotImplementedError()
+        if base in assets:
+            assert base == 'SPXUSD'
+            # Convert data to EST time and get latest available price for SP500 for each day
+            data = data.tz_convert('EST')
+            sp = data[['SPXUSD']].dropna()
+            sp = sp.groupby(sp.index.date).apply(lambda x: x.iloc[[-1]])
+            sp_dates = list(sp.index.get_level_values(1))
+
+            # Now we might have missing data at exact hour from sp500 for the other assets
+            # so we just take the latest available price
+            # we fill nan with latest value "ffill"
+            data = data.fillna(method='ffill')
+            data = data.reindex(sp_dates)
+
+            # Convert index to days
+            data.index = pd.to_datetime([d.date() for d in data.index])
+
+            assert sum(data.isna().sum()) == 0
+
     # assets = np.random.choice(assets, len(assets), replace=False).tolist()
     # data = data.loc[:, pd.IndexSlice[assets, 'price']]
     # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
-
-    if freq not in ["1H", "H"]:
-        # TODO
-        raise NotImplementedError('You must verify logic')
-        LOGGER.info(f"Resampling to {freq} frequency")
-        data = data.resample(freq,
-                             closed='right',
-                             label='right').agg('last')
 
     data = data.loc[:end]
     if any([a in crypto_assets for a in data.columns]):
