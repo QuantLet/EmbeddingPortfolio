@@ -13,19 +13,35 @@ def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
     return hinw
 
 
-def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None, scaler='StandardScaler',
-                 features_config: Optional[List] = None, **kwargs):
-    data = data.loc[start:end, assets]
+def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
+                 rescale=None, scaler='StandardScaler', features_config: Optional[List] = None, **kwargs):
 
+    data = data[assets]
     # Train/val/test split
-    assert 2 * val_size < len(data) / 2, 'Validation and test size larger than half of data'
-    train_data = data.iloc[:-val_size * 2, :]
-    val_data = data.loc[train_data.index[-1]:, :].iloc[1:val_size]
-    test_data = data.loc[val_data.index[-1]:, :].iloc[1:]
+    assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+    if val_start is not None:
+        assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(val_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(val_start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+    if test_start is not None:
+        assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(test_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(val_start, '%Y-%m-%d') < dt.datetime.strptime(test_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(test_start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+
+    if val_start is not None:
+        train_data = data.loc[start:val_start].iloc[:-1]
+        if test_start is not None:
+            val_data = data.loc[val_start:test_start].iloc[:-1]
+            test_data = data.loc[test_start:end]
+        else:
+            val_data = data.loc[val_start:end]
+            test_data = None
+    else:
+        raise NotImplementedError()
 
     LOGGER.info(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
     LOGGER.info(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
-    LOGGER.info(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
+    if test_data is not None:
+        LOGGER.info(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
 
     # featurization
     train_data = train_data.pct_change(1).dropna()
@@ -34,9 +50,13 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     val_data = val_data.pct_change(1).dropna()
     val_dates = val_data.index
     val_data = val_data.values
-    test_data = test_data.pct_change(1).dropna()
-    test_dates = test_data.index
-    test_data = test_data.values
+
+    if test_data is not None:
+        test_data = test_data.pct_change(1).dropna()
+        test_dates = test_data.index
+        test_data = test_data.values
+    else:
+        test_dates = None
 
     # standardization
     if scaler == 'StandardScaler':
@@ -49,12 +69,14 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
     val_data = scaler.transform(val_data)
-    test_data = scaler.transform(test_data)
+    if test_data is not None:
+        test_data = scaler.transform(test_data)
 
     if rescale is not None:
         train_data = train_data * rescale
         val_data = val_data * rescale
-        test_data = test_data * rescale
+        if test_data is not None:
+            test_data = test_data * rescale
 
     dates = {
         'train': train_dates,
@@ -74,7 +96,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
                 f = {
                     'train': hour_in_week(dates['train']),
                     'val': hour_in_week(dates['val']),
-                    'test': hour_in_week(dates['test'])
+                    'test': hour_in_week(dates['test']) if test_data is not None else None
 
                 }
             features['train'].append(f['train'])
@@ -83,7 +105,7 @@ def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, resc
         if n_features == 1:
             features['train'] = features['train'][0].reshape(-1, 1)
             features['val'] = features['val'][0].reshape(-1, 1)
-            features['test'] = features['test'][0].reshape(-1, 1)
+            features['test'] = features['test'][0].reshape(-1, 1) if test_data is not None else None
         else:
             raise NotImplementedError()
     else:
@@ -186,7 +208,8 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
     return data, assets
 
 
-def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H', base='SPXUSD'):
+def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H',
+              base='SPXUSD'):
     assert freq in ['1H', '1D']
     assert isinstance(freq, str)
     data = pd.DataFrame()

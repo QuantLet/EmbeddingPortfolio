@@ -121,9 +121,12 @@ if __name__ == "__main__":
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
 
-        train_data, val_data, test_data, scaler, dates, features = get_features(data, data_spec['start'],
+        train_data, val_data, test_data, scaler, dates, features = get_features(data,
+                                                                                data_spec['start'],
                                                                                 data_spec['end'],
-                                                                                assets, val_size=val_size,
+                                                                                assets,
+                                                                                val_start=data_spec['val_start'],
+                                                                                test_start=data_spec.get('test_start'),
                                                                                 rescale=rescale,
                                                                                 scaler=scaler_func['name'],
                                                                                 features_config=features_config,
@@ -145,7 +148,8 @@ if __name__ == "__main__":
             raise NotImplementedError()
             train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
             val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-            test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+            if test_data is not None:
+                test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
 
         elif model_type in ['ae_model', 'pca_ae_model']:
             if features:
@@ -242,9 +246,6 @@ if __name__ == "__main__":
         train_dataset = train_dataset.batch(batch_size)
         val_dataset = val_dataset.batch(batch_size)
 
-
-        # test_dataset = tf.data.Dataset.from_tensor_slices((test_examples, test_labels))
-
         @tf.function
         def train_step(x, y, *args, **kwargs):
             with tf.GradientTape() as tape:
@@ -288,7 +289,8 @@ if __name__ == "__main__":
             restore_best_weights = early_stopping['restore_best_weights']
         else:
             restore_best_weights = False
-        history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_reg_loss': [], 'val_mse': [], 'val_rmse': []}
+        history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_reg_loss': [], 'val_mse': [],
+                   'val_rmse': []}
         best_weights = None
         stop_training = False
         for epoch in range(epochs):
@@ -299,7 +301,8 @@ if __name__ == "__main__":
                 if n_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train, weights_batch) in enumerate(
                             train_dataset):
-                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train, weights_batch)
+                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
+                                                          weights_batch)
                         batch_loss.append(float(loss_value))
                         batch_reg_loss.append(float(reg_loss))
                 else:
@@ -327,7 +330,6 @@ if __name__ == "__main__":
             epoch_reg_loss = np.mean(batch_reg_loss)
             history['loss'].append(epoch_loss)
             history['reg_loss'].append(epoch_reg_loss)
-
 
             # Run a validation loop at the end of each epoch.
             batch_loss = []
@@ -371,7 +373,6 @@ if __name__ == "__main__":
                                                   min_delta=early_stopping['min_delta'],
                                                   patience=early_stopping['patience'],
                                                   mode=early_stopping['mode'])
-
 
             # Display metrics at the end of each epoch and reset
             if isinstance(train_metric, list):
@@ -479,18 +480,6 @@ if __name__ == "__main__":
         encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
         LOGGER.info(f"Encoder weights:\n{encoder_weights}")
 
-        if features:
-            test_input = [test_data, features['test']]
-        test_prediction = model.predict(test_input)
-        test_prediction = scaler.inverse_transform(test_prediction)
-        test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
-
-        if n_features:
-            test_features = encoder.predict(test_input[0])
-        else:
-            test_features = encoder.predict(test_input)
-        test_features = pd.DataFrame(test_features, index=dates['test'])
-
         # train_cluster_portfolio = encoder.predict(train_data)
         # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
         train_cluster_portfolio = pd.DataFrame(np.dot(train_data, encoder_weights / encoder_weights.sum()),
@@ -501,14 +490,27 @@ if __name__ == "__main__":
         val_cluster_portfolio = pd.DataFrame(np.dot(val_data, encoder_weights / encoder_weights.sum()),
                                              index=dates['val'])
 
+        if test_data is not None:
+            if features:
+                test_input = [test_data, features['test']]
+            test_prediction = model.predict(test_input)
+            test_prediction = scaler.inverse_transform(test_prediction)
+            test_prediction = pd.DataFrame(test_prediction, columns=assets, index=dates['test'])
+
+            if n_features:
+                test_features = encoder.predict(test_input[0])
+            else:
+                test_features = encoder.predict(test_input)
+            test_features = pd.DataFrame(test_features, index=dates['test'])
+
+            # test_cluster_portfolio = encoder.predict(test_data)
+            # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
+            test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
+                                                  index=dates['test'])
+
         # coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
         # LOGGER.info(
         #     f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
-
-        # test_cluster_portfolio = encoder.predict(test_data)
-        # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
-        test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()),
-                                              index=dates['test'])
 
         # LOGGER.info(
         #     f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
@@ -517,16 +519,18 @@ if __name__ == "__main__":
         train_data = pd.DataFrame(train_data, index=dates['train'], columns=assets)
         val_data = scaler.inverse_transform(val_data)
         val_data = pd.DataFrame(val_data, index=dates['val'], columns=assets)
-        test_data = scaler.inverse_transform(test_data)
-        test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
+        if test_data is not None:
+            test_data = scaler.inverse_transform(test_data)
+            test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
 
         if shuffle_columns:
             LOGGER.info('Reorder results with base asset order')
             val_prediction = val_prediction.loc[:, base_asset_order]
             train_data = train_data.loc[:, base_asset_order]
             val_data = val_data.loc[:, base_asset_order]
-            test_data = test_data.loc[:, base_asset_order]
-            test_prediction = test_prediction.loc[:, base_asset_order]
+            if test_data is not None:
+                test_data = test_data.loc[:, base_asset_order]
+                test_prediction = test_prediction.loc[:, base_asset_order]
             encoder_weights = encoder_weights.loc[base_asset_order, :]
 
         if kernel_constraint is not None:
@@ -544,7 +548,7 @@ if __name__ == "__main__":
         cluster_portfolio = {
             'train': train_cluster_portfolio,
             'val': val_cluster_portfolio,
-            'test': test_cluster_portfolio
+            'test': test_cluster_portfolio if test_data is not None else None
         }
 
         LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
@@ -553,19 +557,20 @@ if __name__ == "__main__":
         if save:
             train_data.to_pickle(f"{save_dir}/{cv}/train_returns.p")
             val_data.to_pickle(f"{save_dir}/{cv}/val_returns.p")
-            test_data.to_pickle(f"{save_dir}/{cv}/test_returns.p")
             val_prediction.to_pickle(f"{save_dir}/{cv}/val_prediction.p")
-            test_prediction.to_pickle(f"{save_dir}/{cv}/test_prediction.p")
             encoder_weights.to_pickle(f"{save_dir}/{cv}/encoder_weights.p")
             train_features.to_pickle(f"{save_dir}/{cv}/train_features.p")
             val_features.to_pickle(f"{save_dir}/{cv}/val_features.p")
-            test_features.to_pickle(f"{save_dir}/{cv}/test_features.p")
             # encoding_pca.to_pickle(f"{save_dir}/{cv}/encoding_pca.p")
             pickle.dump(cluster_portfolio, open(f"{save_dir}/{cv}/cluster_portfolio.p", "wb"))
             # pickle.dump(pca_cluster_portfolio, open(f"{save_dir}/{cv}/pca_cluster_portfolio.p", "wb"))
-
             scaler_func['attributes'] = scaler.__dict__
             pickle.dump(scaler_func, open(f"{save_dir}/{cv}/scaler.p", "wb"))
+
+            if test_data is not None:
+                test_data.to_pickle(f"{save_dir}/{cv}/test_returns.p")
+                test_prediction.to_pickle(f"{save_dir}/{cv}/test_prediction.p")
+                test_features.to_pickle(f"{save_dir}/{cv}/test_features.p")
 
     if save:
         heat_map_cluster(save_dir, show=True, save=save, vmax=1., vmin=0.)
