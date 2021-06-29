@@ -31,6 +31,7 @@ def get_timeseries_weights(cv_results):
 
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
+    # todo to parallelize
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -51,7 +52,7 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def get_cv_results(base_dir, test_set, n_folds, market_budget):
+def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True):
     assert test_set in ['val', 'test']
     cv_results = {cv: {} for cv in range(n_folds)}
     for cv in range(n_folds):
@@ -62,10 +63,10 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
         returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
         pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
         train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
-        val_features = pd.read_pickle(f'{base_dir}/{cv}/val_features.p')
-        test_features = pd.read_pickle(f'{base_dir}/{cv}/test_features.p')
+        test_features = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_features.p')
 
         residuals = returns - pred
+
         std = np.sqrt(scaler['attributes']['var_'])
         scaled_residuals = residuals * std
         scaled_embedding = np.dot(np.diag(std, k=0), embedding)
@@ -74,8 +75,8 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
         cv_results[cv]['embedding'] = embedding
         cv_results[cv]['scaled_embedding'] = scaled_embedding
         cv_results[cv]['train_features'] = train_features
-        cv_results[cv]['val_features'] = val_features
         cv_results[cv]['test_features'] = test_features
+        cv_results[cv]['test_pred'] = pred
         cv_results[cv]['Sf'] = train_features.cov()
         cv_results[cv]['Su'] = scaled_residuals.cov()
         cv_results[cv]['H'] = pd.DataFrame(
@@ -84,11 +85,18 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
             columns=embedding.index)
         cv_results[cv]['w'] = embedding
         cv_results[cv]['returns'] = returns
-        cv_results[cv]['port'] = portfolio_weights(train_returns,
-                                                   shrink_cov=cv_results[cv]['H'],
-                                                   budget=market_budget.loc[assets],
-                                                   embedding=embedding
-                                                   )
+        if compute_weights:
+            assert market_budget is not None
+            cv_results[cv]['port'] = portfolio_weights(train_returns,
+                                                       shrink_cov=cv_results[cv]['H'],
+                                                       budget=market_budget.loc[assets],
+                                                       embedding=embedding
+                                                       )
+        else:
+            cv_results[cv]['port'] = None
+        cv_results[cv]['mean_mse'] = np.mean((residuals**2).mean(1))
+        cv_results[cv]['mse'] = np.sum((residuals**2).mean(1))
+
     return cv_results
 
 
