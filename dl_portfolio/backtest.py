@@ -9,18 +9,19 @@ from dl_portfolio.logger import LOGGER
 from typing import Union, Dict
 import pickle
 
+
 def get_timeseries_weights(cv_results):
     weights = {}
     portfolios = cv_results[0]['port'].keys()
     for p in portfolios:
-        pweights= pd.DataFrame()
+        pweights = pd.DataFrame()
         dates = []
         for cv in cv_results.keys():
             dates.append(cv_results[cv]['returns'].index[0])
             w = cv_results[cv]['port'][p]
             if w is None:
                 assets = cv_results[cv]['returns'].columns
-                w = pd.Series([None]*len(assets), index = assets)
+                w = pd.Series([None] * len(assets), index=assets)
             pweights = pd.concat([pweights, w], 1)
         pweights = pweights.T
         pweights.index = dates
@@ -54,6 +55,7 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget):
     assert test_set in ['val', 'test']
     cv_results = {cv: {} for cv in range(n_folds)}
     for cv in range(n_folds):
+        LOGGER.info(f'CV {cv}')
         scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
         embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
         train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
@@ -258,10 +260,16 @@ def get_cluster_var(cov, cluster_items, weights=None):
     return np.linalg.multi_dot((weights, cov_slice, weights))
 
 
-def get_cluster_labels(embedding):
+def get_cluster_labels(embedding, threshold=0.1):
     n_clusters = embedding.shape[-1]
-    kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embedding.values)
-    labels = pd.DataFrame(kmeans.labels_, index=embedding.index, columns=['label'])
+    if threshold is None:
+        kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embedding.values)
+        labels = pd.DataFrame(kmeans.labels_, index=embedding.index, columns=['label'])
+    else:
+        mask = embedding >= threshold
+        # assert all(mask.sum(1) <= 1)
+        labels = pd.DataFrame(mask.idxmax(axis=1), columns=['label'])
+
     clusters = {}
     for i in range(n_clusters):
         assets = list(labels.loc[labels['label'] == i].index)
