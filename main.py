@@ -2,8 +2,6 @@ from dl_portfolio.run import run
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
 
-LOG_DIR = 'log_AE'
-
 # 19,20,21,22,23,24,25,26,27,28,29,30
 
 if __name__ == "__main__":
