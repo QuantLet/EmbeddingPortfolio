@@ -15,8 +15,8 @@ setup(
         "scipy==1.5.4",
         "matplotlib==3.3.3",
         "seaborn==0.11.1",
-        "pyportfolioopt==1.4.1",
-        "riskparityportfolio==0.2",
+        # "pyportfolioopt==1.4.1",
+        # "riskparityportfolio==0.2",
         "joblib==1.0.0",
         "scikit-learn==0.24.0"
     ],
