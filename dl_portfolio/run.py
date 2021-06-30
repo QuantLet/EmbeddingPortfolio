@@ -9,17 +9,14 @@ from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_fro
 from dl_portfolio.train import fit, embedding_visualization, plot_history
 import tensorflow as tf
 import numpy as np
-
-LOG_DIR = 'dl_portfolio/log_fx_AE'
-
+from dl_portfolio.constant import LOG_DIR
 
 def run(ae_config, seed=None):
-
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
     if seed is None:
-        seed = np.random.randint(0,1000)
+        seed = np.random.randint(0, 1000)
 
     np.random.seed(seed)
     tf.random.set_seed(seed)
