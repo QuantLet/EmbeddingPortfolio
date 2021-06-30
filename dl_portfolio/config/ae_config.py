@@ -9,28 +9,26 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-show_plot = True
-save = False
+show_plot = False
+save = True
 
 # tf.config.run_functions_eagerly(True)
-seed = 10 # np.random.randint(0, 100)
-assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS # ['CRIX']
+seed=None
+assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 5
 uncorrelated_features = True
 weightage = 1e-2
-ortho_weightage = 0 # 1e-1
+ortho_weightage = 1e-2
 l_name = 'l2'
-l = 0 # 1e-3
+l = 1e-3
 activation = 'relu'
 features_config = [{'name': 'hour_in_week'}]
-model_name = f'DAILY_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}_seed_{seed}'
+model_name = f'activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
 model_name = model_name.replace('.', 'd')
 
-# seed = np.random.randint(100)
-# data_type = ['indices', 'forex', 'forex_metals', 'commodities', 'crypto']
 shuffle_columns = False  # True
 dropnan = False
-freq = "1D"
+freq = "1H"
 drop_weekends = False
 shuffle_columns_while_training = False
 scaler_func = {
@@ -39,12 +37,11 @@ scaler_func = {
 # features_config=None
 model_type = 'pca_ae_model'
 
-
 learning_rate = 1e-3
 epochs = 1000
-batch_size = 32
+batch_size = 256
 drop_remainder_obs = False
-val_size = None # 22*6 # 30 * 24
+val_size = None  # 22*6 # 30 * 24
 test_size = 0
 loss = 'mse'
 label_param = None
@@ -84,76 +81,76 @@ callbacks = {
     }
 }
 
-data_specs = {
-    0: {
-        'start': '2015-08-07',
-        'val_start': '2018-12-11',
-        'end': '2019-01-11'
-    }
-}
-#
 # data_specs = {
 #     0: {
 #         'start': '2015-08-07',
 #         'val_start': '2018-12-11',
 #         'end': '2019-01-11'
-#     },
-#     1: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-01-12',
-#         'end': '2019-02-11'
-#     },
-#     2: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-02-12',
-#         'end': '2019-03-11'
-#     },
-#     3: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-03-12',
-#         'end': '2019-04-11'
-#     },
-#     4: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-04-12',
-#         'end': '2019-05-11'
-#     },
-#     5: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-05-12',
-#         'end': '2019-06-11'
-#     },
-#     6: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-06-12',
-#         'end': '2019-07-11'
-#     },
-#     7: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-07-12',
-#         'end': '2019-08-11'
-#     },
-#     8: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-08-12',
-#         'end': '2019-09-11'
-#     },
-#     9: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-09-12',
-#         'end': '2019-10-11'
-#     },
-#     10: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-10-12',
-#         'end': '2019-11-11'
-#     },
-#     11: {
-#         'start': '2015-08-07',
-#         'val_start': '2019-11-12',
-#         'end': '2019-12-11'
 #     }
 # }
+
+data_specs = {
+    0: {
+        'start': '2015-08-07',
+        'val_start': '2018-12-11',
+        'end': '2019-01-11'
+    },
+    1: {
+        'start': '2015-08-07',
+        'val_start': '2019-01-12',
+        'end': '2019-02-11'
+    },
+    2: {
+        'start': '2015-08-07',
+        'val_start': '2019-02-12',
+        'end': '2019-03-11'
+    },
+    3: {
+        'start': '2015-08-07',
+        'val_start': '2019-03-12',
+        'end': '2019-04-11'
+    },
+    4: {
+        'start': '2015-08-07',
+        'val_start': '2019-04-12',
+        'end': '2019-05-11'
+    },
+    5: {
+        'start': '2015-08-07',
+        'val_start': '2019-05-12',
+        'end': '2019-06-11'
+    },
+    6: {
+        'start': '2015-08-07',
+        'val_start': '2019-06-12',
+        'end': '2019-07-11'
+    },
+    7: {
+        'start': '2015-08-07',
+        'val_start': '2019-07-12',
+        'end': '2019-08-11'
+    },
+    8: {
+        'start': '2015-08-07',
+        'val_start': '2019-08-12',
+        'end': '2019-09-11'
+    },
+    9: {
+        'start': '2015-08-07',
+        'val_start': '2019-09-12',
+        'end': '2019-10-11'
+    },
+    10: {
+        'start': '2015-08-07',
+        'val_start': '2019-10-12',
+        'end': '2019-11-11'
+    },
+    11: {
+        'start': '2015-08-07',
+        'val_start': '2019-11-12',
+        'end': '2019-12-11'
+    }
+}
 
 # data_specs = {
 #     0: {

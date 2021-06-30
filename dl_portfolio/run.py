@@ -18,6 +18,9 @@ def run(ae_config, seed=None):
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
+    if seed is None:
+        seed = np.random.randint(0,1000)
+
     np.random.seed(seed)
     tf.random.set_seed(seed)
     LOGGER.info(f"Set seed: {seed}")
