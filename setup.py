@@ -17,7 +17,8 @@ setup(
         "seaborn==0.11.1",
         "pyportfolioopt==1.4.1",
         "riskparityportfolio==0.2",
-        "joblib==1.0.0"
+        "joblib==1.0.0",
+        "scikit-learn==0.24.0"
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
