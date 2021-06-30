@@ -4,6 +4,8 @@ from joblib import parallel_backend, Parallel, delayed
 
 LOG_DIR = 'dl_portfolio/log_fx_AE'
 
+# 19,20,21,22,23,24,25,26,27,28,29,30
+
 if __name__ == "__main__":
     import argparse
     from dl_portfolio.config import ae_config
@@ -25,18 +27,18 @@ if __name__ == "__main__":
                         type=int,
                         help="Number of parallel jobs")
     parser.add_argument("--seeds",
+                        nargs="+",
                         default=None,
-                        type=list,
                         help="List of seeds to run experiments")
     args = parser.parse_args()
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
-                run(ae_config, seed=seed)
+                run(ae_config, seed=int(seed))
         else:
             with parallel_backend("threading", n_jobs=args.n_jobs):
                 Parallel()(
-                    delayed(run)(ae_config, seed=seed) for seed in args.seeds
+                    delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
                 )
 
     else:
