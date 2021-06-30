@@ -273,6 +273,7 @@ def pca_ae_model(input_dim: int,
     weightage = kwargs.get('weightage', 1.)
     batch_size = kwargs.get('batch_size', None)
     loss = kwargs.get('loss', None)
+    batch_normalization = kwargs.get('batch_normalization', False)
 
     # with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
     asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
@@ -295,6 +296,9 @@ def pca_ae_model(input_dim: int,
                               name='decoder')
 
     encoding = encoder_layer(asset_input)
+    if batch_normalization:
+        batch_norm_layer = tf.keras.layers.BatchNormalization()
+        encoding = batch_norm_layer(encoding)
     if uncorrelated_features:
         activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
                                                                weightage=weightage)
