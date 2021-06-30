@@ -16,7 +16,8 @@ setup(
         "matplotlib==3.3.3",
         "seaborn==0.11.1",
         "pyportfolioopt==1.4.1",
-        "riskparityportfolio==0.2"
+        "riskparityportfolio==0.2",
+        "joblib==1.0.0"
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
