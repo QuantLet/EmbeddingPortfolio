@@ -15,7 +15,6 @@ def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
 
 def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
                  rescale=None, scaler='StandardScaler', features_config: Optional[List] = None, **kwargs):
-
     data = data[assets]
     # Train/val/test split
     assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
@@ -208,8 +207,44 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
     return data, assets
 
 
-def load_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H',
-              base='SPXUSD'):
+def load_data(dataset='global', **kwargs):
+    if dataset == 'bond':
+        data, assets = load_global_bond_data(crix=kwargs.get('crix', False))
+    elif dataset == 'global':
+        assets = kwargs.get('assets', None)
+        dropnan = kwargs.get('dropnan', False)
+        fillnan = kwargs.get('fillnan', True)
+        freq = kwargs.get('freq', '1H')
+        base = kwargs.get('base', 'SPXUSD')
+        data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
+    else:
+        raise NotImplementedError(f"dataset must be one of ['global', 'bond']: {dataset}")
+
+    return data, assets
+
+
+def load_global_bond_data(crix=False):
+    data = pd.read_csv('./data/ALLA/alla_data.csv')
+    data = data.interpolate(method='polynomial', order=2)
+    data = data.set_index('Date')
+    data.index = pd.to_datetime(data.index)
+    data = data.dropna()
+
+    if crix:
+        crix = pd.read_pickle('./data/crypto_data/crix_1H_20160630_20210614.p')
+        crix = crix.resample('1D', closed='right', label='left').agg('last')
+        crix.index = pd.to_datetime([d.date() for d in crix.index])
+
+        data = pd.concat([data, crix], 1)
+        data = data.dropna()
+    data = data.astype(np.float32)
+
+    assets = list(data.columns)
+    return data, assets
+
+
+def load_global_data(assets: Optional[List] = None, dropnan: bool = False, fillnan: bool = True, freq: str = '1H',
+                     base='SPXUSD'):
     assert freq in ['1H', '1D']
     assert isinstance(freq, str)
     data = pd.DataFrame()
