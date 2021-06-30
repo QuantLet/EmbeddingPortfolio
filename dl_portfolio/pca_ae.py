@@ -165,6 +165,7 @@ def heat_map_cluster(load_dir, show=False, save=False, filename='encoder_weights
         plt.savefig(f'{load_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
     if show:
         plt.show()
+    plt.close()
 
 
 def get_layer_by_name(name, model):
