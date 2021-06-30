@@ -9,6 +9,7 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
+dataset = 'global'
 show_plot = False
 save = True
 
@@ -54,7 +55,6 @@ label_param = None
 rescale = None
 
 # Constraints and regularizer
-batch_normalization = True
 activity_regularizer = None
 kernel_initializer = NonNegAndUnitNormInit(initializer='orthogonal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
@@ -91,6 +91,19 @@ callbacks = {
 # }
 
 # 2015-08-07
+
+# data_specs = {
+#     0: {
+#         'start': '2017-01-01',
+#         'val_start': '2018-12-11',
+#         'end': '2019-01-11'
+#     },
+#     1: {
+#         'start': '2017-01-01',
+#         'val_start': '2019-01-12',
+#         'end': '2019-02-11'
+#     }
+# }
 
 data_specs = {
     0: {
