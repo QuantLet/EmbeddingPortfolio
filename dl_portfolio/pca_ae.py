@@ -124,7 +124,7 @@ class ActivityRegularizer(Callback):
             LOGGER.info(f'm:\n {K.eval(activity_regularizer.m)}')
 
 
-def heat_map(encoder_weights, show=False, save=False, save_dir=None, **kwargs):
+def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
     n_clusters = len(encoder_weights.columns)
     yticks = list(encoder_weights.index)
 
@@ -133,7 +133,7 @@ def heat_map(encoder_weights, show=False, save=False, save_dir=None, **kwargs):
     for j, c in enumerate(list(encoder_weights.columns)):
         ax = sns.heatmap(encoder_weights[c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
                          ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
-    if save:
+    if save_dir:
         plt.savefig(f'{save_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
     if show:
         plt.show()
