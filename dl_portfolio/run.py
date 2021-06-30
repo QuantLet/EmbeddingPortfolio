@@ -14,6 +14,7 @@ LOG_DIR = 'dl_portfolio/log_fx_AE'
 
 
 def run(ae_config, seed=None):
+
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
@@ -22,10 +23,15 @@ def run(ae_config, seed=None):
     LOGGER.info(f"Set seed: {seed}")
 
     if ae_config.save:
+
+        if not os.path.isdir(LOG_DIR):
+            os.mkdir(LOG_DIR)
+        iter = len(os.listdir(LOG_DIR))
+
         if ae_config.model_name is not None and ae_config.model_name != '':
-            subdir = ae_config.model_name
+            subdir = f'm_{iter}_' + ae_config.model_name + f'_seed_{seed}'
         else:
-            subdir = 'model'
+            subdir = f'm_{iter}_'
         subdir = subdir + '_' + dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')
         save_dir = f"{LOG_DIR}/{subdir}"
         os.makedirs(save_dir)
