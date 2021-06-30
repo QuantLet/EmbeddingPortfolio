@@ -15,7 +15,7 @@ import tensorflow as tf
 import datetime as dt
 import os
 import seaborn as sns
-from superkeras.permutational_layer import *
+# from superkeras.permutational_layer import *
 from tensorflow.keras.utils import CustomObjectScope
 from tensorflow.keras.callbacks import Callback
 import tensorflow_probability as tfp
@@ -327,76 +327,76 @@ def pca_ae_model(input_dim: int,
     return autoencoder, encoder, extra_features
 
 
-def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
-                        kernel_initializer: str = 'glorot_uniform',
-                        ortho_weights: bool = True,
-                        non_neg_unit_norm: bool = True,
-                        uncorr_features: bool = True,
-                        activity_regularizer=None,
-                        non_neg=False,
-                        pooling=None,
-                        **kwargs
-                        ):
-    inputs = repeat_layers(Input, [(1,) for i in range(input_dim)])  # [a, b, c]
-    perm_layer1 = PermutationalLayer(
-        PermutationalEncoder(
-            PairwiseModel((1,), repeat_layers(Dense, [input_dim], activation="relu", name="hidden")),
-            input_dim
-        ),
-        name="permutational_layer1"
-    )
-
-    outputs = perm_layer1(inputs)
-    print(len(outputs))
-    if pooling == 'maximum':
-        perm_output = maximum(outputs)
-    elif pooling == 'average':
-        perm_output = average(outputs)
-    else:
-        perm_output = tf.concat(outputs, axis=-1)
-
-    permutation_model = Model(inputs, perm_output, name='permutation')
-    print("# Multi-layer model summary")
-    print(permutation_model.summary())
-
-    kernel_regularizer = WeightsOrthogonality(encoding_dim, axis=0) if ortho_weights else None
-    if non_neg_unit_norm:
-        assert not non_neg
-        kernel_constraint = NonNegAndUnitNorm(axis=0)
-    elif non_neg:
-        kernel_constraint = tf.keras.constraints.NonNeg()
-    else:
-        kernel_constraint = None
-    if activity_regularizer is None:
-        weightage = kwargs.get('weightage', 1.)
-        activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
-                                                              weightage=weightage) if uncorr_features else None
-    else:
-        assert not uncorr_features
-
-    encoder_layer = tf.keras.layers.Dense(encoding_dim,
-                                          activation=activation,
-                                          kernel_initializer=kernel_initializer,
-                                          kernel_regularizer=kernel_regularizer,
-                                          activity_regularizer=activity_regularizer,
-                                          kernel_constraint=kernel_constraint,
-                                          use_bias=True,
-                                          name='encoder',
-                                          dtype=tf.float32)
-    decoder_layer = DenseTied(input_dim,
-                              tied_to=encoder_layer,
-                              activation='linear',
-                              kernel_initializer=kernel_initializer,
-                              kernel_regularizer=kernel_regularizer,
-                              use_bias=True,
-                              dtype=tf.float32,
-                              name='decoder')
-    encoder_output = encoder_layer(perm_output)
-    encoder = tf.keras.models.Model(inputs, encoder_output)
-    decoder_output = decoder_layer(encoder_output)
-    autoencoder = tf.keras.models.Model(inputs, decoder_output)
-
-    return autoencoder, encoder
+# def pca_permut_ae_model(input_dim: int, encoding_dim: int, activation: str = 'linear',
+#                         kernel_initializer: str = 'glorot_uniform',
+#                         ortho_weights: bool = True,
+#                         non_neg_unit_norm: bool = True,
+#                         uncorr_features: bool = True,
+#                         activity_regularizer=None,
+#                         non_neg=False,
+#                         pooling=None,
+#                         **kwargs
+#                         ):
+#     inputs = repeat_layers(Input, [(1,) for i in range(input_dim)])  # [a, b, c]
+#     perm_layer1 = PermutationalLayer(
+#         PermutationalEncoder(
+#             PairwiseModel((1,), repeat_layers(Dense, [input_dim], activation="relu", name="hidden")),
+#             input_dim
+#         ),
+#         name="permutational_layer1"
+#     )
+#
+#     outputs = perm_layer1(inputs)
+#     print(len(outputs))
+#     if pooling == 'maximum':
+#         perm_output = maximum(outputs)
+#     elif pooling == 'average':
+#         perm_output = average(outputs)
+#     else:
+#         perm_output = tf.concat(outputs, axis=-1)
+#
+#     permutation_model = Model(inputs, perm_output, name='permutation')
+#     print("# Multi-layer model summary")
+#     print(permutation_model.summary())
+#
+#     kernel_regularizer = WeightsOrthogonality(encoding_dim, axis=0) if ortho_weights else None
+#     if non_neg_unit_norm:
+#         assert not non_neg
+#         kernel_constraint = NonNegAndUnitNorm(axis=0)
+#     elif non_neg:
+#         kernel_constraint = tf.keras.constraints.NonNeg()
+#     else:
+#         kernel_constraint = None
+#     if activity_regularizer is None:
+#         weightage = kwargs.get('weightage', 1.)
+#         activity_regularizer = UncorrelatedFeaturesConstraint(encoding_dim,
+#                                                               weightage=weightage) if uncorr_features else None
+#     else:
+#         assert not uncorr_features
+#
+#     encoder_layer = tf.keras.layers.Dense(encoding_dim,
+#                                           activation=activation,
+#                                           kernel_initializer=kernel_initializer,
+#                                           kernel_regularizer=kernel_regularizer,
+#                                           activity_regularizer=activity_regularizer,
+#                                           kernel_constraint=kernel_constraint,
+#                                           use_bias=True,
+#                                           name='encoder',
+#                                           dtype=tf.float32)
+#     decoder_layer = DenseTied(input_dim,
+#                               tied_to=encoder_layer,
+#                               activation='linear',
+#                               kernel_initializer=kernel_initializer,
+#                               kernel_regularizer=kernel_regularizer,
+#                               use_bias=True,
+#                               dtype=tf.float32,
+#                               name='decoder')
+#     encoder_output = encoder_layer(perm_output)
+#     encoder = tf.keras.models.Model(inputs, encoder_output)
+#     decoder_output = decoder_layer(encoder_output)
+#     autoencoder = tf.keras.models.Model(inputs, decoder_output)
+#
+#     return autoencoder, encoder
 
 
 def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None):
