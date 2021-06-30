@@ -1,6 +1,8 @@
 from dl_portfolio.run import run
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
+import os
+from dl_portfolio.constant import LOG_DIR
 
 if __name__ == "__main__":
     import argparse
@@ -27,6 +29,10 @@ if __name__ == "__main__":
                         default=None,
                         help="List of seeds to run experiments")
     args = parser.parse_args()
+
+    if not os.path.isdir(LOG_DIR):
+        os.mkdir(LOG_DIR)
+
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
