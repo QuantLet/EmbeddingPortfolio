@@ -32,10 +32,9 @@ if __name__ == "__main__":
             for i, seed in enumerate(args.seeds):
                 run(ae_config, seed=int(seed))
         else:
-            with parallel_backend("threading", n_jobs=args.n_jobs):
-                Parallel()(
-                    delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
-                )
+            Parallel(n_jobs=args.n_jobs)(
+                delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
+            )
 
     else:
         if args.n_jobs == 1:
@@ -49,12 +48,10 @@ if __name__ == "__main__":
                 LOGGER.inof(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
-                with parallel_backend("threading", n_jobs=args.n_jobs):
-                    Parallel()(
-                        delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
-                    )
+                Parallel(n_jobs=args.n_jobs)(
+                    delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
+                )
             else:
-                with parallel_backend("threading", n_jobs=args.n_jobs):
-                    Parallel()(
-                        delayed(run)(ae_config, seed=seed) for seed in range(args.n)
-                    )
+                Parallel(n_jobs=args.n_jobs)(
+                    delayed(run)(ae_config, seed=seed) for seed in range(args.n)
+                )

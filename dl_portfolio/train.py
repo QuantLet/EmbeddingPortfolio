@@ -296,3 +296,4 @@ def plot_history(history, save_path=None, show=False):
 
     if show:
         plt.show()
+    plt.close()
