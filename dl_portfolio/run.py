@@ -128,6 +128,7 @@ def run(ae_config, seed=None):
                                                          n_features=n_features,
                                                          extra_features_dim=1,
                                                          activation=ae_config.activation,
+                                                         batch_normalization=ae_config.batch_normalization,
                                                          kernel_initializer=ae_config.kernel_initializer,
                                                          kernel_constraint=ae_config.kernel_constraint,
                                                          kernel_regularizer=ae_config.kernel_regularizer,
