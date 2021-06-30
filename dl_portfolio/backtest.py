@@ -8,7 +8,8 @@ from pypfopt import risk_models
 from dl_portfolio.logger import LOGGER
 from typing import Union, Dict
 import pickle
-
+from joblib import Parallel, delayed
+import os
 
 def get_timeseries_weights(cv_results):
     weights = {}
@@ -31,7 +32,6 @@ def get_timeseries_weights(cv_results):
 
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
-    # todo to parallelize
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -54,9 +54,10 @@ def cv_portfolio_perf(cv_results: Dict,
 
 def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True):
     assert test_set in ['val', 'test']
-    cv_results = {cv: {} for cv in range(n_folds)}
-    for cv in range(n_folds):
+
+    def run(cv):
         LOGGER.info(f'CV {cv}')
+        res = {}
         scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
         embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
         train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
@@ -72,30 +73,42 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
         scaled_embedding = np.dot(np.diag(std, k=0), embedding)
         assets = train_returns.columns
 
-        cv_results[cv]['embedding'] = embedding
-        cv_results[cv]['scaled_embedding'] = scaled_embedding
-        cv_results[cv]['train_features'] = train_features
-        cv_results[cv]['test_features'] = test_features
-        cv_results[cv]['test_pred'] = pred
-        cv_results[cv]['Sf'] = train_features.cov()
-        cv_results[cv]['Su'] = scaled_residuals.cov()
-        cv_results[cv]['H'] = pd.DataFrame(
-            np.dot(scaled_embedding, np.dot(cv_results[cv]['Sf'], scaled_embedding.T)) + cv_results[cv]['Su'],
+        res['embedding'] = embedding
+        res['scaled_embedding'] = scaled_embedding
+        res['train_features'] = train_features
+        res['test_features'] = test_features
+        res['test_pred'] = pred
+        res['Sf'] = train_features.cov()
+        res['Su'] = scaled_residuals.cov()
+        res['H'] = pd.DataFrame(
+            np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
             index=embedding.index,
             columns=embedding.index)
-        cv_results[cv]['w'] = embedding
-        cv_results[cv]['returns'] = returns
+        res['w'] = embedding
+        res['returns'] = returns
         if compute_weights:
             assert market_budget is not None
-            cv_results[cv]['port'] = portfolio_weights(train_returns,
-                                                       shrink_cov=cv_results[cv]['H'],
-                                                       budget=market_budget.loc[assets],
-                                                       embedding=embedding
-                                                       )
+            res['port'] = portfolio_weights(train_returns,
+                                            shrink_cov=res['H'],
+                                            budget=market_budget.loc[assets],
+                                            embedding=embedding
+                                            )
         else:
-            cv_results[cv]['port'] = None
-        cv_results[cv]['mean_mse'] = np.mean((residuals**2).mean(1))
-        cv_results[cv]['mse'] = np.sum((residuals**2).mean(1))
+            res['port'] = None
+        res['mean_mse'] = np.mean((residuals ** 2).mean(1))
+        res['mse'] = np.sum((residuals ** 2).mean(1))
+
+        return cv, res
+
+    with Parallel(n_jobs=2 * os.cpu_count()-1) as _parallel_pool:
+        cv_results = _parallel_pool(
+            delayed(run)(cv) for cv in range(n_folds)
+        )
+
+    # Build dictionary
+    cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
+    # Reorder dictionary
+    cv_results = {cv: cv_results[cv] for cv in range(n_folds)}
 
     return cv_results
 
