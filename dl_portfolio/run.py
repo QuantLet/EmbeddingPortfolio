@@ -28,7 +28,7 @@ def run(ae_config, seed=None):
     if ae_config.save:
 
         if not os.path.isdir(LOG_DIR):
-            os.mkdir(LOG_DIR)
+            os.makedirs(LOG_DIR)
         iter = len(os.listdir(LOG_DIR))
 
         if ae_config.model_name is not None and ae_config.model_name != '':
