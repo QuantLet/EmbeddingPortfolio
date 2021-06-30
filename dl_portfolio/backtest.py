@@ -6,10 +6,11 @@ from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
 from dl_portfolio.logger import LOGGER
-from typing import Union, Dict
+from typing import Union, Dict, Optional
 import pickle
 from joblib import Parallel, delayed
 import os
+
 
 def get_timeseries_weights(cv_results):
     weights = {}
@@ -52,7 +53,7 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True):
+def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True, window: Optional[int] = None):
     assert test_set in ['val', 'test']
 
     def run(cv):
@@ -88,11 +89,19 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
         res['returns'] = returns
         if compute_weights:
             assert market_budget is not None
-            res['port'] = portfolio_weights(train_returns,
-                                            shrink_cov=res['H'],
-                                            budget=market_budget.loc[assets],
-                                            embedding=embedding
-                                            )
+            if window is not None:
+                assert isinstance(window, int)
+                res['port'] = portfolio_weights(train_returns.iloc[-window:],
+                                                shrink_cov=res['H'],
+                                                budget=market_budget.loc[assets],
+                                                embedding=embedding
+                                                )
+            else:
+                res['port'] = portfolio_weights(train_returns,
+                                                shrink_cov=res['H'],
+                                                budget=market_budget.loc[assets],
+                                                embedding=embedding
+                                                )
         else:
             res['port'] = None
         res['mean_mse'] = np.mean((residuals ** 2).mean(1))
@@ -100,7 +109,7 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
 
         return cv, res
 
-    with Parallel(n_jobs=2 * os.cpu_count()-1) as _parallel_pool:
+    with Parallel(n_jobs=2 * os.cpu_count() - 1) as _parallel_pool:
         cv_results = _parallel_pool(
             delayed(run)(cv) for cv in range(n_folds)
         )
@@ -209,7 +218,8 @@ def ae_riskparity_weights(returns, embedding, market_budget):
     # Now get weights of assets inside each cluster
     cluster_weights = get_cluster_weights(returns.cov(),
                                           embedding,
-                                          clusters)
+                                          clusters,
+                                          market_budget=market_budget)
     # Now compute return of each cluster
     cluster_returns = pd.DataFrame()
     for c in cluster_weights:
@@ -300,12 +310,17 @@ def get_cluster_labels(embedding, threshold=0.1):
     return clusters
 
 
-def get_cluster_weights(cov, embedding, clusters):
+def get_cluster_weights(cov, embedding, clusters, market_budget=None):
     cluster_weights = {}
     n_clusters = len(clusters)
     for c in clusters:
         cluster_items = clusters[c]
-        budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
+
+        if market_budget is not None:
+            budget = market_budget.loc[cluster_items, 'rc']
+        else:
+            budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
+
         cov_slice = cov.loc[cluster_items, cluster_items]
 
         cluster_weights[c] = pd.Series(
