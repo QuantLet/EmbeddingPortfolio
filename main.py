@@ -2,8 +2,6 @@ from dl_portfolio.run import run
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
 
-# 19,20,21,22,23,24,25,26,27,28,29,30
-
 if __name__ == "__main__":
     import argparse
     from dl_portfolio.config import ae_config
@@ -42,12 +40,12 @@ if __name__ == "__main__":
     else:
         if args.n_jobs == 1:
             for i in range(args.n):
-                LOGGER.info(f'Starting experiment {i+1} out of {args.n} experiments')
+                LOGGER.info(f'Starting experiment {i + 1} out of {args.n} experiments')
                 if args.seed:
                     run(ae_config, seed=args.seed)
                 else:
                     run(ae_config, seed=i)
-                LOGGER.info(f'Experiment {i+1} finished')
+                LOGGER.info(f'Experiment {i + 1} finished')
                 LOGGER.inof(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
