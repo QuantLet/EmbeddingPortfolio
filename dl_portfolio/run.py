@@ -23,9 +23,6 @@ def run(ae_config, seed=None):
     LOGGER.info(f"Set seed: {seed}")
 
     if ae_config.save:
-
-        if not os.path.isdir(LOG_DIR):
-            os.mkdir(LOG_DIR)
         iter = len(os.listdir(LOG_DIR))
 
         if ae_config.model_name is not None and ae_config.model_name != '':
@@ -131,6 +128,7 @@ def run(ae_config, seed=None):
                                                          n_features=n_features,
                                                          extra_features_dim=1,
                                                          activation=ae_config.activation,
+                                                         batch_normalization=ae_config.batch_normalization,
                                                          kernel_initializer=ae_config.kernel_initializer,
                                                          kernel_constraint=ae_config.kernel_constraint,
                                                          kernel_regularizer=ae_config.kernel_regularizer,

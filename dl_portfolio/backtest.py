@@ -6,8 +6,10 @@ from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
 from dl_portfolio.logger import LOGGER
-from typing import Union, Dict
+from typing import Union, Dict, Optional
 import pickle
+from joblib import Parallel, delayed
+import os
 
 
 def get_timeseries_weights(cv_results):
@@ -31,7 +33,6 @@ def get_timeseries_weights(cv_results):
 
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
-    # todo to parallelize
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -52,11 +53,12 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True):
+def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True, window: Optional[int] = None):
     assert test_set in ['val', 'test']
-    cv_results = {cv: {} for cv in range(n_folds)}
-    for cv in range(n_folds):
+
+    def run(cv):
         LOGGER.info(f'CV {cv}')
+        res = {}
         scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
         embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
         train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
@@ -72,30 +74,50 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
         scaled_embedding = np.dot(np.diag(std, k=0), embedding)
         assets = train_returns.columns
 
-        cv_results[cv]['embedding'] = embedding
-        cv_results[cv]['scaled_embedding'] = scaled_embedding
-        cv_results[cv]['train_features'] = train_features
-        cv_results[cv]['test_features'] = test_features
-        cv_results[cv]['test_pred'] = pred
-        cv_results[cv]['Sf'] = train_features.cov()
-        cv_results[cv]['Su'] = scaled_residuals.cov()
-        cv_results[cv]['H'] = pd.DataFrame(
-            np.dot(scaled_embedding, np.dot(cv_results[cv]['Sf'], scaled_embedding.T)) + cv_results[cv]['Su'],
+        res['embedding'] = embedding
+        res['scaled_embedding'] = scaled_embedding
+        res['train_features'] = train_features
+        res['test_features'] = test_features
+        res['test_pred'] = pred
+        res['Sf'] = train_features.cov()
+        res['Su'] = scaled_residuals.cov()
+        res['H'] = pd.DataFrame(
+            np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
             index=embedding.index,
             columns=embedding.index)
-        cv_results[cv]['w'] = embedding
-        cv_results[cv]['returns'] = returns
+        res['w'] = embedding
+        res['returns'] = returns
         if compute_weights:
             assert market_budget is not None
-            cv_results[cv]['port'] = portfolio_weights(train_returns,
-                                                       shrink_cov=cv_results[cv]['H'],
-                                                       budget=market_budget.loc[assets],
-                                                       embedding=embedding
-                                                       )
+            if window is not None:
+                assert isinstance(window, int)
+                res['port'] = portfolio_weights(train_returns.iloc[-window:],
+                                                shrink_cov=res['H'],
+                                                budget=market_budget.loc[assets],
+                                                embedding=embedding
+                                                )
+            else:
+                res['port'] = portfolio_weights(train_returns,
+                                                shrink_cov=res['H'],
+                                                budget=market_budget.loc[assets],
+                                                embedding=embedding
+                                                )
         else:
-            cv_results[cv]['port'] = None
-        cv_results[cv]['mean_mse'] = np.mean((residuals**2).mean(1))
-        cv_results[cv]['mse'] = np.sum((residuals**2).mean(1))
+            res['port'] = None
+        res['mean_mse'] = np.mean((residuals ** 2).mean(1))
+        res['mse'] = np.sum((residuals ** 2).mean(1))
+
+        return cv, res
+
+    with Parallel(n_jobs=2 * os.cpu_count() - 1) as _parallel_pool:
+        cv_results = _parallel_pool(
+            delayed(run)(cv) for cv in range(n_folds)
+        )
+
+    # Build dictionary
+    cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
+    # Reorder dictionary
+    cv_results = {cv: cv_results[cv] for cv in range(n_folds)}
 
     return cv_results
 
@@ -196,7 +218,8 @@ def ae_riskparity_weights(returns, embedding, market_budget):
     # Now get weights of assets inside each cluster
     cluster_weights = get_cluster_weights(returns.cov(),
                                           embedding,
-                                          clusters)
+                                          clusters,
+                                          market_budget=market_budget)
     # Now compute return of each cluster
     cluster_returns = pd.DataFrame()
     for c in cluster_weights:
@@ -287,12 +310,17 @@ def get_cluster_labels(embedding, threshold=0.1):
     return clusters
 
 
-def get_cluster_weights(cov, embedding, clusters):
+def get_cluster_weights(cov, embedding, clusters, market_budget=None):
     cluster_weights = {}
     n_clusters = len(clusters)
     for c in clusters:
         cluster_items = clusters[c]
-        budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
+
+        if market_budget is not None:
+            budget = market_budget.loc[cluster_items, 'rc']
+        else:
+            budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
+
         cov_slice = cov.loc[cluster_items, cluster_items]
 
         cluster_weights[c] = pd.Series(
