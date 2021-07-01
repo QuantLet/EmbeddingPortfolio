@@ -189,6 +189,10 @@ class NonNegAndUnitNormInit(tf.keras.initializers.Initializer):
             self.initializer = tf.keras.initializers.Orthogonal(
                 gain=kwargs.get('gain', 1.0), seed=kwargs.get('seed')
             )
+        elif initializer == 'truncated_normal':
+            self.initializer = tf.keras.initializers.TruncatedNormal(
+                mean=kwargs.get('mean', 0.1), stddev=kwargs.get('stddev', 0.05), seed=kwargs.get('seed')
+            )
         else:
             raise NotImplementedError()
 
