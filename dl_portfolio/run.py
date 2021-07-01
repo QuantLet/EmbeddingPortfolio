@@ -204,7 +204,7 @@ def run(ae_config, seed=None):
                              loss=ae_config.loss,
                              callbacks=ae_config.callbacks,
                              val_dataset=val_dataset,
-                             extra_features=n_features > 0,
+                             extra_features=n_features is not None,
                              save_path=f"{save_path}")
 
         if ae_config.save:
