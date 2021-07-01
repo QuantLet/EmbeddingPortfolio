@@ -9,7 +9,6 @@ from dl_portfolio.logger import LOGGER
 from typing import Union, Dict, Optional
 import pickle
 from joblib import Parallel, delayed
-import os
 
 
 def get_timeseries_weights(cv_results):
@@ -53,7 +52,8 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True, window: Optional[int] = None):
+def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True, window: Optional[int] = None,
+                   n_jobs: int = None):
     assert test_set in ['val', 'test']
 
     def run(cv):
@@ -109,15 +109,20 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
 
         return cv, res
 
-    with Parallel(n_jobs=2 * os.cpu_count() - 1) as _parallel_pool:
-        cv_results = _parallel_pool(
-            delayed(run)(cv) for cv in range(n_folds)
-        )
+    if n_jobs:
+        with Parallel(n_jobs=n_jobs) as _parallel_pool:
+            cv_results = _parallel_pool(
+                delayed(run)(cv) for cv in range(n_folds)
+            )
 
-    # Build dictionary
-    cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
-    # Reorder dictionary
-    cv_results = {cv: cv_results[cv] for cv in range(n_folds)}
+        # Build dictionary
+        cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
+        # Reorder dictionary
+        cv_results = {cv: cv_results[cv] for cv in range(n_folds)}
+    else:
+        cv_results = {}
+        for cv in range(n_folds):
+            _, cv_results[cv] = run(cv)
 
     return cv_results
 
@@ -241,7 +246,8 @@ def ae_riskparity_weights(returns, embedding, market_budget):
     weights = pd.Series(dtype='float32')
     for c in cluster_weights:
         weights = pd.concat([weights, cluster_weights[c] * c_weights[c]])
-    weights = weights.loc[returns.columns]  # rerorder
+    weights = weights.reindex(returns.columns)  # rerorder
+    weights.fillna(0., inplace=True)
 
     return weights
 
@@ -256,10 +262,11 @@ def ae_ivp_weights(returns, embedding):
     cov = returns.cov()
     for c in clusters:
         cluster_items = clusters[c]
-        c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
-        cluster_var = get_cluster_var(cov, cluster_items, weights=cluster_weights)
-        cluster_asset_weights[c] = c_weights
-        cluster_weights[c] = cluster_var
+        if cluster_items:
+            c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
+            cluster_var = get_cluster_var(cov, cluster_items, weights=cluster_weights)
+            cluster_asset_weights[c] = c_weights
+            cluster_weights[c] = cluster_var
 
     cluster_weights = {c: 1 / cluster_weights[c] for c in cluster_weights}
     cluster_weights = {c: cluster_weights[c] / np.sum(list(cluster_weights.values())) for c in cluster_weights}
@@ -269,7 +276,8 @@ def ae_ivp_weights(returns, embedding):
     weights = pd.Series(dtype='float32')
     for c in cluster_weights:
         weights = pd.concat([weights, cluster_weights[c]])
-    weights = weights.loc[returns.columns]  # rerorder
+    weights = weights.reindex(returns.columns)  # rerorder
+    weights.fillna(0., inplace=True)
 
     return weights
 
@@ -300,13 +308,14 @@ def get_cluster_labels(embedding, threshold=0.1):
         mask = embedding >= threshold
         # assert all(mask.sum(1) <= 1)
         labels = pd.DataFrame(mask.idxmax(axis=1), columns=['label'])
-
     clusters = {}
     for i in range(n_clusters):
         assets = list(labels.loc[labels['label'] == i].index)
-        label = np.argmax(embedding.loc[assets, :].sum())
-        clusters[label] = assets
-    clusters = {i: clusters[i] for i in range(n_clusters)}  # reorder dict
+        if len(assets) > 0:
+            label = np.argmax(embedding.loc[assets, :].sum())
+            clusters[label] = assets
+    clusters = {i: clusters.get(i) for i in range(n_clusters) if clusters.get(i) is not None}  # reorder dict
+
     return clusters
 
 
@@ -316,18 +325,20 @@ def get_cluster_weights(cov, embedding, clusters, market_budget=None):
     for c in clusters:
         cluster_items = clusters[c]
 
-        if market_budget is not None:
-            budget = market_budget.loc[cluster_items, 'rc']
-        else:
-            budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
+        if cluster_items:
+            if market_budget is not None:
+                budget = market_budget.loc[cluster_items, 'rc']
+            else:
+                budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
 
-        cov_slice = cov.loc[cluster_items, cluster_items]
+            cov_slice = cov.loc[cluster_items, cluster_items]
 
-        cluster_weights[c] = pd.Series(
-            rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
-            index=cluster_items
-        )
-    cluster_weights = {i: cluster_weights[i] for i in range(n_clusters)}  # reorder dict
+            cluster_weights[c] = pd.Series(
+                rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
+                index=cluster_items
+            )
+    cluster_weights = {i: cluster_weights.get(i) for i in range(n_clusters) if
+                       cluster_weights.get(i) is not None}  # reorder dict
 
     return cluster_weights
 
