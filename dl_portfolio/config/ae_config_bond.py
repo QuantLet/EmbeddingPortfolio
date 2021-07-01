@@ -10,8 +10,8 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset='bond'
-show_plot = True
-save = False
+show_plot = False
+save = True
 
 # tf.config.run_functions_eagerly(True)
 seed = None
@@ -23,13 +23,13 @@ ortho_weightage = 1e-2
 l_name = 'l2'
 l = 1e-3
 activation = 'relu'
-features_config = [{'name': 'hour_in_week'}]
+features_config = None
 model_name = f'activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False  # True
 dropnan = False
-freq = "1H"
+freq = "1D"
 drop_weekends = False
 shuffle_columns_while_training = False
 scaler_func = {
@@ -112,5 +112,35 @@ data_specs = {
         'start': '2016-06-30',
         'val_start': '2019-05-12',
         'end': '2019-06-11'
+    },
+    6: {
+        'start': '2016-06-30',
+        'val_start': '2019-06-12',
+        'end': '2019-07-11'
+    },
+    7: {
+        'start': '2016-06-30',
+        'val_start': '2019-07-12',
+        'end': '2019-08-11'
+    },
+    8: {
+        'start': '2016-06-30',
+        'val_start': '2019-08-12',
+        'end': '2019-09-11'
+    },
+    9: {
+        'start': '2016-06-30',
+        'val_start': '2019-09-12',
+        'end': '2019-10-11'
+    },
+    10: {
+        'start': '2016-06-30',
+        'val_start': '2019-10-12',
+        'end': '2019-11-11'
+    },
+    11: {
+        'start': '2016-06-30',
+        'val_start': '2019-11-12',
+        'end': '2019-12-11'
     }
 }
