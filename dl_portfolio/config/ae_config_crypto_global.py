@@ -9,14 +9,14 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset='crypto_global'
-show_plot = False
-save = True
+dataset='global_crypto'
+show_plot = True
+save = False
 
 # tf.config.run_functions_eagerly(True)
-seed = None
+seed = np.random.randint(0, 100)
 assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
-encoding_dim = 2
+encoding_dim = 10
 uncorrelated_features = True
 weightage = 1e-2
 ortho_weightage = 1e-2
@@ -40,7 +40,7 @@ model_type = 'pca_ae_model'
 
 learning_rate = 1e-3
 epochs = 1000
-batch_size = 32
+batch_size = 16
 drop_remainder_obs = False
 val_size = None  # 22*6 # 30 * 24
 test_size = 0
@@ -76,7 +76,7 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 100,
+        'patience': 300,
         'verbose': 1,
         'restore_best_weights': True
     }
