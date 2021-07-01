@@ -217,8 +217,10 @@ def load_data(dataset='global', **kwargs):
         freq = kwargs.get('freq', '1H')
         base = kwargs.get('base', 'SPXUSD')
         data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
+    elif dataset == 'global_crypto':
+        data, assets = load_global_crypto_data()
     else:
-        raise NotImplementedError(f"dataset must be one of ['global', 'bond']: {dataset}")
+        raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
 
     return data, assets
 
@@ -240,6 +242,19 @@ def load_global_bond_data(crix=False):
     data = data.astype(np.float32)
 
     assets = list(data.columns)
+    return data, assets
+
+
+def load_global_crypto_data():
+    data = pd.read_csv('./data/crypto_data/crix/table_top_100_20180101_20201231.csv', header=[0, 1], index_col=0)
+    data.index = pd.to_datetime(data.index)
+    data = data.astype(np.float32)
+    data = data['price']
+    assets = list(data.columns)
+
+    data.fillna(method='ffill', inplace=True)
+    data.fillna(method='bfill', inplace=True)
+
     return data, assets
 
 
