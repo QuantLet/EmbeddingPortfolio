@@ -51,7 +51,7 @@ if __name__ == "__main__":
                 else:
                     run(ae_config, seed=i)
                 LOGGER.info(f'Experiment {i + 1} finished')
-                LOGGER.inof(f'{args.n - i - 1} experiments to go')
+                LOGGER.info(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
                 Parallel(n_jobs=args.n_jobs)(

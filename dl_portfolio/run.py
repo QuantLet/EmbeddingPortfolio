@@ -11,6 +11,7 @@ import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
 
+
 def run(ae_config, seed=None):
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
@@ -34,7 +35,8 @@ def run(ae_config, seed=None):
         os.makedirs(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-    data, assets = load_data(assets=ae_config.assets, dropnan=ae_config.dropnan, freq=ae_config.freq)
+
+    data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan, freq=ae_config.freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -95,8 +97,7 @@ def run(ae_config, seed=None):
                                                                                 rescale=ae_config.rescale,
                                                                                 scaler=ae_config.scaler_func['name'],
                                                                                 features_config=ae_config.features_config,
-                                                                                **ae_config.scaler_func.get('params',
-                                                                                                            {}))
+                                                                                **ae_config.scaler_func.get('params', {}))
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
