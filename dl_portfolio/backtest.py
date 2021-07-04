@@ -52,69 +52,72 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weights=True, window: Optional[int] = None,
+def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None):
+    res = {}
+    scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
+    train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
+    returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
+    pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
+    train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
+    test_features = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_features.p')
+
+    residuals = returns - pred
+
+    std = np.sqrt(scaler['attributes']['var_'])
+    scaled_residuals = residuals * std
+    scaled_embedding = np.dot(np.diag(std, k=0), embedding)
+    assets = train_returns.columns
+
+    res['embedding'] = embedding
+    res['scaled_embedding'] = scaled_embedding
+    res['train_features'] = train_features
+    res['test_features'] = test_features
+    res['test_pred'] = pred
+    res['Sf'] = train_features.cov()
+    res['Su'] = scaled_residuals.cov()
+    res['H'] = pd.DataFrame(
+        np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
+        index=embedding.index,
+        columns=embedding.index)
+    res['w'] = embedding
+    res['returns'] = returns
+    if compute_weights:
+        assert market_budget is not None
+        if window is not None:
+            assert isinstance(window, int)
+            res['port'] = portfolio_weights(train_returns.iloc[-window:],
+                                            shrink_cov=res['H'],
+                                            budget=market_budget.loc[assets],
+                                            embedding=embedding,
+                                            portfolio=portfolios
+                                            )
+        else:
+            res['port'] = portfolio_weights(train_returns,
+                                            shrink_cov=res['H'],
+                                            budget=market_budget.loc[assets],
+                                            embedding=embedding,
+                                            portfolio=portfolios
+                                            )
+    else:
+        res['port'] = None
+    res['mean_mse'] = np.mean((residuals ** 2).mean(1))
+    res['mse'] = np.sum((residuals ** 2).mean(1))
+
+    return cv, res
+
+
+def get_cv_results(base_dir, test_set, n_folds, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None,
                    n_jobs: int = None):
     assert test_set in ['val', 'test']
-
-    def run(cv):
-        LOGGER.info(f'CV {cv}')
-        res = {}
-        scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
-        embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
-        train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
-        returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
-        pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
-        train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
-        test_features = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_features.p')
-
-        residuals = returns - pred
-
-        std = np.sqrt(scaler['attributes']['var_'])
-        scaled_residuals = residuals * std
-        scaled_embedding = np.dot(np.diag(std, k=0), embedding)
-        assets = train_returns.columns
-
-        res['embedding'] = embedding
-        res['scaled_embedding'] = scaled_embedding
-        res['train_features'] = train_features
-        res['test_features'] = test_features
-        res['test_pred'] = pred
-        res['Sf'] = train_features.cov()
-        res['Su'] = scaled_residuals.cov()
-        res['H'] = pd.DataFrame(
-            np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
-            index=embedding.index,
-            columns=embedding.index)
-        res['w'] = embedding
-        res['returns'] = returns
-        if compute_weights:
-            assert market_budget is not None
-            if window is not None:
-                assert isinstance(window, int)
-                res['port'] = portfolio_weights(train_returns.iloc[-window:],
-                                                shrink_cov=res['H'],
-                                                budget=market_budget.loc[assets],
-                                                embedding=embedding
-                                                )
-            else:
-                res['port'] = portfolio_weights(train_returns,
-                                                shrink_cov=res['H'],
-                                                budget=market_budget.loc[assets],
-                                                embedding=embedding
-                                                )
-        else:
-            res['port'] = None
-        res['mean_mse'] = np.mean((residuals ** 2).mean(1))
-        res['mse'] = np.sum((residuals ** 2).mean(1))
-
-        return cv, res
 
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
-                delayed(run)(cv) for cv in range(n_folds)
+                delayed(one_cv)(base_dir, cv, test_set, portfolios, market_budget=market_budget, compute_weights=compute_weights,
+                                window=window)
+                for cv in range(n_folds)
             )
-
         # Build dictionary
         cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
         # Reorder dictionary
@@ -122,7 +125,8 @@ def get_cv_results(base_dir, test_set, n_folds, market_budget=None, compute_weig
     else:
         cv_results = {}
         for cv in range(n_folds):
-            _, cv_results[cv] = run(cv)
+            _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget, compute_weights=compute_weights,
+                                       window=window)
 
     return cv_results
 
