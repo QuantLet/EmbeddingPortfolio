@@ -36,7 +36,8 @@ def run(ae_config, seed=None):
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
 
-    data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan, freq=ae_config.freq)
+    data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                             freq=ae_config.freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -97,7 +98,8 @@ def run(ae_config, seed=None):
                                                                                 rescale=ae_config.rescale,
                                                                                 scaler=ae_config.scaler_func['name'],
                                                                                 features_config=ae_config.features_config,
-                                                                                **ae_config.scaler_func.get('params', {}))
+                                                                                **ae_config.scaler_func.get('params',
+                                                                                                            {}))
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
@@ -197,15 +199,25 @@ def run(ae_config, seed=None):
         else:
             save_path = None
 
-        model, history = fit(model,
-                             train_dataset,
-                             ae_config.epochs,
-                             ae_config.learning_rate,
-                             loss=ae_config.loss,
-                             callbacks=ae_config.callbacks,
-                             val_dataset=val_dataset,
-                             extra_features=n_features is not None,
-                             save_path=f"{save_path}")
+        if ae_config.save:
+            model, history = fit(model,
+                                 train_dataset,
+                                 ae_config.epochs,
+                                 ae_config.learning_rate,
+                                 loss=ae_config.loss,
+                                 callbacks=ae_config.callbacks,
+                                 val_dataset=val_dataset,
+                                 extra_features=n_features is not None,
+                                 save_path=f"{save_path}")
+        else:
+            model, history = fit(model,
+                                 train_dataset,
+                                 ae_config.epochs,
+                                 ae_config.learning_rate,
+                                 loss=ae_config.loss,
+                                 callbacks=ae_config.callbacks,
+                                 val_dataset=val_dataset,
+                                 extra_features=n_features is not None)
 
         if ae_config.save:
             # tensorboard viz
