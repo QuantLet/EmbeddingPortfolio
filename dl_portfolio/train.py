@@ -163,9 +163,6 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                     loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
                     batch_loss.append(float(loss_value))
                     batch_reg_loss.append(float(reg_loss))
-        if restore_best_weights and best_weights is None:
-            best_epoch = epoch
-            best_weights = model.get_weights()
 
         # Compute loss over epoch
         epoch_loss = np.mean(batch_loss)
@@ -226,14 +223,13 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                     LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(
                         np.min(history[early_stopping['monitor']]),
                         val_epoch_loss))
-                    # best_epoch = epoch
-                    # best_loss = val_epoch_loss
-                    # if restore_best_weights:
-                    #     LOGGER.info(
-                    #         f"Restoring best weights from epoch {best_epoch} with loss {np.round(best_loss, 4)}")
-                    #     best_weights = model.get_weights()
-                    #     if save_path:
-                    #         model.save(f"{save_path}/best_model_stopped.h5")
+                    best_epoch = epoch
+                    LOGGER.info(f"Restoring best model from epoch: {best_epoch}")
+                    if restore_best_weights:
+                        best_weights = model.get_weights()
+                        if save_path:
+                            LOGGER.info('Saving best model')
+                            model.save(f"{save_path}/model.h5")
                 else:
                     LOGGER.info(
                         "Model has not improved from {0:8.4f}".format(np.min(history[early_stopping['monitor']])))
@@ -243,17 +239,19 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                                               patience=early_stopping['patience'],
                                               mode=early_stopping['mode'])
 
-            if restore_best_weights:
-                if epoch_metric_stop == np.min(history[early_stopping['monitor']]):
-                    LOGGER.info('Saving best model')
-                    model.save(f"{save_path}/model.h5")
-
         if stop_training:
             LOGGER.info(f"Stopping training at epoch {epoch}")
             break
 
-    if not early_stopping and save_path:
-        model.save(f"{save_path}/model.h5")
+    if restore_best_weights:
+        LOGGER.info(f"Training finished. Restoring best model from epoch: {best_epoch}")
+        model.set_weights(best_weights)
+    else:
+        if save_path:
+            LOGGER.info(f"Training finished. Save model at last epoch")
+            model.save(f"{save_path}/model.h5")
+        else:
+            LOGGER.info(f"Training finished at last epoch")
 
     return model, history
 
