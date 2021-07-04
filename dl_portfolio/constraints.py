@@ -21,21 +21,24 @@ class NonNegAndUnitNorm(Constraint):
       to constrain the weights of each filter tensor of size
       `(rows, cols, input_depth)`.
     """
-
-    def __init__(self, axis=0, max_dim=None, norm='l2'):
+    def __init__(self, max_value=1.0, axis=0, max_dim=None, norm='l2'):
         self.axis = axis
         self.max_dim = max_dim
         self.norm = norm
+        self.max_value = max_value
 
     def __call__(self, w):
         if self.max_dim is not None:
             assert self.axis == 0
             w_reg = w[:, :self.max_dim]
-            non_neg = w_reg * tf.cast(tf.greater_equal(w_reg, 0.), K.floatx())
-            output = non_neg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(non_neg), axis=self.axis, keepdims=True)))
+            w_reg = w_reg * math_ops.cast(math_ops.greater_equal(w_reg, 0.), K.floatx())
+            w_reg = w_reg * math_ops.cast(math_ops.greater_equal(self.max_value, w_reg), K.floatx())
+
+            output = w_reg / (K.epsilon() + K.sqrt(tf.reduce_sum(tf.square(w_reg), axis=self.axis, keepdims=True)))
             w = tf.concat([output, w[:, self.max_dim:]], axis=-1)
         else:
             w = w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
+            w = w * math_ops.cast(math_ops.greater_equal(self.max_value, w), K.floatx())
             if self.norm == 'l2':
                 w = w / (K.epsilon() + K.sqrt(math_ops.reduce_sum(math_ops.square(w), axis=self.axis, keepdims=True)))
             elif self.norm == 'l1':
