@@ -14,7 +14,7 @@ show_plot = True
 save = False
 
 # tf.config.run_functions_eagerly(True)
-seed = None # np.random.randint(0, 100)
+seed = np.random.randint(0, 100)
 assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
@@ -67,7 +67,7 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = tf.keras.constraints.NonNeg() # NonNegAndUnitNorm(max_value=0.5, axis=0) # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
