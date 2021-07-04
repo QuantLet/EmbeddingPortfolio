@@ -10,11 +10,11 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset='bond'
-show_plot = False
-save = True
+show_plot = True
+save = False
 
 # tf.config.run_functions_eagerly(True)
-seed = None
+seed = np.random.randint(0, 100)
 assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
@@ -57,15 +57,17 @@ rescale = None
 # Constraints and regularizer
 batch_normalization = True
 activity_regularizer = None
-kernel_initializer = NonNegAndUnitNormInit(initializer='orthogonal', seed=seed)
+kernel_initializer = tf.keras.initializers.HeNormal(seed=seed)
+# kernel_initializer = NonNegAndUnitNormInit(initializer='he_normal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
     encoding_dim,
     weightage=ortho_weightage,
     axis=0,
     regularizer={'name': l_name, 'params': {l_name: l}}
 )
+# kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(axis=0)  # tf.keras.constraints.NonNeg()#
+kernel_constraint = tf.keras.constraints.NonNeg() # NonNegAndUnitNorm(max_value=0.5, axis=0) # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
@@ -76,7 +78,7 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 100,
+        'patience': 200,
         'verbose': 1,
         'restore_best_weights': True
     }
@@ -87,60 +89,68 @@ data_specs = {
         'start': '2016-06-30',
         'val_start': '2018-12-11',
         'end': '2019-01-11'
-    },
-    1: {
-        'start': '2016-06-30',
-        'val_start': '2019-01-12',
-        'end': '2019-02-11'
-    },
-    2: {
-        'start': '2016-06-30',
-        'val_start': '2019-02-12',
-        'end': '2019-03-11'
-    },
-    3: {
-        'start': '2016-06-30',
-        'val_start': '2019-03-12',
-        'end': '2019-04-11'
-    },
-    4: {
-        'start': '2016-06-30',
-        'val_start': '2019-04-12',
-        'end': '2019-05-11'
-    },
-    5: {
-        'start': '2016-06-30',
-        'val_start': '2019-05-12',
-        'end': '2019-06-11'
-    },
-    6: {
-        'start': '2016-06-30',
-        'val_start': '2019-06-12',
-        'end': '2019-07-11'
-    },
-    7: {
-        'start': '2016-06-30',
-        'val_start': '2019-07-12',
-        'end': '2019-08-11'
-    },
-    8: {
-        'start': '2016-06-30',
-        'val_start': '2019-08-12',
-        'end': '2019-09-11'
-    },
-    9: {
-        'start': '2016-06-30',
-        'val_start': '2019-09-12',
-        'end': '2019-10-11'
-    },
-    10: {
-        'start': '2016-06-30',
-        'val_start': '2019-10-12',
-        'end': '2019-11-11'
-    },
-    11: {
-        'start': '2016-06-30',
-        'val_start': '2019-11-12',
-        'end': '2019-12-11'
     }
 }
+
+# data_specs = {
+#     0: {
+#         'start': '2016-06-30',
+#         'val_start': '2018-12-11',
+#         'end': '2019-01-11'
+#     },
+#     1: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-01-12',
+#         'end': '2019-02-11'
+#     },
+#     2: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-02-12',
+#         'end': '2019-03-11'
+#     },
+#     3: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-03-12',
+#         'end': '2019-04-11'
+#     },
+#     4: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-04-12',
+#         'end': '2019-05-11'
+#     },
+#     5: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-05-12',
+#         'end': '2019-06-11'
+#     },
+#     6: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-06-12',
+#         'end': '2019-07-11'
+#     },
+#     7: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-07-12',
+#         'end': '2019-08-11'
+#     },
+#     8: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-08-12',
+#         'end': '2019-09-11'
+#     },
+#     9: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-09-12',
+#         'end': '2019-10-11'
+#     },
+#     10: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-10-12',
+#         'end': '2019-11-11'
+#     },
+#     11: {
+#         'start': '2016-06-30',
+#         'val_start': '2019-11-12',
+#         'end': '2019-12-11'
+#     }
+# }
