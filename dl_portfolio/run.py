@@ -36,7 +36,11 @@ def run(ae_config, seed=None):
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
 
-    data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+    if ae_config.dataset == 'bond':
+        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                                 freq=ae_config.freq, crix=ae_config.crix)
+    else:
+        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
                              freq=ae_config.freq)
 
     base_asset_order = assets.copy()
@@ -222,8 +226,8 @@ def run(ae_config, seed=None):
         if ae_config.save:
             # tensorboard viz
             embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
-            LOGGER.info(f"Loading weights from {save_path}/best_model.h5")
-            model.load_weights(f"{save_path}/best_model.h5")
+            LOGGER.info(f"Loading weights from {save_path}/model.h5")
+            model.load_weights(f"{save_path}/model.h5")
 
         plot_history(history, save_path=save_path, show=ae_config.show_plot)
 
@@ -317,6 +321,7 @@ def run(ae_config, seed=None):
         else:
             vmax = None
             vmin = None
+
         if ae_config.save:
             heat_map(encoder_weights, show=ae_config.show_plot, save_dir=f"{save_path}", vmax=vmax, vmin=vmin)
         else:
