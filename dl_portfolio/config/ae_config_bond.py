@@ -67,7 +67,7 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = tf.keras.constraints.NonNeg() # NonNegAndUnitNorm(max_value=0.5, axis=0) # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
