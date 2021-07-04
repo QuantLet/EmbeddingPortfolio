@@ -126,12 +126,11 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
         return loss_value, reg_loss
 
     early_stopping = callbacks.get('EarlyStopping')
-    if early_stopping.get('monitor') != 'val_loss':
-        raise NotImplementedError()
     if early_stopping is not None:
         restore_best_weights = early_stopping['restore_best_weights']
     else:
         restore_best_weights = False
+
     history = {'loss': [], 'reg_loss': [], 'mse': [], 'rmse': [], 'val_loss': [], 'val_reg_loss': [], 'val_mse': [],
                'val_rmse': []}
     best_weights = None
@@ -190,32 +189,8 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
         # Compute loss over epoch
         val_epoch_loss = np.mean(batch_loss)
         val_epoch_reg_loss = np.mean(batch_reg_loss)
-
         history['val_loss'].append(val_epoch_loss)
         history['val_reg_loss'].append(val_epoch_reg_loss)
-
-        # Early stopping
-        if early_stopping:
-            if epoch >= early_stopping['patience']:
-                if val_epoch_loss <= np.min(history['val_loss']):
-                    LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(np.min(history['val_loss']),
-                                                                                      val_epoch_loss))
-                    best_epoch = epoch
-                    best_loss = val_epoch_loss
-                    if restore_best_weights:
-                        LOGGER.info(
-                            f"Restoring best weights from epoch {best_epoch} with loss {np.round(best_loss, 4)}")
-                        best_weights = model.get_weights()
-                        if save_path:
-                            model.save(f"{save_path}/best_model_stopped.h5")
-                else:
-                    LOGGER.info(
-                        "Model has not improved from {0:8.4f}".format(np.min(history['val_loss'])))
-
-                stop_training = EarlyStopping(history[early_stopping['monitor']],
-                                              min_delta=early_stopping['min_delta'],
-                                              patience=early_stopping['patience'],
-                                              mode=early_stopping['mode'])
 
         # Display metrics at the end of each epoch and reset
         if isinstance(train_metric, list):
@@ -237,17 +212,47 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
             f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - reg_loss = {np.round(history['reg_loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
             f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_reg_loss = {np.round(history['val_reg_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
 
-        if save_path:
+        # Early stopping
+        if early_stopping:
             epoch_val_rmse = history['val_rmse'][-1]
-            if epoch_val_rmse == np.min(history['val_rmse']):
-                LOGGER.info('Saving best model')
-                model.save(f"{save_path}/best_model.h5")
+            if early_stopping['monitor'] == 'val_rmse':
+                epoch_metric_stop = epoch_val_rmse
+            elif early_stopping['monitor'] == 'val_loss':
+                epoch_metric_stop = val_epoch_loss
+            else:
+                raise NotImplementedError()
+            if epoch >= early_stopping['patience']:
+                if epoch_metric_stop <= np.min(history[early_stopping['monitor']]):
+                    LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(
+                        np.min(history[early_stopping['monitor']]),
+                        val_epoch_loss))
+                    # best_epoch = epoch
+                    # best_loss = val_epoch_loss
+                    # if restore_best_weights:
+                    #     LOGGER.info(
+                    #         f"Restoring best weights from epoch {best_epoch} with loss {np.round(best_loss, 4)}")
+                    #     best_weights = model.get_weights()
+                    #     if save_path:
+                    #         model.save(f"{save_path}/best_model_stopped.h5")
+                else:
+                    LOGGER.info(
+                        "Model has not improved from {0:8.4f}".format(np.min(history[early_stopping['monitor']])))
+
+                stop_training = EarlyStopping(history[early_stopping['monitor']],
+                                              min_delta=early_stopping['min_delta'],
+                                              patience=early_stopping['patience'],
+                                              mode=early_stopping['mode'])
+
+            if restore_best_weights:
+                if epoch_metric_stop == np.min(history[early_stopping['monitor']]):
+                    LOGGER.info('Saving best model')
+                    model.save(f"{save_path}/model.h5")
 
         if stop_training:
             LOGGER.info(f"Stopping training at epoch {epoch}")
             break
 
-    if save_path:
+    if not early_stopping and save_path:
         model.save(f"{save_path}/model.h5")
 
     return model, history
@@ -312,7 +317,6 @@ def plot_history(history, save_path=None, show=False):
         axs[2].plot(history['val_rmse'], label='val')
         axs[2].set_title('rmse')
         axs[2].legend()
-
 
     if save_path:
         plt.savefig(f"{save_path}/history.png")
