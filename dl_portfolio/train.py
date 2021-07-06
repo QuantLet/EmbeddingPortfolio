@@ -219,26 +219,28 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                 epoch_metric_stop = val_epoch_loss
             else:
                 raise NotImplementedError()
-            if epoch >= early_stopping['patience']:
-                if epoch_metric_stop <= np.min(history[early_stopping['monitor']]):
-                    LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(
-                        np.min(history[early_stopping['monitor']]),
-                        val_epoch_loss))
-                    best_epoch = epoch
-                    LOGGER.info(f"Restoring best model from epoch: {best_epoch}")
-                    if restore_best_weights:
-                        best_weights = model.get_weights()
-                        if save_path:
-                            LOGGER.info('Saving best model')
-                            model.save(f"{save_path}/model.h5")
-                else:
-                    LOGGER.info(
-                        "Model has not improved from {0:8.4f}".format(np.min(history[early_stopping['monitor']])))
 
+            if epoch_metric_stop <= np.min(history[early_stopping['monitor']]):
+                LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(
+                    np.min(history[early_stopping['monitor']]),
+                    val_epoch_loss))
+                best_epoch = epoch
+                LOGGER.info(f"Restoring best model from epoch: {best_epoch}")
+                if restore_best_weights:
+                    best_weights = model.get_weights()
+                    if save_path:
+                        LOGGER.info('Saving best model')
+                        model.save(f"{save_path}/model.h5")
+            else:
+                LOGGER.info(
+                    "Model has not improved from {0:8.4f}".format(np.min(history[early_stopping['monitor']])))
+            if epoch >= early_stopping['patience']:
                 stop_training = EarlyStopping(history[early_stopping['monitor']],
                                               min_delta=early_stopping['min_delta'],
                                               patience=early_stopping['patience'],
                                               mode=early_stopping['mode'])
+            else:
+                stop_training = False
 
         if stop_training:
             LOGGER.info(f"Stopping training at epoch {epoch}")
