@@ -16,7 +16,7 @@ save = False
 # tf.config.run_functions_eagerly(True)
 seed = np.random.randint(0, 100)
 assets = None
-encoding_dim = 3
+encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
 ortho_weightage = 1e-2
@@ -78,7 +78,7 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 200,
+        'patience': 100,
         'verbose': 1,
         'restore_best_weights': True
     }
