@@ -219,8 +219,21 @@ def load_data(dataset='global', **kwargs):
         data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
     elif dataset == 'global_crypto':
         data, assets = load_global_crypto_data()
+    elif dataset == 'raffinot_multi_asset':
+        data, assets = load_raffinot_multi_asset()
     else:
         raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
+
+    return data, assets
+
+
+def load_raffinot_multi_asset():
+    data = pd.read_csv('raffinot/multiassets.csv')
+    data = data.set_index('Dates')
+    data.index = pd.to_datetime(data.index)
+    data = data.astype(np.float32)
+    data.dropna(inplace=True)
+    assets = list(data.columns)
 
     return data, assets
 
