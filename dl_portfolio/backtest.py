@@ -9,6 +9,49 @@ from dl_portfolio.logger import LOGGER
 from typing import Union, Dict, Optional
 import pickle
 from joblib import Parallel, delayed
+from portfoliolab.clustering.hrp import HierarchicalRiskParity
+from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
+import matplotlib.pyplot as plt
+
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc']
+
+
+def bar_plot_weights(weights, show=False, legend=False, save_path=None):
+    labels = [str(d.date()) for d in weights.index]
+    fig, ax = plt.subplots(figsize=(20, 10))
+    NUM_COLORS = len(weights.columns)
+    cm = plt.get_cmap('gist_rainbow')
+    ax.set_prop_cycle(color=[cm(1. * i / NUM_COLORS) for i in range(NUM_COLORS)])
+
+    for i, c in enumerate(list(weights.columns)):
+        ax.bar(labels, weights[c],
+               label=c, width=1, align='edge',
+               bottom=weights.iloc[:, :i].sum(1))
+    if legend:
+        plt.legend()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    if show:
+        plt.show()
+
+
+def sharpe_ratio(perf, period: int = 1):
+    return perf.mean() / perf.std() * np.sqrt(period)
+
+
+def get_mdd(performance: [pd.Series, np.ndarray]):
+    assert len(performance.shape) == 1
+    dd = performance / performance.cummax() - 1.0
+    mdd = dd.cummin()
+    mdd = abs(min(mdd))
+    return mdd
+
+
+def calmar_ratio(performance: [pd.Series, np.ndarray]):
+    assert len(performance.shape) == 1
+    annual_return = performance[-1] / performance[0] - 1
+    mdd = get_mdd(performance)
+    return annual_return / mdd
 
 
 def get_timeseries_weights(cv_results):
@@ -32,6 +75,8 @@ def get_timeseries_weights(cv_results):
 
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
+    assert all([p in PORTFOLIOS for p in portfolios])
+
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -52,7 +97,8 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None):
+def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None,
+           **kwargs):
     res = {}
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
     embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
@@ -70,6 +116,7 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
     assets = train_returns.columns
 
     res['embedding'] = embedding
+    res['scaler'] = scaler
     res['scaled_embedding'] = scaled_embedding
     res['train_features'] = train_features
     res['test_features'] = test_features
@@ -90,14 +137,16 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
                                             shrink_cov=res['H'],
                                             budget=market_budget.loc[assets],
                                             embedding=embedding,
-                                            portfolio=portfolios
+                                            portfolio=portfolios,
+                                            **kwargs
                                             )
         else:
             res['port'] = portfolio_weights(train_returns,
                                             shrink_cov=res['H'],
                                             budget=market_budget.loc[assets],
                                             embedding=embedding,
-                                            portfolio=portfolios
+                                            portfolio=portfolios,
+                                            **kwargs
                                             )
     else:
         res['port'] = None
@@ -107,15 +156,16 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
     return cv, res
 
 
-def get_cv_results(base_dir, test_set, n_folds, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None,
-                   n_jobs: int = None):
+def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=None, compute_weights=True,
+                   window: Optional[int] = None, n_jobs: int = None, **kwargs):
     assert test_set in ['val', 'test']
 
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
-                delayed(one_cv)(base_dir, cv, test_set, portfolios, market_budget=market_budget, compute_weights=compute_weights,
-                                window=window)
+                delayed(one_cv)(base_dir, cv, test_set, portfolios, market_budget=market_budget,
+                                compute_weights=compute_weights,
+                                window=window, **kwargs)
                 for cv in range(n_folds)
             )
         # Build dictionary
@@ -125,14 +175,17 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios, market_budget=None, 
     else:
         cv_results = {}
         for cv in range(n_folds):
-            _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget, compute_weights=compute_weights,
-                                       window=window)
+            _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget,
+                                       compute_weights=compute_weights,
+                                       window=window, **kwargs)
 
     return cv_results
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
-                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
+                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'],
+                      **kwargs):
+    assert all([p in PORTFOLIOS for p in portfolio])
     port_w = {}
 
     mu = returns.mean()
@@ -160,6 +213,10 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
     if 'hrp' in portfolio:
         LOGGER.info('Computing HRP weights...')
         port_w['hrp'] = hrp_weights(S)
+
+    if 'herc' in portfolio:
+        LOGGER.info('Computing HERC weights...')
+        port_w['herc'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'))
 
     if 'rp' in portfolio:
         LOGGER.info('Computing Riskparity weights...')
@@ -193,10 +250,41 @@ def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov
     return weights
 
 
-def hrp_weights(S: pd.DataFrame):
+def hrp_weights_old(S: pd.DataFrame):
     hrp = HRPOpt(cov_matrix=S)
     weights = hrp.optimize()
     weights = pd.Series(weights, index=S.index)
+    return weights
+
+
+def hrp_weights(S: pd.DataFrame, linkage: str = 'single'):
+    # constructing our Single Linkage portfolio
+    hrp_single = HierarchicalRiskParity()
+    hrp_single.allocate(asset_names=S.columns,
+                        covariance_matrix=S,
+                        linkage=linkage)
+
+    weights = hrp_single.weights.T
+    weights = weights[0]
+    weights = weights[S.columns]
+
+    return weights
+
+
+def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: str = 'equal_weighting',
+                 covariance_matrix=None, optimal_num_clusters=None):
+    hercEW_single = HierarchicalEqualRiskContribution()
+    hercEW_single.allocate(asset_names=returns.columns,
+                           asset_returns=returns,
+                           covariance_matrix=covariance_matrix,
+                           risk_measure=risk_measure,
+                           optimal_num_clusters=optimal_num_clusters,
+                           linkage=linkage)
+
+    weights = hercEW_single.weights.T
+    weights = weights[0]
+    weights = weights[returns.columns]
+
     return weights
 
 
