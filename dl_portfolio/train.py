@@ -211,6 +211,7 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
 
         # Early stopping
         if early_stopping:
+            best_epoch = 0
             epoch_val_rmse = history['val_rmse'][-1]
             if early_stopping['monitor'] == 'val_rmse':
                 epoch_metric_stop = epoch_val_rmse
