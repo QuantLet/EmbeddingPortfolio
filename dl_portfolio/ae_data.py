@@ -228,7 +228,7 @@ def load_data(dataset='global', **kwargs):
 
 
 def load_raffinot_multi_asset():
-    data = pd.read_csv('raffinot/multiassets.csv')
+    data = pd.read_csv('./data/raffinot/multiassets.csv')
     data = data.set_index('Dates')
     data.index = pd.to_datetime(data.index)
     data = data.astype(np.float32)
