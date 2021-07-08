@@ -1,5 +1,6 @@
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 from dl_portfolio.pca_ae import NonNegAndUnitNormInit
 from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm,
                                       PositiveSkewnessConstraint, TailUncorrelatedFeaturesConstraint,
@@ -9,12 +10,12 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset='raffinot_multi_asset'
-show_plot = True
-save = False
+dataset = 'raffinot_multi_asset'
+show_plot = False
+save = True
 
 # tf.config.run_functions_eagerly(True)
-seed = np.random.randint(0, 100)
+seed = None  # np.random.randint(0, 100)
 assets = None
 encoding_dim = 4
 uncorrelated_features = True
@@ -24,7 +25,7 @@ l_name = 'l2'
 l = 1e-3
 activation = 'relu'
 features_config = None
-model_name = f'activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
+model_name = f'{dataset}_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False  # True
@@ -67,11 +68,12 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=0.9, axis=0)  # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
+
 
 callbacks = {
     'EarlyStopping': {
@@ -80,15 +82,7 @@ callbacks = {
         'mode': 'min',
         'patience': 100,
         'verbose': 1,
-        'restore_best_weights': True
-    }
-}
-
-data_specs = {
-    0: {
-        'start': '1989-02-01',
-        'val_start': '2016-07-11',
-        'end': '2016-08-12'
+        'restore_best_weights': False
     }
 }
 
@@ -97,60 +91,21 @@ data_specs = {
 #         'start': '1989-02-01',
 #         'val_start': '2016-07-11',
 #         'end': '2016-08-12'
-#     },
-#     1: {
-#         'start': '1989-02-01',
-#         'val_start': '2016-08-13',
-#         'end': '2016-09-12'
-#     },
-#     2: {
-#         'start': '1989-02-01',
-#         'val_start': '2016-09-13',
-#         'end': '2016-10-12'
-#     },
-#     3: {
-#         'start': '1989-02-01',
-#         'val_start': '2016-10-13',
-#         'end': '2016-11-12'
-#     },
-#     4: {
-#         'start': '1989-02-01',
-#         'val_start': '2016-11-13',
-#         'end': '2016-12-12'
-#     },
-#     5: {
-#         'start': '1989-02-01',
-#         'val_start': '2016-12-13',
-#         'end': '2017-01-12'
-#     },
-#     6: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-01-13',
-#         'end': '2017-02-12'
-#     },
-#     7: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-02-13',
-#         'end': '2017-03-12'
-#     },
-#     8: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-03-13',
-#         'end': '2017-04-12'
-#     },
-#     9: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-04-13',
-#         'end': '2017-05-12'
-#     },
-#     10: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-05-13',
-#         'end': '2017-06-12'
-#     },
-#     11: {
-#         'start': '1989-02-01',
-#         'val_start': '2017-06-13',
-#         'end': '2017-07-12'
 #     }
 # }
+
+val_start = pd.date_range('2014-06-12', '2016-06-12', freq='1M')
+val_start = [str(d.date()) for d in val_start]
+val_start = [d[:-2] + '13' for d in val_start]
+
+end_val = pd.date_range('2014-07-12', '2016-07-12', freq='1M')
+end_val = [str(d.date()) for d in end_val]
+end_val = [d[:-2] + '12' for d in end_val]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
+        'start': '1989-02-01',
+        'val_start': val_start[i],
+        'end': end_val[i]
+    }
