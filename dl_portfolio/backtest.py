@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-from sklearn.cluster import KMeans
 import riskparityportfolio as rp
 from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
@@ -11,6 +10,7 @@ import pickle
 from joblib import Parallel, delayed
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
 from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
+from dl_portfolio.cluster import get_cluster_labels
 import matplotlib.pyplot as plt
 
 PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc']
@@ -310,7 +310,7 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
 
 def ae_riskparity_weights(returns, embedding, market_budget):
     # First get cluster allocation to forget about small contribution
-    clusters = get_cluster_labels(embedding)
+    clusters, _ = get_cluster_labels(embedding)
 
     # Now get weights of assets inside each cluster
     cluster_weights = get_cluster_weights(returns.cov(),
@@ -346,7 +346,7 @@ def ae_riskparity_weights(returns, embedding, market_budget):
 
 def ae_ivp_weights(returns, embedding):
     # First get cluster allocation to forget about small contribution
-    clusters = get_cluster_labels(embedding)
+    clusters, _ = get_cluster_labels(embedding)
 
     # Now get weights of assets inside each cluster
     cluster_asset_weights = {}
@@ -390,25 +390,6 @@ def get_cluster_var(cov, cluster_items, weights=None):
         weights = ivp_weights(cov_slice)
     return np.linalg.multi_dot((weights, cov_slice, weights))
 
-
-def get_cluster_labels(embedding, threshold=0.1):
-    n_clusters = embedding.shape[-1]
-    if threshold is None:
-        kmeans = KMeans(n_clusters=n_clusters, random_state=0).fit(embedding.values)
-        labels = pd.DataFrame(kmeans.labels_, index=embedding.index, columns=['label'])
-    else:
-        mask = embedding >= threshold
-        # assert all(mask.sum(1) <= 1)
-        labels = pd.DataFrame(mask.idxmax(axis=1), columns=['label'])
-    clusters = {}
-    for i in range(n_clusters):
-        assets = list(labels.loc[labels['label'] == i].index)
-        if len(assets) > 0:
-            label = np.argmax(embedding.loc[assets, :].sum())
-            clusters[label] = assets
-    clusters = {i: clusters.get(i) for i in range(n_clusters) if clusters.get(i) is not None}  # reorder dict
-
-    return clusters
 
 
 def get_cluster_weights(cov, embedding, clusters, market_budget=None):
