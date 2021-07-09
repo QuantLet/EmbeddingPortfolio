@@ -28,6 +28,10 @@ if __name__ == "__main__":
                         nargs="+",
                         default=None,
                         help="List of seeds to run experiments")
+    parser.add_argument("--backend",
+                        type=str,
+                        default="loky",
+                        help="Joblib backend")
     args = parser.parse_args()
 
     if not os.path.isdir(LOG_DIR):
@@ -38,7 +42,7 @@ if __name__ == "__main__":
             for i, seed in enumerate(args.seeds):
                 run(ae_config, seed=int(seed))
         else:
-            Parallel(n_jobs=args.n_jobs)(
+            Parallel(n_jobs=args.n_jobs, backend=args.backend)(
                 delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
             )
 
@@ -54,10 +58,10 @@ if __name__ == "__main__":
                 LOGGER.info(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
-                Parallel(n_jobs=args.n_jobs)(
+                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
                     delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
                 )
             else:
-                Parallel(n_jobs=args.n_jobs)(
+                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
                     delayed(run)(ae_config, seed=seed) for seed in range(args.n)
                 )

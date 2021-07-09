@@ -18,7 +18,8 @@ setup(
         "pyportfolioopt==1.4.1",
         "riskparityportfolio==0.2",
         "joblib==1.0.0",
-        "scikit-learn==0.24.0"
+        "scikit-learn==0.24.0",
+        "fastcluster>=1.2.3"
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],

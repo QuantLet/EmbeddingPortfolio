@@ -7,6 +7,81 @@ import numpy as np
 from joblib import Parallel, delayed
 
 
+def average_prediction(cv_results: Dict):
+    """
+
+    :param cv_results: Dict with shape {run_1: {cv_0: {}, cv_1: {}}, run_2: {...} ...}
+    :return:
+    """
+    assert len(cv_results) >= 2
+    returns = pd.DataFrame()
+    scaled_returns = pd.DataFrame()
+    n_cv = len(cv_results[0])
+    for cv in range(n_cv):
+        ret = cv_results[0][cv]['returns'].copy()
+
+        scaler = cv_results[0][cv]['scaler']
+        scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+
+        returns = pd.concat([returns, ret])
+        scaled_returns = pd.concat([scaled_returns, scaled_ret])
+
+    temp_sp = pd.DataFrame()
+    temp_p = pd.DataFrame()
+    assets = cv_results[0][0]['returns'].columns
+    for p in cv_results:
+        ppred = pd.DataFrame()
+        sspred = pd.DataFrame()
+        for cv in range(n_cv):
+            test_pred = cv_results[p][cv]['test_pred']
+
+            scaler = cv_results[p][cv]['scaler']
+            scaled_test_pred = (test_pred - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+
+            ppred = pd.concat([ppred, test_pred])
+            sspred = pd.concat([sspred, scaled_test_pred])
+
+        temp_p = pd.concat([temp_p, ppred], 1)
+        temp_sp = pd.concat([temp_sp, sspred], 1)
+
+    pred = pd.DataFrame()
+    scaled_pred = pd.DataFrame()
+    for a in assets:
+        pred = pd.concat([pred, pd.DataFrame(temp_p[a].mean(1), columns=[a])], 1)
+        scaled_pred = pd.concat([scaled_pred, pd.DataFrame(temp_sp[a].mean(1), columns=[a])], 1)
+
+    return returns, scaled_returns, pred, scaled_pred
+
+
+
+def qqplot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = None, show: bool = False):
+    n_rows = true.shape[-1] // 6 + 1
+    fig, axs = plt.subplots(n_rows, 6, figsize=(20, 12))
+    row = -1
+    for i, a in enumerate(list(true.columns)):
+        if i % 6 == 0:
+            row += 1
+        col = i % 6
+        percs = np.linspace(0, 100, 41)
+        qn_a = np.percentile(true[a].values, percs)
+        qn_b = np.percentile(pred[a].values, percs)
+
+        xlim = (min(min(qn_a), min(qn_b)) - 5e-1, max(max(qn_a), max(qn_b)) + 5e-1)
+        axs[row, col].plot(qn_a, qn_b, ls="", marker="o")
+        axs[row, col].set_ylim(xlim)
+        axs[row, col].set_xlim(xlim)
+
+        x = np.linspace(np.min((qn_a.min(), qn_b.min())) - 5e-1, np.max((qn_a.max(), qn_b.max())) + 5e-1)
+        axs[row, col].plot(x, x, color="k", ls="--")
+        axs[row, col].set_title(a)
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    if show:
+        plt.show()
+
+    plt.close()
+
+
 def plot_train_history(train_history: Dict, test_history: Dict, save_dir: Optional[str] = None, show: bool = False):
     fig, axs = plt.subplots(1, 3, figsize=(15, 3))
     axs[0].plot(train_history['loss'])
