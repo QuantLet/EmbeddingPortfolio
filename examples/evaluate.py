@@ -7,14 +7,15 @@ import sys, pickle
 import numpy as np
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.evaluate import qqplot, average_prediction
-from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, calmar_ratio, sharpe_ratio
+from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, \
+    calmar_ratio, sharpe_ratio
 from sklearn import metrics, preprocessing
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, compute_serial_matrix
 import datetime as dt
 
-
 if __name__ == "__main__":
     import argparse, json
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_dir",
                         type=str,
@@ -37,10 +38,10 @@ if __name__ == "__main__":
 
     EVALUATION = {'model': {}, 'cluster': {}}
 
-    ORDER0 = ['UKX_X', 'SX5E_X', 'SPX_X', 'EPRA_X', 'MXWD_X', 'SHCOMP_X', 'JPY_FX',
-              'NKY_X', 'GOLDS_C', 'GE_B', 'JP_B', 'UK_B', 'US_B', 'CRIX', 'GBP_FX',
-              'CNY_FX', 'EUR_FX']
-    
+    # ORDER0 = ['UKX_X', 'SX5E_X', 'SPX_X', 'EPRA_X', 'MXWD_X', 'SHCOMP_X', 'JPY_FX',
+    #           'NKY_X', 'GOLDS_C', 'GE_B', 'JP_B', 'UK_B', 'US_B', 'CRIX', 'GBP_FX',
+    #           'CNY_FX', 'EUR_FX']
+
     meta = vars(args)
     if args.save:
         save_dir = f"evaluation/{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M")
@@ -50,7 +51,6 @@ if __name__ == "__main__":
         os.makedirs(f"{save_dir}/cv_plots/")
         meta['save_dir'] = save_dir
         json.dump(meta, open(f"{save_dir}/meta.json", "w"))
-
 
     models = os.listdir(args.base_dir)
     models = [m for m in models if m[0] != '.']
@@ -64,18 +64,17 @@ if __name__ == "__main__":
         print(len(paths) - i)
         cv_results[i] = get_cv_results(path, args.test_set, n_folds, compute_weights=False, n_jobs=args.n_jobs)
 
-
     cv_dates = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
 
     # Average prediction accross runs
     returns, scaled_returns, pred, scaled_pred = average_prediction(cv_results)
 
     # Compute pred metric
-    scaler = preprocessing.MinMaxScaler(feature_range=(-1,1))
-    same_ret = pd.DataFrame(scaler.fit_transform(returns), index = returns.index, columns = returns.columns)
-    same_pred = pd.DataFrame(scaler.transform(pred), index = returns.index, columns = returns.columns)
-    EVALUATION['model']['scaled_rmse'] = np.sqrt(np.mean((same_ret - same_pred)**2)).to_dict()
-    EVALUATION['model']['rmse'] = sum(np.sqrt(np.mean((returns - pred)**2)))
+    scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
+    same_ret = pd.DataFrame(scaler.fit_transform(returns), index=returns.index, columns=returns.columns)
+    same_pred = pd.DataFrame(scaler.transform(pred), index=returns.index, columns=returns.columns)
+    EVALUATION['model']['scaled_rmse'] = np.sqrt(np.mean((same_ret - same_pred) ** 2)).to_dict()
+    EVALUATION['model']['rmse'] = sum(np.sqrt(np.mean((returns - pred) ** 2)))
 
     if args.save:
         qqplot(scaled_returns, scaled_pred, save_path=f"{save_dir}/qqplot.png", show=args.show)
@@ -109,7 +108,6 @@ if __name__ == "__main__":
             plt.show()
         plt.close()
 
-
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
     for cv in cv_rand:
@@ -123,25 +121,26 @@ if __name__ == "__main__":
     if args.show:
         plt.show()
     plt.close()
-    
+
+    # Specific ordered consensus matrix
+    # avg_cons_mat = pd.DataFrame(0, columns=ORDER0, index=ORDER0)
+    # for cv in cv_labels:
+    #     cons_mat = consensus_matrix(cv_labels[cv], reorder=True, method="single")
+    #     cons_mat = cons_mat.loc[ORDER0, :]
+    #     cons_mat = cons_mat.loc[:, ORDER0]
+    #     avg_cons_mat += cons_mat
+    #
+    # avg_cons_mat = avg_cons_mat / len(cv_labels)
+    #
+    # plt.figure(figsize=(10, 10))
+    # sns.heatmap(avg_cons_mat, square=True)
+    # if args.save:
+    #     plt.savefig(f"{save_dir}/avg_cons_mat_ordered.png", bbox='tight')
+    # if args.show:
+    #     plt.show()
+    # plt.close()
+
     # Consensus matrix
-    avg_cons_mat = pd.DataFrame(0, columns=ORDER0, index=ORDER0)
-    for cv in cv_labels:
-        cons_mat = consensus_matrix(cv_labels[cv], reorder=True, method="single")
-        cons_mat = cons_mat.loc[ORDER0, :]
-        cons_mat = cons_mat.loc[:, ORDER0]
-        avg_cons_mat += cons_mat
-
-    avg_cons_mat = avg_cons_mat / len(cv_labels)
-
-    plt.figure(figsize=(10, 10))
-    sns.heatmap(avg_cons_mat, square=True)
-    if args.save:
-        plt.savefig(f"{save_dir}/avg_cons_mat_ordered.png", bbox='tight')
-    if args.show:
-        plt.show()
-    plt.close()
-
     assets = cv_labels[cv][0]['label'].index
     avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
     for cv in cv_labels:
@@ -177,5 +176,3 @@ if __name__ == "__main__":
     # Save final result
     if args.save:
         json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
-        
-        
