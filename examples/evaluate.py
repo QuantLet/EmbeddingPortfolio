@@ -154,6 +154,14 @@ if __name__ == "__main__":
             cons_mat = cons_mat.loc[order0, :]
             cons_mat = cons_mat.loc[:, order0]
 
+        plt.figure(figsize=(10, 10))
+        sns.heatmap(cons_mat, square=True)
+        if args.save:
+            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox='tight')
+        if args.show:
+            plt.show()
+        plt.close()
+
         avg_cons_mat += cons_mat
 
     avg_cons_mat = avg_cons_mat / len(cv_labels)
