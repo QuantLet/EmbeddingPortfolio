@@ -53,6 +53,7 @@ if __name__ == "__main__":
 
 
     models = os.listdir(args.base_dir)
+    models = [m for m in models if m[0] != '.']
     paths = [f"{args.base_dir}/{d}" for d in models]
 
     # Get results for all runs
