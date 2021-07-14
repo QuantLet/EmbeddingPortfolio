@@ -38,7 +38,7 @@ def run(ae_config, seed=None):
 
     if ae_config.dataset == 'bond':
         data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq, crix=ae_config.crix)
+                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
     else:
         data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
                                  freq=ae_config.freq)

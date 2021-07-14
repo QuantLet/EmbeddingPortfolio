@@ -234,7 +234,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
 
 def load_data(dataset='global', **kwargs):
     if dataset == 'bond':
-        data, assets = load_global_bond_data(crix=kwargs.get('crix', False))
+        data, assets = load_global_bond_data(crix=kwargs.get('crix', False), crypto_assets=kwargs.get('crypto_assets', None))
     elif dataset == 'global':
         assets = kwargs.get('assets', None)
         dropnan = kwargs.get('dropnan', False)
@@ -246,14 +246,36 @@ def load_data(dataset='global', **kwargs):
         data, assets = load_global_crypto_data()
     elif dataset == 'raffinot_multi_asset':
         data, assets = load_raffinot_multi_asset()
+    elif dataset == 'sp500':
+        data, assets = load_sp500_assets(kwargs.get('start_date', '1989-01-01'))
     else:
         raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
 
     return data, assets
 
 
+def load_sp500_assets(start_date='1989-01-01'):
+    data = pd.read_csv('data/sp500_data.csv', index_col=0, header=[0, 1])
+    data.index = pd.to_datetime(data.index)
+    data = data.loc[:, pd.IndexSlice[:, 'close']].droplevel(1, 1)
+    data = data.dropna(how='all')
+    data = data.astype(np.float32)
+
+    # Get assets that have prices after start date
+    all_starts = pd.DataFrame(columns=['start'], index=data.columns)
+    for a in data.columns:
+        all_starts.loc[a, 'start'] = data[a].dropna().index[0]
+    assets = list(all_starts.index[[d <= pd.to_datetime([start_date])[0] for d in all_starts['start']]])
+    max_start_date = max(all_starts.loc[assets, 'start'])
+    data = data.loc[max_start_date:, assets]
+    data = data.interpolate(method='polynomial', order=2)
+    data.dropna(inplace=True)
+
+    return data, assets
+
+
 def load_raffinot_multi_asset():
-    data = pd.read_csv('./data/raffinot/multiassets.csv')
+    data = pd.read_csv('data/raffinot/multiassets.csv')
     data = data.set_index('Dates')
     data.index = pd.to_datetime(data.index)
     data = data.astype(np.float32)
@@ -263,7 +285,7 @@ def load_raffinot_multi_asset():
     return data, assets
 
 
-def load_global_bond_data(crix=False):
+def load_global_bond_data(crix=False, crypto_assets=None):
     data = pd.read_csv('./data/ALLA/alla_data.csv')
     data = data.interpolate(method='polynomial', order=2)
     data = data.set_index('Date')
@@ -271,12 +293,26 @@ def load_global_bond_data(crix=False):
     data = data.dropna()
 
     if crix:
+        assert crypto_assets is None
         crix = pd.read_pickle('./data/crypto_data/crix_1H_20160630_20210614.p')
         crix = crix.resample('1D', closed='right', label='left').agg('last')
         crix.index = pd.to_datetime([d.date() for d in crix.index])
 
         data = pd.concat([data, crix], 1)
         data = data.dropna()
+    elif crypto_assets is not None:
+        crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
+        crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
+        crypto_data = crypto_data.resample('1H',
+                                           closed='right',
+                                           label='right').agg('last')
+        crypto_data = crypto_data.resample('1D',
+                                           closed='right',
+                                           offset="23h",
+                                           label='right').agg('last')
+        crypto_data.index = pd.to_datetime([str(d.date()) for d in crypto_data.index])
+        data = pd.concat([data, crypto_data], 1).dropna()
+
     data = data.astype(np.float32)
 
     assets = list(data.columns)
