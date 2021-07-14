@@ -9,11 +9,12 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset='bond'
+dataset = 'bond'
 show_plot = True
 save = False
 
 crix = True
+crypto_assets = None # ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 # tf.config.run_functions_eagerly(True)
 seed = np.random.randint(0, 100)
 assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
@@ -68,11 +69,12 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
+
 
 callbacks = {
     'EarlyStopping': {
