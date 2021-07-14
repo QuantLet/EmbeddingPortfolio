@@ -13,6 +13,7 @@ dataset='bond'
 show_plot = True
 save = False
 
+crix = True
 # tf.config.run_functions_eagerly(True)
 seed = np.random.randint(0, 100)
 assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
@@ -24,7 +25,7 @@ l_name = 'l2'
 l = 1e-3
 activation = 'relu'
 features_config = None
-model_name = f'activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
+model_name = f'{dataset}_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False  # True
@@ -78,7 +79,7 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 200,
+        'patience': 300,
         'verbose': 1,
         'restore_best_weights': True
     }
