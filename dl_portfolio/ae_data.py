@@ -15,7 +15,8 @@ def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
 
 
 def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
-                 rescale=None, scaler='StandardScaler', resample=None, features_config: Optional[List] = None, **kwargs):
+                 rescale=None, scaler='StandardScaler', resample=None, features_config: Optional[List] = None,
+                 **kwargs):
     data = data[assets]
     # Train/val/test split
     assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
@@ -114,25 +115,20 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
     if resample is not None:
         if resample['method'] == 'nbb':
             where = resample.get('where', ['train'])
+            block_length = resample.get('block_length', 44)
             if 'train' in where:
-                LOGGER.info("Resampling training data with 'nbb' method")
-                nbb_id = id_nb_bootstrap(len(train_data),
-                                         **resample.get('params', {'block_length': 44})
-                                         )
+                LOGGER.info(f"Resampling training data with 'nbb' method with block length {block_length}")
+                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
                 train_data = train_data[nbb_id]
                 dates['train'] = dates['train'][nbb_id]
             if 'val' in where:
-                LOGGER.info("Resampling val data with 'nbb' method")
-                nbb_id = id_nb_bootstrap(len(val_data),
-                                         **resample.get('params', {'block_length': 44})
-                                         )
+                LOGGER.info(f"Resampling val data with 'nbb' method with block length {block_length}")
+                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
                 val_data = val_data[nbb_id]
                 dates['val'] = dates['val'][nbb_id]
             if 'test' in where:
-                LOGGER.info("Resampling test data with 'nbb' method")
-                nbb_id = id_nb_bootstrap(len(test_data),
-                                         **resample.get('params', {'block_length': 44})
-                                         )
+                LOGGER.info(f"Resampling test data with 'nbb' method with block length {block_length}")
+                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
                 test_data = test_data[nbb_id]
                 dates['test'] = dates['test'][nbb_id]
 
