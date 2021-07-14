@@ -106,10 +106,12 @@ def run(ae_config, seed=None):
                                                                                                             {}))
         if ae_config.resample is not None:
             if ae_config.resample['method'] == 'nbb':
+                LOGGER.info("Resampling training data with 'nbb' method")
                 nbb_id = id_nb_bootstrap(len(train_data),
                                          **ae_config.resample.get('params', {'block_length': 44})
                                          )
                 train_data = train_data[nbb_id]
+                dates['train'] = dates['train'][nbb_id]
             else:
                 raise NotImplementedError(ae_config.resample)
 
