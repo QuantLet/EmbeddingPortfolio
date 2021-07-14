@@ -10,7 +10,7 @@ from dl_portfolio.train import fit, embedding_visualization, plot_history
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
-
+from dl_portfolio.sample import id_nb_bootstrap
 
 def run(ae_config, seed=None):
     random_seed = np.random.randint(0, 100)
@@ -104,6 +104,14 @@ def run(ae_config, seed=None):
                                                                                 features_config=ae_config.features_config,
                                                                                 **ae_config.scaler_func.get('params',
                                                                                                             {}))
+        if ae_config.resample is not None:
+            if ae_config.resample['method'] == 'nbb':
+                nbb_id = id_nb_bootstrap(len(train_data),
+                                         **ae_config.resample.get('params', {'block_length': 44})
+                                         )
+                train_data = train_data[nbb_id]
+            else:
+                raise NotImplementedError(ae_config.resample)
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
