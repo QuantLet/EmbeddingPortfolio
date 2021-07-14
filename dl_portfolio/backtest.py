@@ -216,7 +216,8 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
 
     if 'herc' in portfolio:
         LOGGER.info('Computing HERC weights...')
-        port_w['herc'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'))
+        port_w['herc'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'),
+                                      risk_measure=kwargs.get('risk_measure', 'equal_weighting'))
 
     if 'rp' in portfolio:
         LOGGER.info('Computing Riskparity weights...')
@@ -309,8 +310,10 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
 
 
 def ae_riskparity_weights(returns, embedding, market_budget):
+    max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     clusters, _ = get_cluster_labels(embedding)
+    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
 
     # Now get weights of assets inside each cluster
     cluster_weights = get_cluster_weights(returns.cov(),
@@ -345,8 +348,10 @@ def ae_riskparity_weights(returns, embedding, market_budget):
 
 
 def ae_ivp_weights(returns, embedding):
+    max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     clusters, _ = get_cluster_labels(embedding)
+    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
 
     # Now get weights of assets inside each cluster
     cluster_asset_weights = {}
