@@ -10,6 +10,8 @@ def id_nb_bootstrap(n_obs, block_length):
     _id : array
         Bootstrapped indexes.
     """
+    assert block_length < n_obs
+    assert block_length > 3
 
     n_blocks = int(np.ceil(n_obs / block_length))
     nexts = np.repeat([np.arange(0, block_length)], n_blocks, axis=0)
