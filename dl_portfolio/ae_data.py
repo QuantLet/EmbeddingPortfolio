@@ -5,6 +5,7 @@ from sklearn import preprocessing
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 import datetime as dt
+from dl_portfolio.sample import id_nb_bootstrap
 
 
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
@@ -14,7 +15,7 @@ def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
 
 
 def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
-                 rescale=None, scaler='StandardScaler', features_config: Optional[List] = None, **kwargs):
+                 rescale=None, scaler='StandardScaler', resample=None, features_config: Optional[List] = None, **kwargs):
     data = data[assets]
     # Train/val/test split
     assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
@@ -109,6 +110,34 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             raise NotImplementedError()
     else:
         features = None
+
+    if resample is not None:
+        if resample['method'] == 'nbb':
+            where = resample.get('where', ['train'])
+            if 'train' in where:
+                LOGGER.info("Resampling training data with 'nbb' method")
+                nbb_id = id_nb_bootstrap(len(train_data),
+                                         **resample.get('params', {'block_length': 44})
+                                         )
+                train_data = train_data[nbb_id]
+                dates['train'] = dates['train'][nbb_id]
+            if 'val' in where:
+                LOGGER.info("Resampling val data with 'nbb' method")
+                nbb_id = id_nb_bootstrap(len(val_data),
+                                         **resample.get('params', {'block_length': 44})
+                                         )
+                val_data = val_data[nbb_id]
+                dates['val'] = dates['val'][nbb_id]
+            if 'test' in where:
+                LOGGER.info("Resampling test data with 'nbb' method")
+                nbb_id = id_nb_bootstrap(len(test_data),
+                                         **resample.get('params', {'block_length': 44})
+                                         )
+                test_data = test_data[nbb_id]
+                dates['test'] = dates['test'][nbb_id]
+
+        else:
+            raise NotImplementedError(resample)
 
     return train_data, val_data, test_data, scaler, dates, features
 

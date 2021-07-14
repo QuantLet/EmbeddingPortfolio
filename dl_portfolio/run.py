@@ -10,7 +10,7 @@ from dl_portfolio.train import fit, embedding_visualization, plot_history
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
-from dl_portfolio.sample import id_nb_bootstrap
+
 
 def run(ae_config, seed=None):
     random_seed = np.random.randint(0, 100)
@@ -41,7 +41,7 @@ def run(ae_config, seed=None):
                                  freq=ae_config.freq, crix=ae_config.crix)
     else:
         data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                             freq=ae_config.freq)
+                                 freq=ae_config.freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -101,19 +101,10 @@ def run(ae_config, seed=None):
                                                                                 test_start=data_spec.get('test_start'),
                                                                                 rescale=ae_config.rescale,
                                                                                 scaler=ae_config.scaler_func['name'],
+                                                                                resample=ae_config.resample,
                                                                                 features_config=ae_config.features_config,
                                                                                 **ae_config.scaler_func.get('params',
                                                                                                             {}))
-        if ae_config.resample is not None:
-            if ae_config.resample['method'] == 'nbb':
-                LOGGER.info("Resampling training data with 'nbb' method")
-                nbb_id = id_nb_bootstrap(len(train_data),
-                                         **ae_config.resample.get('params', {'block_length': 44})
-                                         )
-                train_data = train_data[nbb_id]
-                dates['train'] = dates['train'][nbb_id]
-            else:
-                raise NotImplementedError(ae_config.resample)
 
         # if shuffle_columns_while_training:
         #     train_data = np.transpose(train_data)
