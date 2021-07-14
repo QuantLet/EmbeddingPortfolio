@@ -81,6 +81,37 @@ if __name__ == "__main__":
     else:
         qqplot(scaled_returns, scaled_pred, show=args.show)
 
+    # Embedding analysis
+    # Correlation
+    avg_cv_corr = []
+    for cv in range(n_folds):
+        cv_corr = []
+        for i in cv_results.keys():
+            corr = cv_results[i][cv]['test_features'].corr().values
+            corr = corr[np.triu_indices(len(corr), k=1)]
+            cv_corr.append(corr)
+        cv_corr = np.array(cv_corr)
+        cv_corr = cv_corr.mean(0)
+        avg_cv_corr.append(cv_corr)
+    avg_cv_corr = np.array(avg_cv_corr)
+    avg_cv_corr = np.mean(avg_cv_corr, axis=1).tolist()
+    EVALUATION['cluster']['corr'] = {}
+    EVALUATION['cluster']['corr']['cv'] = avg_cv_corr
+    EVALUATION['cluster']['corr']['avg_corr'] = np.mean(avg_cv_corr)
+
+    my_cmap = plt.get_cmap("bwr")
+    rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
+    plt.figure(figsize=(10, 6))
+    plt.bar(range(len(avg_cv_corr)), avg_cv_corr, color=my_cmap(rescale(avg_cv_corr)), width=0.5)
+    _ = plt.xticks(range(len(avg_cv_corr)), range(len(avg_cv_corr)))
+    _ = plt.ylim([-1, 1])
+
+    if args.save:
+        plt.savefig(f"{save_dir}/avg_corr.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+    plt.close()
+
     # Cluster analysis
     cv_labels = {}
     for cv in range(n_folds):
@@ -89,24 +120,27 @@ if __name__ == "__main__":
             c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['embedding'])
 
     # Compute Rand index
+    EVALUATION['cluster']['rand_index'] = {}
     n_runs = len(cv_results)
     cv_rand = {}
     for cv in range(n_folds):
         cv_rand[cv] = rand_score_permutation(cv_labels[cv])
 
     # Plot heatmap
+    trii = np.triu_indices(n_runs, k=1)
     for cv in cv_rand:
-        trii = np.triu_indices(n_runs, k=1)
         mean = np.mean(cv_rand[cv][trii])
         std = np.std(cv_rand[cv][trii])
         triu = np.triu(cv_rand[cv], k=1)
         sns.heatmap(triu, vmin=0, vmax=1)
         plt.title(f"{cv_dates[cv]}\nMean: {mean.round(2)}, Std: {std.round(2)}")
         if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox='tight')
+            plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight')
         if args.show:
             plt.show()
         plt.close()
+
+    EVALUATION['cluster']['rand_index']['cv'] = [np.mean(cv_rand[cv][trii]) for cv in cv_rand]
 
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
@@ -115,9 +149,15 @@ if __name__ == "__main__":
         triu = np.triu(cv_rand[cv], k=1)
         avg_rand = avg_rand + triu
     avg_rand = avg_rand / len(cv_rand)
+
+    mean = np.mean(avg_rand[trii])
+    std = np.std(avg_rand[trii])
+    EVALUATION['cluster']['rand_index']['mean'] = mean
+
     sns.heatmap(avg_rand, vmin=0, vmax=1)
+    plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
     if args.save:
-        plt.savefig(f"{save_dir}/rand_avg.png", bbox='tight')
+        plt.savefig(f"{save_dir}/rand_avg.png", bbox_inches='tight')
     if args.show:
         plt.show()
     plt.close()
@@ -135,7 +175,7 @@ if __name__ == "__main__":
     # plt.figure(figsize=(10, 10))
     # sns.heatmap(avg_cons_mat, square=True)
     # if args.save:
-    #     plt.savefig(f"{save_dir}/avg_cons_mat_ordered.png", bbox='tight')
+    #     plt.savefig(f"{save_dir}/avg_cons_mat_ordered.png", bbox_inches='tight')
     # if args.show:
     #     plt.show()
     # plt.close()
@@ -157,7 +197,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(10, 10))
         sns.heatmap(cons_mat, square=True)
         if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox='tight')
+            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight')
         if args.show:
             plt.show()
         plt.close()
@@ -168,7 +208,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 10))
     sns.heatmap(avg_cons_mat, square=True)
     if args.save:
-        plt.savefig(f"{save_dir}/avg_cons_mat.png", bbox='tight')
+        plt.savefig(f"{save_dir}/avg_cons_mat.png", bbox_inches='tight')
     if args.show:
         plt.show()
     plt.close()
