@@ -7,6 +7,7 @@ import numpy as np
 import datetime as dt
 from dl_portfolio.sample import id_nb_bootstrap
 
+DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'sp500']
 
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
     hinw = np.array([date.weekday() * 24 + date.hour for date in dates], dtype=np.float32)
@@ -233,6 +234,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
 
 
 def load_data(dataset='global', **kwargs):
+    assert dataset in DATASETS
     if dataset == 'bond':
         data, assets = load_global_bond_data(crix=kwargs.get('crix', False), crypto_assets=kwargs.get('crypto_assets', None))
     elif dataset == 'global':
