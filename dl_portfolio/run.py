@@ -317,6 +317,19 @@ def run(ae_config, seed=None):
                 test_prediction = test_prediction.loc[:, base_asset_order]
             encoder_weights = encoder_weights.loc[base_asset_order, :]
 
+        # Sort index in case of random sampling
+        train_data.sort_index(inplace=True)
+        train_features.sort_index(inplace=True)
+        val_data.sort_index(inplace=True)
+        val_prediction.sort_index(inplace=True)
+        val_features.sort_index(inplace=True)
+
+        if test_data is not None:
+            test_data.sort_index(inplace=True)
+            test_prediction.sort_index(inplace=True)
+            test_features.sort_index(inplace=True)
+
+
         # Plot heatmap
         if ae_config.kernel_constraint is not None:
             vmax = 1.
