@@ -14,8 +14,51 @@ from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.constant import CRYPTO_ASSETS
 import matplotlib.pyplot as plt
+import scipy
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc']
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'ae_rp_c']
+
+
+def get_ts_weights(cv_results, port):
+    dates = [cv_results[0][cv]['returns'].index[0] for cv in cv_results[0]]
+    weights = pd.DataFrame()
+    for cv in cv_results[0]:
+        if 'ae' in port:
+            avg_weights_cv = pd.DataFrame()
+            for i in cv_results:
+                w = pd.DataFrame(cv_results[i][cv]['port'][port]).T
+                avg_weights_cv = pd.concat([avg_weights_cv, w])
+            avg_weights_cv = avg_weights_cv.mean()
+            avg_weights_cv = pd.DataFrame(avg_weights_cv).T
+            weights = pd.concat([weights, avg_weights_cv])
+        else:
+            w = pd.DataFrame(cv_results[0][cv]['port'][port]).T
+            weights = pd.concat([weights, w])
+    weights.index = dates
+
+    return weights
+
+
+def get_average_perf(port_perf: Dict, port: str, annualized=True):
+    perf = pd.DataFrame()
+    for i in port_perf:
+        perf = pd.concat([perf, port_perf[i][port]['total']], 1)
+    perf = perf.mean(1)
+    if annualized:
+        perf = 0.05 / (perf.std() * np.sqrt(252)) * perf
+    return perf
+
+
+def plot_perf(perf, strategies=['aerp'], save_path=None, show=False, legend=True):
+    plt.figure(figsize=(20, 10))
+    for s in strategies:
+        plt.plot(np.cumprod(perf[s] + 1) - 1, label=s)
+    if legend:
+        plt.legend()
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    if show:
+        plt.show()
 
 
 def bar_plot_weights(weights, show=False, legend=False, save_path=None):
@@ -35,6 +78,80 @@ def bar_plot_weights(weights, show=False, legend=False, save_path=None):
         plt.savefig(save_path, bbox_inches='tight')
     if show:
         plt.show()
+
+
+def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = True):
+    """
+
+    :param perf:
+    :param weights:
+    :param period:
+    :param format:
+    :return:
+    """
+    strats = list(perf.keys())
+    stats = pd.DataFrame(index=strats, columns=['SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'], dtype=np.float32)
+    for strat in strats:
+        stats.loc[strat] = [sharpe_ratio(perf[strat], period=period),
+                            adjusted_sharpe_ratio(perf[strat], period=period),
+                            get_mdd(np.cumprod(perf[strat] + 1)),
+                            calmar_ratio(np.cumprod(perf[strat] + 1)),
+                            ceq(perf[strat]),
+                            sspw(weights[strat]),
+                            total_average_turnover(weights[strat])
+                            ]
+    if format:
+        stats['MDD'] = stats['MDD'] * 100
+        stats['CEQ'] = stats['CEQ'] * 100
+        stats = np.round(stats, 4)
+
+    return stats
+
+
+def ceq(returns, gamma: float = 1., risk_free=0.):
+    """
+
+    :param perf: returns
+    :param gamma: risk aversion
+    :param risk_free: risk free rate
+    :return:
+    """
+
+    return (returns.mean() - risk_free) - gamma / 2 * returns.var()
+
+
+def sspw(weights):
+    """
+    compute sum of squared portfolio weights
+    :param weights: pd.DataFrame
+    :return:
+    """
+    return (weights ** 2).sum(1).mean()
+
+
+def average_turnover(weights):
+    """
+    compute average turnover per rebalancing
+    :param weights: pd.DataFrame
+    :return:
+    """
+    return weights.diff().abs().dropna().mean()
+
+
+def total_average_turnover(weights):
+    """
+    compute total average turnover per rebalancing
+    :param weights: pd.DataFrame
+    :return:
+    """
+    return weights.diff().abs().dropna().mean().sum()
+
+
+def adjusted_sharpe_ratio(perf, period: int = 1):
+    sr = sharpe_ratio(perf, period=period)
+    skew = scipy.stats.skew(perf, axis=0)
+    kurtosis = scipy.stats.kurtosis(perf, axis=0)
+    return sr * (1 + skew / 3 * sr - (kurtosis - 3) / 24 * sr ** 2)
 
 
 def sharpe_ratio(perf, period: int = 1):
@@ -240,7 +357,13 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
         LOGGER.info('Computing AE Riskparity weights...')
         assert budget is not None
         assert embedding is not None
-        port_w['ae_rp'] = ae_riskparity_weights(returns, embedding, budget)
+        port_w['ae_rp'] = ae_riskparity_weights(returns, embedding, budget, risk_parity='budget')
+
+    if 'ae_rp_c' in portfolio:
+        LOGGER.info('Computing AE Riskparity Cluster weights...')
+        assert budget is not None
+        assert embedding is not None
+        port_w['ae_rp_c'] = ae_riskparity_weights(returns, embedding, budget, risk_parity='cluster')
 
     return port_w
 
@@ -321,17 +444,35 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
     return weights
 
 
-def ae_riskparity_weights(returns, embedding, market_budget):
+def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget'):
+    """
+
+    :param returns:
+    :param embedding:
+    :param market_budget:
+    :param risk_parity: if 'budget' then use budget for risk allocation, if 'cluster' use relative asset cluster
+    importance from the embedding matrix
+    :return:
+    """
+    assert risk_parity in ['budget', 'cluster']
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     clusters, _ = get_cluster_labels(embedding)
     clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
 
     # Now get weights of assets inside each cluster
-    cluster_weights = get_cluster_weights(returns.cov(),
-                                          embedding,
-                                          clusters,
-                                          market_budget=market_budget)
+    if risk_parity == 'budget':
+        cluster_weights = get_cluster_weights(returns.cov(),
+                                              embedding,
+                                              clusters,
+                                              market_budget=market_budget)
+    elif risk_parity == 'cluster':
+        cluster_weights = get_cluster_weights(returns.cov(),
+                                              embedding,
+                                              clusters)
+    else:
+        raise NotImplementedError(risk_parity)
+
     # Now compute return of each cluster
     cluster_returns = pd.DataFrame()
     for c in cluster_weights:

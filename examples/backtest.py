@@ -3,12 +3,11 @@ import matplotlib.pyplot as plt
 import os
 import numpy as np
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, \
-    calmar_ratio, sharpe_ratio
-from dl_portfolio.evaluate import plot_perf
+from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_weights, backtest_stats, plot_perf, \
+    get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['ae_ivp', 'hrp', 'herc', 'ae_rp']
+PORTFOLIOS = ['ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
 
 if __name__ == "__main__":
     import argparse, json
@@ -57,7 +56,7 @@ if __name__ == "__main__":
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         LOGGER.info(f"Saving result to {save_dir}")
-        os.makedirs(f"{save_dir}/cv_plots/")
+        # os.makedirs(f"{save_dir}/cv_plots/")
         meta['save_dir'] = save_dir
         json.dump(meta, open(f"{save_dir}/meta.json", "w"))
 
@@ -72,84 +71,50 @@ if __name__ == "__main__":
     train_cov = {}
     test_cov = {}
     port_perf = {}
-    mse = []
-    paths = paths[:2]
+
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
-        # try:
+
+        if i == 0:
+            portfolios = PORTFOLIOS
+        else:
+            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['ae_ivp', 'ae_rp', 'ae_rp_c']
         cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,
                                        dataset=args.dataset,
-                                       portfolios=PORTFOLIOS,
+                                       portfolios=portfolios,
                                        market_budget=market_budget,
                                        window=args.window,
                                        n_jobs=args.n_jobs)
-        port_perf[i] = cv_portfolio_perf(cv_results[i],
-                                         portfolios=PORTFOLIOS)
-        # except Exception as _exc:
-        #     LOGGER.info(f"Error with {path}... :")
-        #     LOGGER.info(_exc)
-
+        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios)
     dates = [cv_results[0][cv]['test_features'].index[0] for cv in cv_results[0]]
     ASSETS = list(cv_results[i][0]['returns'].columns)
 
     # Weights
     port_weights = {}
-    port_weights['hrp'] = pd.DataFrame()
-    for cv in cv_results[0]:
-        w = pd.DataFrame(cv_results[0][cv]['port']['hrp']).T
-        port_weights['hrp'] = pd.concat([port_weights['hrp'], w])
-    port_weights['hrp'].index = dates
-
-    port_weights['herc'] = pd.DataFrame()
-    for cv in cv_results[0]:
-        w = pd.DataFrame(cv_results[0][cv]['port']['herc']).T
-        port_weights['herc'] = pd.concat([port_weights['herc'], w])
-    port_weights['herc'].index = dates
-
-    port_weights['aerp'] = pd.DataFrame()
-    for cv in cv_results[0]:
-        avg_weights_cv = pd.DataFrame()
-        for i in cv_results:
-            w = pd.DataFrame(cv_results[i][cv]['port']['ae_ivp']).T
-            avg_weights_cv = pd.concat([avg_weights_cv, w])
-        avg_weights_cv = avg_weights_cv.mean()
-        avg_weights_cv = pd.DataFrame(avg_weights_cv).T
-
-        port_weights['aerp'] = pd.concat([port_weights['aerp'], avg_weights_cv])
-    port_weights['aerp'].index = dates
-
-    port_weights['aeerc'] = pd.DataFrame()
-    for cv in cv_results[0]:
-        avg_weights_cv = pd.DataFrame()
-        for i in cv_results:
-            w = pd.DataFrame(cv_results[i][cv]['port']['ae_rp']).T
-            avg_weights_cv = pd.concat([avg_weights_cv, w])
-        avg_weights_cv = avg_weights_cv.mean()
-        avg_weights_cv = pd.DataFrame(avg_weights_cv).T
-        port_weights['aeerc'] = pd.concat([port_weights['aeerc'], avg_weights_cv])
-    port_weights['aeerc'].index = dates
+    for p in PORTFOLIOS:
+        port_weights[p] = get_ts_weights(cv_results, port=p)
 
     # Get average perf across runs
     ann_perf = {}
-    ann_perf['aerp'] = pd.DataFrame()
-    for i in port_perf:
-        ann_perf['aerp'] = pd.concat([ann_perf['aerp'], port_perf[i]['ae_ivp']['total']], 1)
-    ann_perf['aerp'] = ann_perf['aerp'].mean(1)
-    ann_perf['aerp'] = 0.05 / (ann_perf['aerp'].std() * np.sqrt(252)) * ann_perf['aerp']
+    for p in PORTFOLIOS:
+        if 'ae' in p:
+            ann_perf[p] = get_average_perf(port_perf, port=p, annualized=True)
+        else:
+            ann_perf[p] = port_perf[0][p]['total'][0]
+            ann_perf[p] = 0.05 / (ann_perf[p].std() * np.sqrt(252)) * ann_perf[p]
 
-    ann_perf['aeerc'] = pd.DataFrame()
-    for i in port_perf:
-        ann_perf['aeerc'] = pd.concat([ann_perf['aeerc'], port_perf[i]['ae_rp']['total']], 1)
-    ann_perf['aeerc'] = ann_perf['aeerc'].mean(1)
-    ann_perf['aeerc'] = 0.05 / (ann_perf['aeerc'].std() * np.sqrt(252)) * ann_perf['aeerc']
+    # Some renaming
+    port_weights['aerp'] = port_weights['ae_ivp'].copy()
+    port_weights['aeerc'] = port_weights['ae_rp'].copy()
+    ann_perf['aerp'] = ann_perf['ae_ivp'].copy()
+    ann_perf['aeerc'] = ann_perf['ae_rp'].copy()
 
-    ann_perf['herc'] = port_perf[i]['herc']['total'][0]
-    ann_perf['herc'] = 0.05 / (ann_perf['herc'].std() * np.sqrt(252)) * ann_perf['herc']
-
-    ann_perf['hrp'] = port_perf[i]['hrp']['total'][0]
-    ann_perf['hrp'] = 0.05 / (ann_perf['hrp'].std() * np.sqrt(252)) * ann_perf['hrp']
+    port_weights.pop('ae_ivp')
+    port_weights.pop('ae_rp')
+    ann_perf.pop('ae_ivp')
+    ann_perf.pop('ae_rp')
 
     # Plot perf
     if args.save:
@@ -163,6 +128,11 @@ if __name__ == "__main__":
         bar_plot_weights(port_weights['herc'], save_path=f"{save_dir}/weights_herc.png", show=args.show)
         bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show)
 
+        plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'], save_path=f"{save_dir}/performance_hrp_aeerc_cluster.png",
+                  show=args.show, legend=True)
+        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
+        bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
+
     else:
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], show=args.show)
@@ -171,6 +141,10 @@ if __name__ == "__main__":
         plot_perf(ann_perf, strategies=['herc', 'aeerc'], show=args.show, legend=True)
         bar_plot_weights(port_weights['herc'], show=args.show)
         bar_plot_weights(port_weights['aeerc'], show=args.show)
+
+        plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'], show=args.show, legend=True)
+        bar_plot_weights(port_weights['hrp'], show=args.show)
+        bar_plot_weights(port_weights['ae_rp_c'], show=args.show)
 
     # Plot excess return
     plt.figure(figsize=(20, 10))
@@ -184,6 +158,13 @@ if __name__ == "__main__":
     plt.plot(np.cumprod(ann_perf['aeerc'] + 1) - np.cumprod(ann_perf['herc'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_herc_aeerc.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+
+    plt.figure(figsize=(20, 10))
+    plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
+    if args.save:
+        plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight')
     if args.show:
         plt.show()
 
@@ -209,3 +190,18 @@ if __name__ == "__main__":
         plt.savefig(f"{save_dir}/weights_herc_aeerc.png", bbox_inches='tight')
     if args.show:
         plt.show()
+
+    plt.figure(figsize=(14, 7))
+    plt.bar(ASSETS, port_weights['hrp'].iloc[cv].values, label='hrp')
+    plt.bar(ASSETS, port_weights['ae_rp_c'].iloc[cv].values, label='ae_rp_c')
+    plt.legend()
+    x = plt.xticks(rotation=45)
+    if args.save:
+        plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+
+    # Get statistics
+    stats = backtest_stats(ann_perf, port_weights, period=252, format=True)
+    if args.save:
+        stats.to_csv(f"{save_dir}/backtest_stats.csv")
