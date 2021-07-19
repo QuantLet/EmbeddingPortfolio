@@ -86,6 +86,27 @@ if __name__ == "__main__":
         pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
 
     # Embedding analysis
+    # Embedding over cv folds
+    p = 0
+    fig, axs = plt.subplots(2, 6, figsize=(15, 12), sharex=True, sharey=True)
+    cbar_ax = fig.add_axes([.91, .3, .03, .4])
+    for cv in cv_results[p]:
+        row = 0
+        col = cv
+        if cv > 5:
+            row = 1
+            col = 6 - cv
+        embedding = cv_results[p][cv]['embedding'].copy()
+        sns.heatmap(embedding, ax=axs[row, col], cbar=cv == 0, cbar_ax=None if cv else cbar_ax, cmap='Reds')
+        date = str(cv_results[p][cv]['returns'].index[0].date())
+        axs[row, col].set_title(date)
+    fig.tight_layout(rect=[0, 0, .9, 1])
+    if args.save:
+        plt.savefig(f"{save_dir}/cv_embedding_weights.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+    plt.close()
+
     # Correlation
     avg_cv_corr = []
     for cv in range(n_folds):

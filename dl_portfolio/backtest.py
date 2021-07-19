@@ -103,7 +103,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
     if format:
         stats['MDD'] = stats['MDD'] * 100
         stats['CEQ'] = stats['CEQ'] * 100
-        stats = np.round(stats, 4)
+        stats = np.round(stats, 2)
 
     return stats
 

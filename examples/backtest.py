@@ -175,6 +175,7 @@ if __name__ == "__main__":
     plt.bar(ASSETS, port_weights['hrp'].iloc[cv].values, label='hrp')
     plt.bar(ASSETS, port_weights['aerp'].iloc[cv].values, label='aerp')
     plt.legend()
+    plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_hrp_aerp.png", bbox_inches='tight')
@@ -185,6 +186,7 @@ if __name__ == "__main__":
     plt.bar(ASSETS, port_weights['herc'].iloc[cv].values, label='herc')
     plt.bar(ASSETS, port_weights['aeerc'].iloc[cv].values, label='aeerc')
     plt.legend()
+    plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_herc_aeerc.png", bbox_inches='tight')
@@ -195,6 +197,7 @@ if __name__ == "__main__":
     plt.bar(ASSETS, port_weights['hrp'].iloc[cv].values, label='hrp')
     plt.bar(ASSETS, port_weights['ae_rp_c'].iloc[cv].values, label='ae_rp_c')
     plt.legend()
+    plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight')
