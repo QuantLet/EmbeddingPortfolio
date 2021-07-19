@@ -20,6 +20,9 @@ if __name__ == "__main__":
     parser.add_argument("--base_dir",
                         type=str,
                         help="Experiments dir")
+    parser.add_argument("--dataset",
+                        type=str,
+                        help="Dataset name")
     parser.add_argument("--test_set",
                         default='val',
                         type=str,
@@ -62,7 +65,8 @@ if __name__ == "__main__":
     n_folds = sum([d.isdigit() for d in n_folds])
     for i, path in enumerate(paths):
         print(len(paths) - i)
-        cv_results[i] = get_cv_results(path, args.test_set, n_folds, compute_weights=False, n_jobs=args.n_jobs)
+        cv_results[i] = get_cv_results(path, args.test_set, n_folds, dataset=args.dataset, compute_weights=False,
+                                       n_jobs=args.n_jobs)
 
     cv_dates = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
 

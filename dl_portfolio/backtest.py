@@ -11,6 +11,8 @@ from joblib import Parallel, delayed
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
 from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 from dl_portfolio.cluster import get_cluster_labels
+from dl_portfolio.ae_data import load_data
+from dl_portfolio.constant import CRYPTO_ASSETS
 import matplotlib.pyplot as plt
 
 PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc']
@@ -98,22 +100,42 @@ def cv_portfolio_perf(cv_results: Dict,
 
 
 def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None,
-           **kwargs):
+           dataset='global', **kwargs):
     res = {}
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
     embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
-    train_returns = pd.read_pickle(f'{base_dir}/{cv}/train_returns.p')
     returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
+    returns.sort_index(inplace=True)
     pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
+    pred.sort_index(inplace=True)
     train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
+    train_features.sort_index(inplace=True)
     test_features = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_features.p')
+    test_features.sort_index(inplace=True)
+
+    assets = list(returns.columns)
+    if 'CRIX' in assets:
+        crix = True
+        crypto_assets = None
+    else:
+        crix = False
+        crypto_assets = CRYPTO_ASSETS
+    train_returns, _ = load_data(dataset=dataset, assets=assets, freq='1D', crix=crix, crypto_assets=crypto_assets)
+    train_returns = train_returns.pct_change(1).dropna()
+    train_returns = train_returns[assets]
+    assert np.sum(train_returns.isna().sum()) == 0
+    train_returns = train_returns.loc[:returns.index[0]].iloc[:-1]
+    assets = train_returns.columns
+
+    if window is not None:
+        assert isinstance(window, int)
+        train_returns = train_returns.iloc[-window:]
 
     residuals = returns - pred
 
     std = np.sqrt(scaler['attributes']['var_'])
     scaled_residuals = residuals * std
     scaled_embedding = np.dot(np.diag(std, k=0), embedding)
-    assets = train_returns.columns
 
     res['embedding'] = embedding
     res['scaler'] = scaler
@@ -131,23 +153,13 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
     res['returns'] = returns
     if compute_weights:
         assert market_budget is not None
-        if window is not None:
-            assert isinstance(window, int)
-            res['port'] = portfolio_weights(train_returns.iloc[-window:],
-                                            shrink_cov=res['H'],
-                                            budget=market_budget.loc[assets],
-                                            embedding=embedding,
-                                            portfolio=portfolios,
-                                            **kwargs
-                                            )
-        else:
-            res['port'] = portfolio_weights(train_returns,
-                                            shrink_cov=res['H'],
-                                            budget=market_budget.loc[assets],
-                                            embedding=embedding,
-                                            portfolio=portfolios,
-                                            **kwargs
-                                            )
+        res['port'] = portfolio_weights(train_returns,
+                                        shrink_cov=res['H'],
+                                        budget=market_budget.loc[assets],
+                                        embedding=embedding,
+                                        portfolio=portfolios,
+                                        **kwargs
+                                        )
     else:
         res['port'] = None
     res['mean_mse'] = np.mean((residuals ** 2).mean(1))
@@ -157,7 +169,7 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
 
 
 def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=None, compute_weights=True,
-                   window: Optional[int] = None, n_jobs: int = None, **kwargs):
+                   window: Optional[int] = None, n_jobs: int = None, dataset='global', **kwargs):
     assert test_set in ['val', 'test']
 
     if n_jobs:
@@ -165,7 +177,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
             cv_results = _parallel_pool(
                 delayed(one_cv)(base_dir, cv, test_set, portfolios, market_budget=market_budget,
                                 compute_weights=compute_weights,
-                                window=window, **kwargs)
+                                window=window, dataset=dataset, **kwargs)
                 for cv in range(n_folds)
             )
         # Build dictionary
@@ -394,7 +406,6 @@ def get_cluster_var(cov, cluster_items, weights=None):
     if weights is not None:
         weights = ivp_weights(cov_slice)
     return np.linalg.multi_dot((weights, cov_slice, weights))
-
 
 
 def get_cluster_weights(cov, embedding, clusters, market_budget=None):
