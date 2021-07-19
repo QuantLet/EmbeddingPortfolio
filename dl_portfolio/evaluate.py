@@ -53,7 +53,6 @@ def average_prediction(cv_results: Dict):
     return returns, scaled_returns, pred, scaled_pred
 
 
-
 def qqplot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = None, show: bool = False):
     n_rows = true.shape[-1] // 6 + 1
     fig, axs = plt.subplots(n_rows, 6, figsize=(20, 12))
@@ -72,6 +71,26 @@ def qqplot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = No
         axs[row, col].set_xlim(xlim)
 
         x = np.linspace(np.min((qn_a.min(), qn_b.min())) - 5e-1, np.max((qn_a.max(), qn_b.max())) + 5e-1)
+        axs[row, col].plot(x, x, color="k", ls="--")
+        axs[row, col].set_title(a)
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    if show:
+        plt.show()
+
+    plt.close()
+
+
+def pred_vs_true_plot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = None, show: bool = False):
+    n_rows = true.shape[-1] // 6 + 1
+    fig, axs = plt.subplots(n_rows, 6, figsize=(20, 14))
+    row = -1
+    for i, a in enumerate(list(true.columns)):
+        if i % 6 == 0:
+            row += 1
+        col = i % 6
+        axs[row, col].scatter(true[a].values, pred[a].values, s=5)
+        x = np.linspace(np.min((true[a].min(), pred[a].min())) - 5e-1, np.max((true[a].max(), pred[a].max())) + 5e-1)
         axs[row, col].plot(x, x, color="k", ls="--")
         axs[row, col].set_title(a)
     if save_path:

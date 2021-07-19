@@ -6,7 +6,7 @@ import seaborn as sns
 import sys, pickle
 import numpy as np
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.evaluate import qqplot, average_prediction
+from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction
 from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, \
     calmar_ratio, sharpe_ratio
 from sklearn import metrics, preprocessing
@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     meta = vars(args)
     if args.save:
-        save_dir = f"evaluation/{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M")
+        save_dir = f"evaluation/{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         LOGGER.info(f"Saving result to {save_dir}")
@@ -81,9 +81,9 @@ if __name__ == "__main__":
     EVALUATION['model']['rmse'] = sum(np.sqrt(np.mean((returns - pred) ** 2)))
 
     if args.save:
-        qqplot(scaled_returns, scaled_pred, save_path=f"{save_dir}/qqplot.png", show=args.show)
+        pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
     else:
-        qqplot(scaled_returns, scaled_pred, show=args.show)
+        pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
 
     # Embedding analysis
     # Correlation
