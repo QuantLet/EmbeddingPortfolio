@@ -18,6 +18,8 @@ class WeightsOrthogonality(Regularizer):
                 self.regularizer = tf.keras.regularizers.l2(**self.regularizer['params'])
             elif self.regularizer.get('name') == 'l1':
                 self.regularizer = tf.keras.regularizers.l1(**self.regularizer['params'])
+            elif self.regularizer.get('name') == 'l1_l2':
+                self.regularizer = tf.keras.regularizers.l1_l2(**self.regularizer['params'])
             else:
                 raise NotImplementedError()
 
