@@ -302,7 +302,7 @@ def load_global_bond_data(crix=False, crypto_assets=None):
 
         data = pd.concat([data, crix], 1)
         data = data.dropna()
-    elif crypto_assets is not None:
+    if crypto_assets is not None:
         crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
         crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
         crypto_data = crypto_data.resample('1H',

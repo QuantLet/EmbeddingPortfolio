@@ -9,15 +9,22 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
+# Data
 dataset = 'bond'
 show_plot = True
 save = False
+# resample = {
+#     'method': 'nbb',
+#     'where': ['train'],
+#     'block_length': 44
+# }
+resample = None
 
-crix = True
-crypto_assets = None # ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+crix = True # Set to true if you want to include CRIX in the basket
+crypto_assets = None # Define list of cryptos to include ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+assets = [] # Depreciated
 # tf.config.run_functions_eagerly(True)
 seed = np.random.randint(0, 100)
-assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
