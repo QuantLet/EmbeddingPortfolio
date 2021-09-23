@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from typing import Dict
+from typing import Dict, Optional
 import os
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name
@@ -48,8 +48,8 @@ def r_square(y_true, y_pred):
 
 
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
-        loss: str = None, callbacks: Dict = None, val_dataset: tf.data.Dataset = None,
-        extra_features: bool = False, save_path: str = None):
+        loss: str = None, loss_asset_weights: Optional[tf.Tensor] = None, callbacks: Dict = None,
+        val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None):
     """
 
     :param model: keras model to train
@@ -73,8 +73,16 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
         pass
     elif loss == 'mse':
         loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
+        if loss_asset_weights is not None:
+            loss_fn = weighted_mse
     elif loss == 'weighted_mse':
+        raise NotImplementedError(
+            'Verify implementation: check sample_weight parameter: https://www.tensorflow.org/api_docs/python/tf/keras/losses/MeanSquaredError')
         loss_fn = weighted_mse
+        if loss_asset_weights is not None:
+            raise NotImplementedError('Do not support both sample weights and output weights for now')
+
+
     else:
         raise NotImplementedError()
 
@@ -153,16 +161,30 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                     batch_loss.append(float(loss_value))
                     batch_reg_loss.append(float(reg_loss))
         else:
-            if extra_features:
-                for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
-                    loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
-                    batch_loss.append(float(loss_value))
-                    batch_reg_loss.append(float(reg_loss))
+            if loss_asset_weights is None:
+                if extra_features:
+                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
+                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
+                        batch_loss.append(float(loss_value))
+                        batch_reg_loss.append(float(reg_loss))
+                else:
+                    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
+                        batch_loss.append(float(loss_value))
+                        batch_reg_loss.append(float(reg_loss))
             else:
-                for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                    loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
-                    batch_loss.append(float(loss_value))
-                    batch_reg_loss.append(float(reg_loss))
+                if extra_features:
+                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
+                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
+                                                          loss_asset_weights)
+                        batch_loss.append(float(loss_value))
+                        batch_reg_loss.append(float(reg_loss))
+                else:
+                    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train,
+                                                          loss_asset_weights)
+                        batch_loss.append(float(loss_value))
+                        batch_reg_loss.append(float(reg_loss))
 
         # Compute loss over epoch
         epoch_loss = np.mean(batch_loss)

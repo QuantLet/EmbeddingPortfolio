@@ -204,12 +204,22 @@ def run(ae_config, seed=None):
         else:
             save_path = None
 
+        if ae_config.loss_asset_weights is not None:
+            loss_asset_weights = {a: 1. for a in assets}
+            for a in ae_config.loss_asset_weights:
+                loss_asset_weights[a] = ae_config.loss_asset_weights[a]
+            LOGGER.info(f'Loss asset weights is: {loss_asset_weights}')
+            loss_asset_weights = np.array(list(loss_asset_weights.values()))
+            loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
+        else:
+            loss_asset_weights = None
         if ae_config.save:
             model, history = fit(model,
                                  train_dataset,
                                  ae_config.epochs,
                                  ae_config.learning_rate,
                                  loss=ae_config.loss,
+                                 loss_asset_weights=loss_asset_weights,
                                  callbacks=ae_config.callbacks,
                                  val_dataset=val_dataset,
                                  extra_features=n_features is not None,
@@ -220,6 +230,7 @@ def run(ae_config, seed=None):
                                  ae_config.epochs,
                                  ae_config.learning_rate,
                                  loss=ae_config.loss,
+                                 loss_asset_weights=loss_asset_weights,
                                  callbacks=ae_config.callbacks,
                                  val_dataset=val_dataset,
                                  extra_features=n_features is not None)
@@ -328,7 +339,6 @@ def run(ae_config, seed=None):
             test_data.sort_index(inplace=True)
             test_prediction.sort_index(inplace=True)
             test_features.sort_index(inplace=True)
-
 
         # Plot heatmap
         if ae_config.kernel_constraint is not None:

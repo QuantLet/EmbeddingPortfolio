@@ -9,13 +9,24 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset='bond'
-show_plot = False
-save = True
+# Data
+dataset = 'bond'
+show_plot = True
+save = False
+resample = {
+    'method': 'nbb',
+    'where': ['train'],
+    'block_length': 44
+}
+
 crix = True
+loss_asset_weights = None # {'CRIX': 10}
+loss = 'mse'
+
+crypto_assets = None
+assets = []
 # tf.config.run_functions_eagerly(True)
-seed = None # np.random.randint(0, 100)
-assets = COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
+seed = np.random.randint(0, 100)
 encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
@@ -24,7 +35,7 @@ l_name = 'l2'
 l = 1e-3
 activation = 'relu'
 features_config = None
-model_name = f'activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
+model_name = f'{dataset}_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False  # True
@@ -44,7 +55,6 @@ batch_size = 32
 drop_remainder_obs = False
 val_size = None  # 22*6 # 30 * 24
 test_size = 0
-loss = 'mse'
 label_param = None
 # label_param = {
 #     'lq': 0.05,
@@ -67,18 +77,19 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
+
 
 callbacks = {
     'EarlyStopping': {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 200,
+        'patience': 300,
         'verbose': 1,
         'restore_best_weights': True
     }
