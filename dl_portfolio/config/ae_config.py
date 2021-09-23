@@ -20,7 +20,7 @@ resample = {
 }
 
 crix = True
-loss_asset_weights = None # {'CRIX': 10}
+loss_asset_weights = {'CRIX': 2}
 loss = 'mse'
 
 crypto_assets = None
