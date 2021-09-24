@@ -88,18 +88,23 @@ if __name__ == "__main__":
     # Embedding analysis
     # Embedding over cv folds
     p = 0
-    fig, axs = plt.subplots(2, 6, figsize=(15, 12), sharex=True, sharey=True)
+    n_cv = len(cv_results[p])
+    n_cols = 6
+    n_rows = n_cv // n_cols + 1
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 12), sharex=True, sharey=True)
     cbar_ax = fig.add_axes([.91, .3, .03, .4])
+    row = -1
+    col = 0
     for cv in cv_results[p]:
-        row = 0
-        col = cv
-        if cv > 5:
-            row = 1
-            col = 6 - cv
         embedding = cv_results[p][cv]['embedding'].copy()
+        if cv % n_cols == 0:
+            col = 0
+            row += 1
         sns.heatmap(embedding, ax=axs[row, col], cbar=cv == 0, cbar_ax=None if cv else cbar_ax, cmap='Reds')
         date = str(cv_results[p][cv]['returns'].index[0].date())
         axs[row, col].set_title(date)
+        col += 1
+
     fig.tight_layout(rect=[0, 0, .9, 1])
     if args.save:
         plt.savefig(f"{save_dir}/cv_embedding_weights.png", bbox_inches='tight')
