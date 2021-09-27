@@ -6,7 +6,7 @@ from dl_portfolio.pca_ae import heat_map_cluster, get_layer_by_name, heat_map, b
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_from_df, labelQuantile
-from dl_portfolio.train import fit, embedding_visualization, plot_history
+from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, build_model_input
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
@@ -72,8 +72,10 @@ def run(ae_config, seed=None):
     for cv in ae_config.data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
         if ae_config.save:
+            save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
-        data_spec = ae_config.data_specs[cv]
+        else:
+            save_path = None
 
         if ae_config.shuffle_columns:
             LOGGER.info('Shuffle assets order')
@@ -93,117 +95,47 @@ def run(ae_config, seed=None):
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
 
-        train_data, val_data, test_data, scaler, dates, features = get_features(data,
-                                                                                data_spec['start'],
-                                                                                data_spec['end'],
-                                                                                assets,
-                                                                                val_start=data_spec['val_start'],
-                                                                                test_start=data_spec.get('test_start'),
-                                                                                rescale=ae_config.rescale,
-                                                                                scaler=ae_config.scaler_func['name'],
-                                                                                resample=ae_config.resample,
-                                                                                features_config=ae_config.features_config,
-                                                                                **ae_config.scaler_func.get('params',
-                                                                                                            {}))
-
-        # if shuffle_columns_while_training:
-        #     train_data = np.transpose(train_data)
-        #     np.random.seed(random_seed)
-        #     np.random.shuffle(train_data)
-        #     np.random.seed(seed)
-        #     train_data = np.transpose(train_data)
-
-        LOGGER.info(f'Train shape: {train_data.shape}')
-        LOGGER.info(f'Validation shape: {val_data.shape}')
         # Build model
         input_dim = len(assets)
         n_features = None
-        if ae_config.model_type == 'pca_permut_ae_model':
-            raise NotImplementedError()
-            train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-            val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-            if test_data is not None:
-                test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-
-        elif ae_config.model_type in ['ae_model', 'pca_ae_model']:
-            if features:
-                n_features = features['train'].shape[-1]
-            else:
-                n_features = None
-            model, encoder, extra_features = build_model(ae_config.model_type,
-                                                         input_dim,
-                                                         ae_config.encoding_dim,
-                                                         n_features=n_features,
-                                                         extra_features_dim=1,
-                                                         activation=ae_config.activation,
-                                                         batch_normalization=ae_config.batch_normalization,
-                                                         kernel_initializer=ae_config.kernel_initializer,
-                                                         kernel_constraint=ae_config.kernel_constraint,
-                                                         kernel_regularizer=ae_config.kernel_regularizer,
-                                                         activity_regularizer=ae_config.activity_regularizer,
-                                                         batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
-                                                         loss=ae_config.loss,
-                                                         uncorrelated_features=ae_config.uncorrelated_features,
-                                                         weightage=ae_config.weightage)
-            train_input = train_data
-            val_input = val_data
-            test_input = test_data
-
-        else:
-            raise NotImplementedError()
+        model, encoder, extra_features = build_model(ae_config.model_type,
+                                                     input_dim,
+                                                     ae_config.encoding_dim,
+                                                     n_features=n_features,
+                                                     extra_features_dim=1,
+                                                     activation=ae_config.activation,
+                                                     batch_normalization=ae_config.batch_normalization,
+                                                     kernel_initializer=ae_config.kernel_initializer,
+                                                     kernel_constraint=ae_config.kernel_constraint,
+                                                     kernel_regularizer=ae_config.kernel_regularizer,
+                                                     activity_regularizer=ae_config.activity_regularizer,
+                                                     batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
+                                                     loss=ae_config.loss,
+                                                     uncorrelated_features=ae_config.uncorrelated_features,
+                                                     weightage=ae_config.weightage)
         print(model.summary())
 
-        if ae_config.drop_remainder_obs:
-            indices = list(range(train_input.shape[0]))
-            indices = drop_remainder(indices, batch_size, last=False)
-            train_input = train_input[indices, :]
-            train_data = train_data[indices, :]
-            dates['train'] = dates['train'][indices]
-            if features:
-                train_input = [train_data, features['train'][indices, :]]
-            indices = list(range(val_input.shape[0]))
-            indices = drop_remainder(indices, batch_size, last=False)
-            val_input = val_input[indices, :]
-            val_data = val_data[indices, :]
-            dates['val'] = dates['val'][indices]
-            if features:
-                val_input = [val_data, features['val'][indices, :]]
-        else:
-            if features:
-                train_input = [train_data, features['train']]
-                val_input = [val_data, features['val']]
+        # Create dataset:
+        shuffle = False
+        if ae_config.resample is not None:
+            if ae_config.resample.get('when', None) != 'each_epoch':
+                train_dataset, val_dataset = create_dataset(data, assets,
+                                                            ae_config.data_specs[cv],
+                                                            ae_config.model_type,
+                                                            batch_size=ae_config.batch_size,
+                                                            rescale=ae_config.rescale,
+                                                            features_config=ae_config.features_config,
+                                                            scaler_func=ae_config.scaler_func,
+                                                            resample=ae_config.resample,
+                                                            loss=ae_config.loss,
+                                                            drop_remainder_obs=ae_config.drop_remainder_obs,
+                                                            df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
+                                                            )
 
-        if ae_config.loss == 'weighted_mse':
-            sample_weights = df_sample_weights.loc[dates['train']]
-            sample_weights = tf.Variable(
-                sample_weights.values,
-                dtype=tf.float32
-            )
-            if n_features:
-                train_dataset = tf.data.Dataset.from_tensor_slices(
-                    (train_input[0], train_input[1], train_data, sample_weights))
             else:
-                train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
-        else:
-            if n_features:
-                train_dataset = tf.data.Dataset.from_tensor_slices(
-                    (train_input[0], train_input[1], train_data))
-            else:
-                train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+                shuffle = True
 
-        if n_features:
-            val_dataset = tf.data.Dataset.from_tensor_slices((val_input[0], val_input[1], val_data))
-        else:
-            val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
-
-        train_dataset = train_dataset.batch(ae_config.batch_size)
-        val_dataset = val_dataset.batch(ae_config.batch_size)
-
-        if ae_config.save:
-            save_path = f"{save_dir}/{cv}"
-        else:
-            save_path = None
-
+        # Set extra loss parameters
         if ae_config.loss_asset_weights is not None:
             loss_asset_weights = {a: 1. for a in assets}
             for a in ae_config.loss_asset_weights:
@@ -213,17 +145,24 @@ def run(ae_config, seed=None):
             loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
         else:
             loss_asset_weights = None
-        if ae_config.save:
+
+        if shuffle:
             model, history = fit(model,
-                                 train_dataset,
+                                 None,
                                  ae_config.epochs,
                                  ae_config.learning_rate,
                                  loss=ae_config.loss,
                                  loss_asset_weights=loss_asset_weights,
                                  callbacks=ae_config.callbacks,
-                                 val_dataset=val_dataset,
+                                 val_dataset=None,
                                  extra_features=n_features is not None,
-                                 save_path=f"{save_path}")
+                                 save_path=f"{save_path}" if ae_config.save else None,
+                                 shuffle=True,
+                                 cv=cv,
+                                 data=data,
+                                 assets=assets,
+                                 ae_config=ae_config,
+                                 df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None)
         else:
             model, history = fit(model,
                                  train_dataset,
@@ -233,7 +172,9 @@ def run(ae_config, seed=None):
                                  loss_asset_weights=loss_asset_weights,
                                  callbacks=ae_config.callbacks,
                                  val_dataset=val_dataset,
-                                 extra_features=n_features is not None)
+                                 extra_features=n_features is not None,
+                                 save_path=f"{save_path}" if ae_config.save else None,
+                                 shuffle=False)
 
         if ae_config.save:
             # tensorboard viz
@@ -248,6 +189,45 @@ def run(ae_config, seed=None):
         # model.evaluate(val_input, val_data)
 
         # Get results for later analysis
+        data_spec = ae_config.data_specs[cv]
+        train_data, val_data, test_data, scaler, dates, features = get_features(data,
+                                                                                data_spec['start'],
+                                                                                data_spec['end'],
+                                                                                assets,
+                                                                                val_start=data_spec['val_start'],
+                                                                                test_start=data_spec.get('test_start'),
+                                                                                rescale=ae_config.rescale,
+                                                                                scaler=ae_config.scaler_func['name'],
+                                                                                resample=ae_config.resample,
+                                                                                features_config=ae_config.features_config,
+                                                                                **ae_config.scaler_func.get('params',
+                                                                                                            {}))
+
+        if ae_config.drop_remainder_obs:
+            indices = list(range(train_data.shape[0]))
+            indices = drop_remainder(indices, ae_config.batch_size, last=False)
+            train_data = train_data[indices, :]
+            features['train'] = features['train'][indices, :]
+            dates['train'] = dates['train'][indices]
+
+            indices = list(range(val_data.shape[0]))
+            indices = drop_remainder(indices, ae_config.batch_size, last=False)
+            train_data = train_data[indices, :]
+            features['val'] = features['val'][indices, :]
+            dates['val'] = dates['val'][indices]
+
+        # if shuffle_columns_while_training:
+        #     train_data = np.transpose(train_data)
+        #     np.random.seed(random_seed)
+        #     np.random.shuffle(train_data)
+        #     np.random.seed(seed)
+        #     train_data = np.transpose(train_data)
+
+        LOGGER.info(f'Train shape: {train_data.shape}')
+        LOGGER.info(f'Validation shape: {val_data.shape}')
+
+        train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, ae_config.model_type,
+                                                               features=features)
         ## Get prediction
         if n_features:
             train_features = encoder.predict(train_input[0])
@@ -255,6 +235,7 @@ def run(ae_config, seed=None):
         else:
             train_features = encoder.predict(train_input)
             val_features = encoder.predict(val_input)
+
         train_features = pd.DataFrame(train_features, index=dates['train'])
         LOGGER.info(f"Train features covariance:\n{train_features.cov()}")
         val_features = pd.DataFrame(val_features, index=dates['val'])

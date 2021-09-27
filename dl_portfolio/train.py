@@ -1,13 +1,113 @@
 import tensorflow as tf
 import numpy as np
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 import os
+from dl_portfolio.ae_data import get_features
+from dl_portfolio.data import drop_remainder
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name
 from tensorflow.keras import backend as K
 from tensorboard.plugins import projector
 from dl_portfolio.losses import weighted_mse
 import matplotlib.pyplot as plt
+
+
+def build_model_input(train_data, val_data, test_data, model_type, features=None):
+    if model_type == 'pca_permut_ae_model':
+        raise NotImplementedError()
+        train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+        val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+        if test_data is not None:
+            test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
+    elif model_type in ['ae_model', 'pca_ae_model']:
+        train_input = train_data
+        val_input = val_data
+        test_input = test_data
+    else:
+        raise NotImplementedError()
+    if features:
+        train_input = [train_data, features['train']]
+        val_input = [val_data, features['val']]
+
+    return train_input, val_input, test_input
+
+
+def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_size: int,
+                   rescale: Optional[float] = None,
+                   features_config: Optional[Dict] = None, scaler_func: Optional[Dict] = None,
+                   resample: Optional[Dict] = None, loss: Optional[str] = None, drop_remainder_obs: bool = True,
+                   df_sample_weights=None):
+    train_data, val_data, test_data, scaler, dates, features = get_features(data,
+                                                                            data_spec['start'],
+                                                                            data_spec['end'],
+                                                                            assets,
+                                                                            val_start=data_spec['val_start'],
+                                                                            test_start=data_spec.get('test_start'),
+                                                                            rescale=rescale,
+                                                                            scaler=scaler_func['name'],
+                                                                            resample=resample,
+                                                                            features_config=features_config,
+                                                                            **scaler_func.get('params',
+                                                                                              {}))
+
+    if drop_remainder_obs:
+        indices = list(range(train_data.shape[0]))
+        indices = drop_remainder(indices, batch_size, last=False)
+        train_data = train_data[indices, :]
+        features['train'] = features['train'][indices, :]
+        dates['train'] = dates['train'][indices]
+
+        indices = list(range(val_data.shape[0]))
+        indices = drop_remainder(indices, batch_size, last=False)
+        train_data = train_data[indices, :]
+        features['val'] = features['val'][indices, :]
+        dates['val'] = dates['val'][indices]
+
+    # if shuffle_columns_while_training:
+    #     train_data = np.transpose(train_data)
+    #     np.random.seed(random_seed)
+    #     np.random.shuffle(train_data)
+    #     np.random.seed(seed)
+    #     train_data = np.transpose(train_data)
+
+    LOGGER.info(f'Train shape: {train_data.shape}')
+    LOGGER.info(f'Validation shape: {val_data.shape}')
+
+    train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, model_type,
+                                                           features=features)
+
+    if features:
+        n_features = features['train'].shape[-1]
+    else:
+        n_features = None
+
+    if loss == 'weighted_mse':
+        sample_weights = df_sample_weights.loc[dates['train']]
+        sample_weights = tf.Variable(
+            sample_weights.values,
+            dtype=tf.float32
+        )
+        if n_features:
+            train_dataset = tf.data.Dataset.from_tensor_slices(
+                (train_input[0], train_input[1], train_data, sample_weights))
+        else:
+            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
+    else:
+        if n_features:
+            train_dataset = tf.data.Dataset.from_tensor_slices(
+                (train_input[0], train_input[1], train_data))
+        else:
+            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+
+    if n_features:
+        val_dataset = tf.data.Dataset.from_tensor_slices((val_input[0], val_input[1], val_data))
+    else:
+        val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
+
+    train_dataset = train_dataset.batch(batch_size)
+    val_dataset = val_dataset.batch(batch_size)
+
+    return train_dataset, val_dataset
 
 
 def EarlyStopping(MetricList, min_delta=0.1, patience=20, mode='min'):
@@ -49,7 +149,8 @@ def r_square(y_true, y_pred):
 
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
         loss: str = None, loss_asset_weights: Optional[tf.Tensor] = None, callbacks: Dict = None,
-        val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None):
+        val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None,
+        shuffle: bool = False, cv=None, data= None, assets = None, ae_config=None, df_sample_weights=None):
     """
 
     :param model: keras model to train
@@ -144,6 +245,22 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
     best_weights = None
     stop_training = False
     for epoch in range(epochs):
+        if shuffle:
+            LOGGER.info(f'Shuffling data at epoch {epoch}')
+            train_dataset, val_dataset = create_dataset(data,
+                                                        assets,
+                                                        ae_config.data_specs[cv],
+                                                        ae_config.model_type,
+                                                        batch_size=ae_config.batch_size,
+                                                        rescale=ae_config.rescale,
+                                                        features_config=ae_config.features_config,
+                                                        scaler_func=ae_config.scaler_func,
+                                                        resample=ae_config.resample,
+                                                        loss=ae_config.loss,
+                                                        drop_remainder_obs=ae_config.drop_remainder_obs,
+                                                        df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
+                                                        )
+
         # Iterate over the batches of the dataset.
         batch_loss = []
         batch_reg_loss = []
