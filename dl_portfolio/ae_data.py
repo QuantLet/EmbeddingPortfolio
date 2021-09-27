@@ -9,6 +9,7 @@ from dl_portfolio.sample import id_nb_bootstrap
 
 DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'sp500']
 
+
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
     hinw = np.array([date.weekday() * 24 + date.hour for date in dates], dtype=np.float32)
     hinw = np.round(np.sin(2 * np.pi * hinw / 168), 4)
@@ -68,9 +69,11 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
     elif scaler == 'MinMaxScaler':
         assert 'feature_range' in kwargs
         scaler = preprocessing.MinMaxScaler(**kwargs)
+
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
     val_data = scaler.transform(val_data)
+
     if test_data is not None:
         test_data = scaler.transform(test_data)
 
@@ -119,24 +122,33 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             block_length = resample.get('block_length', 44)
             if 'train' in where:
                 LOGGER.info(f"Resampling training data with 'nbb' method with block length {block_length}")
-                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
-                train_data = train_data[nbb_id]
-                dates['train'] = dates['train'][nbb_id]
+                # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
+                # train_data = train_data[nbb_id]
+                # dates['train'] = dates['train'][nbb_id]
+                train_data, dates['train'] = bb_resample_sample(train_data, dates['train'], block_length=block_length)
             if 'val' in where:
                 LOGGER.info(f"Resampling val data with 'nbb' method with block length {block_length}")
-                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
-                val_data = val_data[nbb_id]
-                dates['val'] = dates['val'][nbb_id]
+                # nbb_id = id_nb_bootstrap(len(val_data), block_length=block_length)
+                # val_data = val_data[nbb_id]
+                # dates['val'] = dates['val'][nbb_id]
+                val_data, dates['val'] = bb_resample_sample(val_data, dates['val'], block_length=block_length)
             if 'test' in where:
                 LOGGER.info(f"Resampling test data with 'nbb' method with block length {block_length}")
-                nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
-                test_data = test_data[nbb_id]
-                dates['test'] = dates['test'][nbb_id]
-
+                # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
+                # test_data = test_data[nbb_id]
+                # dates['test'] = dates['test'][nbb_id]
+                test_data, dates['test'] = bb_resample_sample(test_data, dates['test'], block_length=block_length)
         else:
             raise NotImplementedError(resample)
 
     return train_data, val_data, test_data, scaler, dates, features
+
+
+def bb_resample_sample(data: np.ndarray, dates: List, block_length: int = 44):
+    nbb_id = id_nb_bootstrap(len(data), block_length=block_length)
+    data = data[nbb_id]
+    dates = dates[nbb_id]
+    return data, dates
 
 
 def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan: bool = False,
@@ -236,7 +248,8 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
 def load_data(dataset='global', **kwargs):
     assert dataset in DATASETS
     if dataset == 'bond':
-        data, assets = load_global_bond_data(crix=kwargs.get('crix', False), crypto_assets=kwargs.get('crypto_assets', None))
+        data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
+                                             crypto_assets=kwargs.get('crypto_assets', None))
     elif dataset == 'global':
         assets = kwargs.get('assets', None)
         dropnan = kwargs.get('dropnan', False)
