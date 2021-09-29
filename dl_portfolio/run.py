@@ -226,8 +226,19 @@ def run(ae_config, seed=None):
         LOGGER.info(f'Train shape: {train_data.shape}')
         LOGGER.info(f'Validation shape: {val_data.shape}')
 
-        train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, ae_config.model_type,
-                                                               features=features)
+        # train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, ae_config.model_type, features=features)
+        if features:
+            train_input = build_model_input(train_data, ae_config.model_type, features=features['train'], assets=assets)
+            val_input = build_model_input(val_data, ae_config.model_type, features=features['val'])
+            if test_data is not None:
+                test_input = build_model_input(test_data, ae_config.model_type, features=features['test'],
+                                               assets=assets)
+        else:
+            train_input = build_model_input(train_data, ae_config.model_type, features=None, assets=assets)
+            val_input = build_model_input(val_data, ae_config.model_type, features=None, assets=assets)
+            if test_data is not None:
+                test_input = build_model_input(test_data, ae_config.model_type, features=None, assets=assets)
+
         ## Get prediction
         if n_features:
             train_features = encoder.predict(train_input[0])
