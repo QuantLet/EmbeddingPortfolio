@@ -212,7 +212,7 @@ def run(ae_config, seed=None):
 
             indices = list(range(val_data.shape[0]))
             indices = drop_remainder(indices, ae_config.batch_size, last=False)
-            train_data = train_data[indices, :]
+            val_data = val_data[indices, :]
             features['val'] = features['val'][indices, :]
             dates['val'] = dates['val'][indices]
 

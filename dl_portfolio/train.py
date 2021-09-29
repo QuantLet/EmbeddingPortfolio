@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import os
 from dl_portfolio.ae_data import get_features
 from dl_portfolio.data import drop_remainder
@@ -12,7 +12,22 @@ from dl_portfolio.losses import weighted_mse
 import matplotlib.pyplot as plt
 
 
-def build_model_input(train_data, val_data, test_data, model_type, features=None):
+def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.ndarray] = None,
+                      assets: Optional[List] = None) -> Union[np.ndarray, List]:
+    if model_type == 'pca_permut_ae_model':
+        raise NotImplementedError()
+        data = [data[:, i].reshape(-1, 1) for i in range(len(assets))]
+    elif model_type in ['ae_model', 'pca_ae_model']:
+        pass
+    else:
+        raise NotImplementedError()
+    if features:
+        data = [data, features]
+
+    return data
+
+
+def build_model_input_old(train_data, val_data, test_data, model_type, features=None):
     if model_type == 'pca_permut_ae_model':
         raise NotImplementedError()
         train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
@@ -59,7 +74,7 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
 
         indices = list(range(val_data.shape[0]))
         indices = drop_remainder(indices, batch_size, last=False)
-        train_data = train_data[indices, :]
+        val_data = val_data[indices, :]
         features['val'] = features['val'][indices, :]
         dates['val'] = dates['val'][indices]
 
@@ -73,8 +88,16 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
     LOGGER.info(f'Train shape: {train_data.shape}')
     LOGGER.info(f'Validation shape: {val_data.shape}')
 
-    train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, model_type,
-                                                           features=features)
+    if features:
+        train_input = build_model_input(train_data, model_type, features=features['train'], assets=assets)
+        val_input = build_model_input(val_data, model_type, features=features['val'])
+        if test_data is not None:
+            test_input = build_model_input(test_data, model_type, features=features['test'], assets=assets)
+    else:
+        train_input = build_model_input(train_data, model_type, features=None, assets=assets)
+        val_input = build_model_input(val_data, model_type, features=None, assets=assets)
+        if test_data is not None:
+            test_input = build_model_input(test_data, model_type, features=None, assets=assets)
 
     if features:
         n_features = features['train'].shape[-1]
@@ -150,7 +173,7 @@ def r_square(y_true, y_pred):
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
         loss: str = None, loss_asset_weights: Optional[tf.Tensor] = None, callbacks: Dict = None,
         val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None,
-        shuffle: bool = False, cv=None, data= None, assets = None, ae_config=None, df_sample_weights=None):
+        shuffle: bool = False, cv=None, data=None, assets=None, ae_config=None, df_sample_weights=None):
     """
 
     :param model: keras model to train
