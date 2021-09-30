@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
     meta = vars(args)
     if args.save:
-        save_dir = f"eval_backtest/{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir = f"eval_backtest/{args.test_set}_{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         LOGGER.info(f"Saving result to {save_dir}")

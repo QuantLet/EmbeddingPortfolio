@@ -47,7 +47,7 @@ if __name__ == "__main__":
 
     meta = vars(args)
     if args.save:
-        save_dir = f"evaluation/{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+        save_dir = f"evaluation/{args.test_set}_{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         LOGGER.info(f"Saving result to {save_dir}")
@@ -78,7 +78,8 @@ if __name__ == "__main__":
     same_ret = pd.DataFrame(scaler.fit_transform(returns), index=returns.index, columns=returns.columns)
     same_pred = pd.DataFrame(scaler.transform(pred), index=returns.index, columns=returns.columns)
     EVALUATION['model']['scaled_rmse'] = np.sqrt(np.mean((same_ret - same_pred) ** 2)).to_dict()
-    EVALUATION['model']['rmse'] = sum(np.sqrt(np.mean((returns - pred) ** 2)))
+    EVALUATION['model']['rmse'] = np.sqrt(np.mean((returns - pred) ** 2)).to_dict()
+    EVALUATION['model']['total_rmse'] = sum(np.sqrt(np.mean((returns - pred) ** 2)))
 
     if args.save:
         pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
