@@ -6,7 +6,7 @@ import seaborn as sns
 import sys, pickle
 import numpy as np
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction
+from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, \
     calmar_ratio, sharpe_ratio
 from sklearn import metrics, preprocessing
@@ -70,7 +70,23 @@ if __name__ == "__main__":
 
     cv_dates = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
 
-    # Average prediction accross runs
+    # Average prediction across runs for each cv
+    returns, scaled_returns, pred, scaled_pred = average_prediction_cv(cv_results)
+
+    # Compute pred metric
+    total_rmse = []
+    total_r2 = []
+    for cv in returns.keys():
+        # scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
+        # scaler.fit(returns[cv])
+        # same_ret = pd.DataFrame(scaler.transform(returns[cv]), index=returns.index, columns=returns.columns)
+        # same_pred = pd.DataFrame(scaler.transform(pred[cv]), index=returns.index, columns=returns.columns)
+        total_rmse.append(float(np.sqrt(np.mean(np.mean((returns[cv] - pred[cv]).values ** 2, axis=-1)))))
+        total_r2.append(metrics.r2_score(returns[cv], pred[cv], multioutput='uniform_average'))
+    EVALUATION['model']['cv_total_rmse'] = total_rmse
+    EVALUATION['model']['cv_total_r2'] = total_r2
+
+    # Average prediction across runs
     returns, scaled_returns, pred, scaled_pred = average_prediction(cv_results)
 
     # Compute pred metric
@@ -79,7 +95,10 @@ if __name__ == "__main__":
     same_pred = pd.DataFrame(scaler.transform(pred), index=returns.index, columns=returns.columns)
     EVALUATION['model']['scaled_rmse'] = np.sqrt(np.mean((same_ret - same_pred) ** 2)).to_dict()
     EVALUATION['model']['rmse'] = np.sqrt(np.mean((returns - pred) ** 2)).to_dict()
-    EVALUATION['model']['total_rmse'] = sum(np.sqrt(np.mean((returns - pred) ** 2)))
+    EVALUATION['model']['total_rmse'] = float(np.sqrt(np.mean(np.mean((returns - pred).values ** 2, axis=-1))))
+    EVALUATION['model']['r2'] = {a: metrics.r2_score(returns[a], pred[a]) for a in
+                                 returns.columns}
+    EVALUATION['model']['total_r2'] = metrics.r2_score(returns, pred, multioutput='uniform_average')
 
     if args.save:
         pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
@@ -175,8 +194,8 @@ if __name__ == "__main__":
 
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
+    trii = np.triu_indices(n_runs, k=1)
     for cv in cv_rand:
-        trii = np.triu_indices(n_runs, k=1)
         triu = np.triu(cv_rand[cv], k=1)
         avg_rand = avg_rand + triu
     avg_rand = avg_rand / len(cv_rand)

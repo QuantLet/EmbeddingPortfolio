@@ -53,6 +53,49 @@ def average_prediction(cv_results: Dict):
     return returns, scaled_returns, pred, scaled_pred
 
 
+def average_prediction_cv(cv_results: Dict):
+    """
+
+    :param cv_results: Dict with shape {run_1: {cv_0: {}, cv_1: {}}, run_2: {...} ...}
+    :return:
+    """
+    assert len(cv_results) >= 2
+    returns = {}
+    scaled_returns = {}
+    predictions = {}
+    scaled_predictions = {}
+    n_cv = len(cv_results[0])
+    for cv in range(n_cv):
+
+        ret = cv_results[0][cv]['returns'].copy()
+        scaler = cv_results[0][cv]['scaler']
+        scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+        returns[cv] = ret
+        scaled_returns[cv] = scaled_ret
+
+        temp_pred = pd.DataFrame()
+        temp_scaled_pred = pd.DataFrame()
+        assets = cv_results[0][0]['returns'].columns
+        for p in cv_results:
+            p_pred = cv_results[p][cv]['test_pred']
+            temp_pred = pd.concat([temp_pred, p_pred], 1)
+
+            scaler = cv_results[p][cv]['scaler']
+            temp_p_pred = (p_pred - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+            temp_scaled_pred = pd.concat([temp_scaled_pred, temp_p_pred], 1)
+
+        pred = pd.DataFrame()
+        scaled_pred = pd.DataFrame()
+        for a in assets:
+            pred = pd.concat([pred, pd.DataFrame(temp_pred[a].mean(1), columns=[a])], 1)
+            scaled_pred = pd.concat([scaled_pred, pd.DataFrame(temp_scaled_pred[a].mean(1), columns=[a])], 1)
+
+        predictions[cv] = pred
+        scaled_predictions[cv] = scaled_pred
+
+    return returns, scaled_returns, predictions, scaled_predictions
+
+
 def qqplot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = None, show: bool = False):
     n_rows = true.shape[-1] // 6 + 1
     fig, axs = plt.subplots(n_rows, 6, figsize=(20, 12))
