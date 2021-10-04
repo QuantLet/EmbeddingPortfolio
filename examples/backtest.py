@@ -61,7 +61,7 @@ if __name__ == "__main__":
         json.dump(meta, open(f"{save_dir}/meta.json", "w"))
 
     models = os.listdir(args.base_dir)
-    paths = [f"{args.base_dir}/{d}" for d in models]
+    paths = [f"{args.base_dir}/{d}" for d in models if models[0] != '.']
 
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
@@ -133,6 +133,8 @@ if __name__ == "__main__":
         bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
         bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
 
+        plot_perf(ann_perf, strategies=['herc', 'ae_rp_c'], save_path=f"{save_dir}/performance_herc_aeerc_cluster.png",
+                  show=args.show, legend=True)
     else:
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], show=args.show)
@@ -158,6 +160,13 @@ if __name__ == "__main__":
     plt.plot(np.cumprod(ann_perf['aeerc'] + 1) - np.cumprod(ann_perf['herc'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_herc_aeerc.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+
+    plt.figure(figsize=(20, 10))
+    plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['herc'] + 1))
+    if args.save:
+        plt.savefig(f"{save_dir}/excess_performance_herc_aeerc_cluster.png", bbox_inches='tight')
     if args.show:
         plt.show()
 
