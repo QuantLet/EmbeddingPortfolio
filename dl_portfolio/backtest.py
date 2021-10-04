@@ -148,10 +148,14 @@ def total_average_turnover(weights):
 
 
 def adjusted_sharpe_ratio(perf, period: int = 1):
+    # check R implementation
+    # https://rdrr.io/cran/PerformanceAnalytics/man/AdjustedSharpeRatio.html:
+    # SR x [1 + (S/6) x SR - ((K-3) / 24) x SR^2]
     sr = sharpe_ratio(perf, period=period)
     skew = scipy.stats.skew(perf, axis=0)
     kurtosis = scipy.stats.kurtosis(perf, axis=0)
-    return sr * (1 + skew / 3 * sr - (kurtosis - 3) / 24 * sr ** 2)
+
+    return sr * (1 + skew / 6 * sr - (kurtosis - 3) / 24 * (sr ** 2))
 
 
 def sharpe_ratio(perf, period: int = 1):
@@ -312,7 +316,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
-                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'],
+                      portfolio=list('markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'),
                       **kwargs):
     assert all([p in PORTFOLIOS for p in portfolio])
     port_w = {}
