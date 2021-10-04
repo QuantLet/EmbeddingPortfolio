@@ -67,6 +67,7 @@ if __name__ == "__main__":
         print(len(paths) - i)
         cv_results[i] = get_cv_results(path, args.test_set, n_folds, dataset=args.dataset, compute_weights=False,
                                        n_jobs=args.n_jobs)
+    K = cv_results[i][0]['embedding'].shape[-1]
 
     cv_dates = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
 
@@ -111,7 +112,11 @@ if __name__ == "__main__":
     n_cv = len(cv_results[p])
     n_cols = 6
     n_rows = n_cv // n_cols + 1
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=(15, 12), sharex=True, sharey=True)
+    if n_rows == 3:
+        figsize = (15, 18)
+    else:
+        figsize = (15, 12)
+    fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
     cbar_ax = fig.add_axes([.91, .3, .03, .4])
     row = -1
     col = 0
@@ -120,7 +125,12 @@ if __name__ == "__main__":
         if cv % n_cols == 0:
             col = 0
             row += 1
-        sns.heatmap(embedding, ax=axs[row, col], cbar=cv == 0, cbar_ax=None if cv else cbar_ax, cmap='Reds')
+        sns.heatmap(embedding,
+                    ax=axs[row, col],
+                    vmin=0,
+                    vmax=1,
+                    cbar=cv == 0,
+                    cbar_ax=None if cv else cbar_ax, cmap='Reds')
         date = str(cv_results[p][cv]['returns'].index[0].date())
         axs[row, col].set_title(date)
         col += 1
@@ -148,6 +158,35 @@ if __name__ == "__main__":
     EVALUATION['cluster']['corr'] = {}
     EVALUATION['cluster']['corr']['cv'] = avg_cv_corr
     EVALUATION['cluster']['corr']['avg_corr'] = np.mean(avg_cv_corr)
+
+    # Ex factor correlation cv = 0
+    corr_0 = cv_results[i][0]['test_features'].corr()
+    sns.heatmap(corr_0,
+                cmap='bwr',
+                square=True,
+                vmax=1,
+                vmin=-1,
+                cbar=True)
+    if args.save:
+        plt.savefig(f"{save_dir}/corr_factors_heatmap_0.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+    plt.close()
+
+    # Ex pred correlation cv = 0
+    corr_0 = cv_results[i][0]['test_pred'].corr()
+    plt.figure(figsize=(10, 10))
+    sns.heatmap(corr_0,
+                cmap='bwr',
+                square=True,
+                vmax=1,
+                vmin=-1,
+                cbar=True)
+    if args.save:
+        plt.savefig(f"{save_dir}/corr_pred_heatmap_0.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+    plt.close()
 
     my_cmap = plt.get_cmap("bwr")
     rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
