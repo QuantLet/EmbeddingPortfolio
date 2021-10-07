@@ -370,7 +370,7 @@ def run(ae_config, seed=None):
         heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)
 
 
-def run(ae_config, seed=None):
+def run_nbb(ae_config, seed=None):
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
