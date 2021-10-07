@@ -97,8 +97,8 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
                             ceq(perf[strat]),
-                            sspw(weights[strat]),
-                            total_average_turnover(weights[strat])
+                            sspw(weights[strat]) if strat != 'equal' else np.nan,
+                            total_average_turnover(weights[strat]) if strat != 'equal' else 0.
                             ]
     if format:
         stats['MDD'] = stats['MDD'] * 100
@@ -122,7 +122,7 @@ def ceq(returns, gamma: float = 1., risk_free=0.):
 
 def sspw(weights):
     """
-    compute sum of squared portfolio weights
+    compute averge sum of squared portfolio weights SSPW
     :param weights: pd.DataFrame
     :return:
     """
@@ -316,7 +316,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
-                      portfolio=list('markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'),
+                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'],
                       **kwargs):
     assert all([p in PORTFOLIOS for p in portfolio])
     port_w = {}
