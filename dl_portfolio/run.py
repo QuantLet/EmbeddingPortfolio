@@ -6,7 +6,8 @@ from dl_portfolio.pca_ae import heat_map_cluster, get_layer_by_name, heat_map, b
 from shutil import copyfile
 from dl_portfolio.data import drop_remainder
 from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_from_df, labelQuantile
-from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, build_model_input
+from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, create_nbb_dataset, \
+    build_model_input
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
@@ -465,18 +466,21 @@ def run_nbb(ae_config, seed=None):
 
     # Create dataset:
     data_spec = ae_config.data_specs
-    train_dataset, val_dataset, test_dataset = create_dataset(data, assets,
-                                                              data_spec,
-                                                              ae_config.model_type,
-                                                              batch_size=ae_config.batch_size,
-                                                              rescale=ae_config.rescale,
-                                                              features_config=ae_config.features_config,
-                                                              scaler_func=ae_config.scaler_func,
-                                                              resample=ae_config.resample,
-                                                              loss=ae_config.loss,
-                                                              drop_remainder_obs=ae_config.drop_remainder_obs,
-                                                              df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
-                                                              )
+    train_dataset, val_dataset, test_dataset = create_nbb_dataset(ae_config.n_series,
+                                                                  data,
+                                                                  assets,
+                                                                  ae_config.model_type,
+                                                                  test_size=0.1,
+                                                                  batch_size=ae_config.batch_size,
+                                                                  rescale=ae_config.rescale,
+                                                                  features_config=ae_config.features_config,
+                                                                  scaler_func=ae_config.scaler_func,
+                                                                  resample=ae_config.resample,
+                                                                  loss=ae_config.loss,
+                                                                  drop_remainder_obs=ae_config.drop_remainder_obs,
+                                                                  df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
+                                                                  )
+
     # Set extra loss parameters
     if ae_config.loss_asset_weights is not None:
         loss_asset_weights = {a: 1. for a in assets}
