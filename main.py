@@ -1,4 +1,4 @@
-from dl_portfolio.run import run
+from dl_portfolio.run import run, run_nbb
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
 import os
@@ -28,6 +28,9 @@ if __name__ == "__main__":
                         nargs="+",
                         default=None,
                         help="List of seeds to run experiments")
+    parser.add_argument("--nbb",
+                        action='store_true',
+                        help="Runs block-bootstrap experiment")
     parser.add_argument("--backend",
                         type=str,
                         default="loky",
@@ -40,28 +43,52 @@ if __name__ == "__main__":
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
-                run(ae_config, seed=int(seed))
+                if args.nbb:
+                    run_nbb(ae_config, seed=int(seed))
+                else:
+                    run(ae_config, seed=int(seed))
         else:
-            Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
-            )
+            if args.nbb:
+                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                    delayed(run_nbb)(ae_config, seed=int(seed)) for seed in args.seeds
+                )
+            else:
+                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                    delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
+                )
 
     else:
         if args.n_jobs == 1:
             for i in range(args.n):
                 LOGGER.info(f'Starting experiment {i + 1} out of {args.n} experiments')
-                if args.seed:
-                    run(ae_config, seed=args.seed)
+                if args.nbb:
+                    if args.seed:
+                        run_nbb(ae_config, seed=args.seed)
+                    else:
+                        run_nbb(ae_config, seed=i)
                 else:
-                    run(ae_config, seed=i)
+                    if args.seed:
+                        run(ae_config, seed=args.seed)
+                    else:
+                        run(ae_config, seed=i)
                 LOGGER.info(f'Experiment {i + 1} finished')
                 LOGGER.info(f'{args.n - i - 1} experiments to go')
         else:
-            if args.seed:
-                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
-                )
+            if args.nbb:
+                if args.seed:
+                    Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                        delayed(run_nbb)(ae_config, seed=args.seed) for i in range(args.n)
+                    )
+                else:
+                    Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                        delayed(run_nbb)(ae_config, seed=seed) for seed in range(args.n)
+                    )
             else:
-                Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, seed=seed) for seed in range(args.n)
-                )
+                if args.seed:
+                    Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                        delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
+                    )
+                else:
+                    Parallel(n_jobs=args.n_jobs, backend=args.backend)(
+                        delayed(run)(ae_config, seed=seed) for seed in range(args.n)
+                    )
