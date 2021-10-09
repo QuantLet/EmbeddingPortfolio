@@ -7,7 +7,7 @@ from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_we
     get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['equal', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
+PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
 
 if __name__ == "__main__":
     import argparse, json
@@ -28,7 +28,7 @@ if __name__ == "__main__":
                         type=int,
                         help="Number of parallel jobs")
     parser.add_argument("--window",
-                        default=365,
+                        default=252,
                         type=int,
                         help="Window size for portfolio optimisation")
     parser.add_argument("--show",
@@ -74,7 +74,6 @@ if __name__ == "__main__":
 
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
-
         if i == 0:
             portfolios = PORTFOLIOS
         else:
@@ -87,7 +86,7 @@ if __name__ == "__main__":
                                        market_budget=market_budget,
                                        window=args.window,
                                        n_jobs=args.n_jobs)
-        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios)
+        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True)
 
     dates = [cv_results[0][cv]['test_features'].index[0] for cv in cv_results[0]]
     ASSETS = list(cv_results[i][0]['returns'].columns)
@@ -102,10 +101,9 @@ if __name__ == "__main__":
     ann_perf = {}
     for p in PORTFOLIOS:
         if 'ae' in p:
-            ann_perf[p] = get_average_perf(port_perf, port=p, annualized=True)
+            ann_perf[p] = get_average_perf(port_perf, port=p)
         else:
             ann_perf[p] = port_perf[0][p]['total'][0]
-            ann_perf[p] = 0.05 / (ann_perf[p].std() * np.sqrt(252)) * ann_perf[p]
 
     # Some renaming
     port_weights['aerp'] = port_weights['ae_ivp'].copy()
@@ -120,26 +118,27 @@ if __name__ == "__main__":
 
     # Plot perf
     if args.save:
-        plot_perf(ann_perf, strategies=['equal', 'hrp', 'herc', 'ae_rp_c'],
-                  save_path=f"{save_dir}/performance_equal_other.png",
+        plot_perf(ann_perf, strategies=['equal', 'markowitz', 'hrp', 'herc', 'aeerc', 'ae_rp_c'],
+                  save_path=f"{save_dir}/performance_all.png",
+                  show=args.show, legend=True)
+        plot_perf(ann_perf, strategies=['equal', 'markowitz', 'hrp', 'herc', 'ae_rp_c'],
+                  save_path=f"{save_dir}/performance_no_aeerc.png",
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
                   show=args.show, legend=True)
-        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
-        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show)
-
         plot_perf(ann_perf, strategies=['herc', 'aeerc'], save_path=f"{save_dir}/performance_herc_aeerc.png",
                   show=args.show, legend=True)
-        bar_plot_weights(port_weights['herc'], save_path=f"{save_dir}/weights_herc.png", show=args.show)
-        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show)
-
         plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'], save_path=f"{save_dir}/performance_hrp_aeerc_cluster.png",
                   show=args.show, legend=True)
-        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
-        bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
-
         plot_perf(ann_perf, strategies=['herc', 'ae_rp_c'], save_path=f"{save_dir}/performance_herc_aeerc_cluster.png",
                   show=args.show, legend=True)
+        bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
+        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
+        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show)
+        bar_plot_weights(port_weights['herc'], save_path=f"{save_dir}/weights_herc.png", show=args.show)
+        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show)
+        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
+        bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
     else:
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], show=args.show)
