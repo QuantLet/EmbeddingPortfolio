@@ -39,10 +39,13 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             val_data = data.loc[val_start:end]
             test_data = None
     else:
-        raise NotImplementedError()
+        train_data = data.loc[start:end]
+        val_data = None
+        test_data = None
 
     LOGGER.info(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
-    LOGGER.info(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
+    if val_data is not None:
+        LOGGER.info(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
     if test_data is not None:
         LOGGER.info(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
 
@@ -50,9 +53,13 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
     train_data = train_data.pct_change(1).dropna()
     train_dates = train_data.index
     train_data = train_data.values
-    val_data = val_data.pct_change(1).dropna()
-    val_dates = val_data.index
-    val_data = val_data.values
+
+    if val_data is not None:
+        val_data = val_data.pct_change(1).dropna()
+        val_dates = val_data.index
+        val_data = val_data.values
+    else:
+        val_dates = None
 
     if test_data is not None:
         test_data = test_data.pct_change(1).dropna()
@@ -72,14 +79,16 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
 
     scaler.fit(train_data)
     train_data = scaler.transform(train_data)
-    val_data = scaler.transform(val_data)
+    if val_data is not None:
+        val_data = scaler.transform(val_data)
 
     if test_data is not None:
         test_data = scaler.transform(test_data)
 
     if rescale is not None:
         train_data = train_data * rescale
-        val_data = val_data * rescale
+        if val_data is not None:
+            val_data = val_data * rescale
         if test_data is not None:
             test_data = test_data * rescale
 
