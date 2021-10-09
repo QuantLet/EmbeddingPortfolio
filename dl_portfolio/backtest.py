@@ -5,7 +5,7 @@ from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
 from dl_portfolio.logger import LOGGER
-from typing import Union, Dict, Optional
+from typing import Union, Dict, Optional, List
 import pickle
 from joblib import Parallel, delayed
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
@@ -39,13 +39,11 @@ def get_ts_weights(cv_results, port):
     return weights
 
 
-def get_average_perf(port_perf: Dict, port: str, annualized=True):
+def get_average_perf(port_perf: Dict, port: str):
     perf = pd.DataFrame()
     for i in port_perf:
         perf = pd.concat([perf, port_perf[i][port]['total']], 1)
     perf = perf.mean(1)
-    if annualized:
-        perf = 0.05 / (perf.std() * np.sqrt(252)) * perf
     return perf
 
 
@@ -90,9 +88,18 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
     :return:
     """
     strats = list(perf.keys())
-    stats = pd.DataFrame(index=strats, columns=['SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'], dtype=np.float32)
+    stats = pd.DataFrame(index=strats,
+                         columns=['Return', 'Volatility', 'Skewness', 'Kurtosis', 'VaR-5%',
+                                  'ES-5%', 'SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
+                         dtype=np.float32)
     for strat in strats:
-        stats.loc[strat] = [sharpe_ratio(perf[strat], period=period),
+        stats.loc[strat] = [perf[strat].mean(),
+                            annualized_volatility(perf[strat], period=period),
+                            scipy.stats.skew(perf[strat], axis=0),
+                            scipy.stats.kurtosis(perf[strat], axis=0),
+                            hist_VaR(perf[strat], level=0.05),
+                            hist_ES(perf[strat], level=0.05),
+                            sharpe_ratio(perf[strat], period=period),
                             adjusted_sharpe_ratio(perf[strat], period=period),
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
@@ -101,11 +108,27 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                             total_average_turnover(weights[strat]) if strat != 'equal' else 0.
                             ]
     if format:
+        stats['Return'] = stats['Return'] * 100
+        stats['VaR-5%'] = stats['VaR-5%'] * 100
+        stats['ES-5%'] = stats['ES-5%'] * 100
         stats['MDD'] = stats['MDD'] * 100
         stats['CEQ'] = stats['CEQ'] * 100
         stats = np.round(stats, 2)
 
     return stats
+
+
+def annualized_volatility(perf, period: int = 1):
+    return perf.std() * np.sqrt(period)
+
+
+def hist_VaR(perf, level: float = 0.05):
+    return - np.quantile(perf, level)
+
+
+def hist_ES(perf, level: float = 0.05):
+    VaR = np.quantile(perf, level)
+    return - np.mean(perf[perf <= VaR])
 
 
 def ceq(returns, gamma: float = 1., risk_free=0.):
@@ -155,7 +178,7 @@ def adjusted_sharpe_ratio(perf, period: int = 1):
     skew = scipy.stats.skew(perf, axis=0)
     kurtosis = scipy.stats.kurtosis(perf, axis=0)
 
-    return sr * (1 + skew / 6 * sr - (kurtosis - 3) / 24 * (sr ** 2))
+    return sr * (1 + (skew / 6) * sr - ((kurtosis - 3) / 24) * (sr ** 2))
 
 
 def sharpe_ratio(perf, period: int = 1):
@@ -197,7 +220,9 @@ def get_timeseries_weights(cv_results):
 
 
 def cv_portfolio_perf(cv_results: Dict,
-                      portfolios=['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']):
+                      portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
+                                          'ae_rp'],
+                      annualized: bool = True):
     assert all([p in PORTFOLIOS for p in portfolios])
 
     port_perf = {}
@@ -208,15 +233,36 @@ def cv_portfolio_perf(cv_results: Dict,
     for cv in cv_results:
         for p in portfolios:
             if p == 'equal':
-                port_perf['equal'][cv] = (cv_results[cv]['returns']).mean(1)
+                port_perf['equal'][cv] = portfolio_return('equal', cv_results[cv]['returns'])
             else:
                 if cv_results[cv]['port'][p] is not None:
-                    port_perf[p][cv] = (cv_results[cv]['returns'] * cv_results[cv]['port'][p]).sum(1)
+                    port_perf[p][cv] = portfolio_return(p, cv_results[cv]['returns'], cv_results[cv]['port'][p])
                 else:
+                    LOGGER.info(f'Warning: No weight for {p} portfolio at cv {cv}. Setting to NaN')
                     port_perf[p][cv] = cv_results[cv]['returns'] * np.nan
+            if annualized:
+                if p == 'equal':
+                    train_port_perf = portfolio_return('equal', cv_results[cv]['train_returns'])
+                else:
+                    train_port_perf = portfolio_return(p, cv_results[cv]['train_returns'], cv_results[cv]['port'][p])
+
+                # Check Jaeger et al 2021
+                base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
+                leverage = 0.05 / base_vol
+                port_perf[p][cv] = leverage * port_perf[p][cv]
 
             port_perf[p]['total'] = pd.concat([port_perf[p]['total'], port_perf[p][cv]])
 
+    return port_perf
+
+
+def portfolio_return(portfolio, returns, weights: Optional[np.ndarray] = None):
+    if portfolio != 'equal':
+        assert weights is not None
+    if portfolio == 'equal':
+        port_perf = returns.mean(1)
+    else:
+        port_perf = (returns * weights).sum(1)
     return port_perf
 
 
@@ -271,6 +317,7 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
         index=embedding.index,
         columns=embedding.index)
     res['w'] = embedding
+    res['train_returns'] = train_returns
     res['returns'] = returns
     if compute_weights:
         assert market_budget is not None
