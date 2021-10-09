@@ -7,7 +7,7 @@ from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_we
     get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
+PORTFOLIOS = ['equal', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
 
 if __name__ == "__main__":
     import argparse, json
@@ -88,13 +88,15 @@ if __name__ == "__main__":
                                        window=args.window,
                                        n_jobs=args.n_jobs)
         port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios)
+
     dates = [cv_results[0][cv]['test_features'].index[0] for cv in cv_results[0]]
     ASSETS = list(cv_results[i][0]['returns'].columns)
 
     # Weights
     port_weights = {}
     for p in PORTFOLIOS:
-        port_weights[p] = get_ts_weights(cv_results, port=p)
+        if p != 'equal':
+            port_weights[p] = get_ts_weights(cv_results, port=p)
 
     # Get average perf across runs
     ann_perf = {}
@@ -118,6 +120,9 @@ if __name__ == "__main__":
 
     # Plot perf
     if args.save:
+        plot_perf(ann_perf, strategies=['equal', 'hrp', 'herc', 'ae_rp_c'],
+                  save_path=f"{save_dir}/performance_equal_other.png",
+                  show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
                   show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
