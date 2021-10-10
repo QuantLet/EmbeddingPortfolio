@@ -1,13 +1,13 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
+import os, pickle
 import numpy as np
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_weights, backtest_stats, plot_perf, \
     get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
 
 if __name__ == "__main__":
     import argparse, json
@@ -98,7 +98,7 @@ if __name__ == "__main__":
             port_weights[p] = get_ts_weights(cv_results, port=p)
 
     # Get average perf across runs
-    ann_perf = {}
+    ann_perf = pd.DataFrame()
     for p in PORTFOLIOS:
         if 'ae' in p:
             ann_perf[p] = get_average_perf(port_perf, port=p)
@@ -108,21 +108,25 @@ if __name__ == "__main__":
     # Some renaming
     port_weights['aerp'] = port_weights['ae_ivp'].copy()
     port_weights['aeerc'] = port_weights['ae_rp'].copy()
-    ann_perf['aerp'] = ann_perf['ae_ivp'].copy()
-    ann_perf['aeerc'] = ann_perf['ae_rp'].copy()
+    ann_perf['aerp'] = ann_perf.loc[:, 'ae_ivp'].values
+    ann_perf['aeerc'] = ann_perf.loc[:, 'ae_rp'].values
 
     port_weights.pop('ae_ivp')
     port_weights.pop('ae_rp')
-    ann_perf.pop('ae_ivp')
-    ann_perf.pop('ae_rp')
+    ann_perf.drop(['ae_ivp', 'ae_rp'], axis=1, inplace=True)
 
     # Plot perf
     if args.save:
-        plot_perf(ann_perf, strategies=['equal', 'markowitz', 'hrp', 'herc', 'aeerc', 'ae_rp_c'],
+        LOGGER.info('Saving performance... ')
+        ann_perf.to_csv(f"{save_dir}/portfolios_returns.csv")
+        pickle.dump(port_weights, open(f"{save_dir}/portfolios_weights.p", "wb"))
+
+        STRAT = PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'herc', 'aeerc', 'ae_rp_c']
+        plot_perf(ann_perf, strategies=STRAT,
                   save_path=f"{save_dir}/performance_all.png",
                   show=args.show, legend=True)
-        plot_perf(ann_perf, strategies=['equal', 'markowitz', 'hrp', 'herc', 'ae_rp_c'],
-                  save_path=f"{save_dir}/performance_no_aeerc.png",
+        plot_perf(ann_perf, strategies=[p for p in STRAT if p not in ['aerp', 'aeerc']],
+                  save_path=f"{save_dir}/performance_aeerc_vs_all.png",
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
                   show=args.show, legend=True)
@@ -132,6 +136,9 @@ if __name__ == "__main__":
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['herc', 'ae_rp_c'], save_path=f"{save_dir}/performance_herc_aeerc_cluster.png",
                   show=args.show, legend=True)
+        if 'shrink_markowitz' in PORTFOLIOS:
+            bar_plot_weights(port_weights['shrink_markowitz'], save_path=f"{save_dir}/weights_shrink_markowitz.png",
+                             show=args.show)
         bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
         bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
         bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show)
