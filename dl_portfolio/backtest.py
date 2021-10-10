@@ -19,7 +19,7 @@ import scipy
 PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'ae_rp_c']
 
 
-def get_ts_weights(cv_results, port):
+def get_ts_weights(cv_results, port) -> pd.DataFrame:
     dates = [cv_results[0][cv]['returns'].index[0] for cv in cv_results[0]]
     weights = pd.DataFrame()
     for cv in cv_results[0]:
@@ -39,7 +39,7 @@ def get_ts_weights(cv_results, port):
     return weights
 
 
-def get_average_perf(port_perf: Dict, port: str):
+def get_average_perf(port_perf: Dict, port: str) -> pd.DataFrame:
     perf = pd.DataFrame()
     for i in port_perf:
         perf = pd.concat([perf, port_perf[i][port]['total']], 1)
@@ -312,10 +312,8 @@ def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weigh
     res['test_pred'] = pred
     res['Sf'] = train_features.cov()
     res['Su'] = scaled_residuals.cov()
-    res['H'] = pd.DataFrame(
-        np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
-        index=embedding.index,
-        columns=embedding.index)
+    res['H'] = pd.DataFrame(np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
+                            index=embedding.index, columns=embedding.index)
     res['w'] = embedding
     res['train_returns'] = train_returns
     res['returns'] = returns
