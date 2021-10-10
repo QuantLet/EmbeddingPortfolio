@@ -173,6 +173,10 @@ def total_average_turnover(weights):
 def adjusted_sharpe_ratio(perf, period: int = 1):
     # check (Pezier and White (2008))
     # SR x [1 + (S/6) x SR - ((K-3) / 24) x SR^2]
+
+    # annualized ASR = sqrt(period) * ASR
+    # Indeed annualized skew = skew / sqrt(period) and annualized kurtosis = kurtosis / period
+
     sr = sharpe_ratio(perf)
     skew = scipy.stats.skew(perf, axis=0)
     kurtosis = scipy.stats.kurtosis(perf, axis=0)
