@@ -89,14 +89,14 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
     """
     strats = list(perf.keys())
     stats = pd.DataFrame(index=strats,
-                         columns=['Return', 'Volatility', 'Skewness', 'Kurtosis', 'VaR-5%',
+                         columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
                                   'ES-5%', 'SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
                          dtype=np.float32)
     for strat in strats:
         stats.loc[strat] = [perf[strat].mean(),
                             annualized_volatility(perf[strat], period=period),
                             scipy.stats.skew(perf[strat], axis=0),
-                            scipy.stats.kurtosis(perf[strat], axis=0),
+                            scipy.stats.kurtosis(perf[strat], axis=0) - 3,
                             hist_VaR(perf[strat], level=0.05),
                             hist_ES(perf[strat], level=0.05),
                             sharpe_ratio(perf[strat], period=period),
@@ -171,14 +171,13 @@ def total_average_turnover(weights):
 
 
 def adjusted_sharpe_ratio(perf, period: int = 1):
-    # check R implementation
-    # https://rdrr.io/cran/PerformanceAnalytics/man/AdjustedSharpeRatio.html:
+    # check (Pezier and White (2008))
     # SR x [1 + (S/6) x SR - ((K-3) / 24) x SR^2]
-    sr = sharpe_ratio(perf, period=period)
+    sr = sharpe_ratio(perf)
     skew = scipy.stats.skew(perf, axis=0)
     kurtosis = scipy.stats.kurtosis(perf, axis=0)
 
-    return sr * (1 + (skew / 6) * sr - ((kurtosis - 3) / 24) * (sr ** 2))
+    return sr * (1 + (skew / 6) * sr - ((kurtosis - 3) / 24) * (sr ** 2)) * np.sqrt(period)
 
 
 def sharpe_ratio(perf, period: int = 1):
