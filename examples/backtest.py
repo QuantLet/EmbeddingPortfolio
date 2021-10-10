@@ -126,7 +126,7 @@ if __name__ == "__main__":
                   save_path=f"{save_dir}/performance_all.png",
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=[p for p in STRAT if p not in ['aerp', 'aeerc']],
-                  save_path=f"{save_dir}/performance_aeerc_vs_all.png",
+                  save_path=f"{save_dir}/performance_ae_rp_c_vs_all.png",
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
                   show=args.show, legend=True)
