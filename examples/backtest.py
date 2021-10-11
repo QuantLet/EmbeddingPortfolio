@@ -136,6 +136,9 @@ if __name__ == "__main__":
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['herc', 'ae_rp_c'], save_path=f"{save_dir}/performance_herc_aeerc_cluster.png",
                   show=args.show, legend=True)
+        plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'], save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
+                  show=args.show, legend=True)
+
         if 'shrink_markowitz' in PORTFOLIOS:
             bar_plot_weights(port_weights['shrink_markowitz'], save_path=f"{save_dir}/weights_shrink_markowitz.png",
                              show=args.show)
@@ -185,6 +188,13 @@ if __name__ == "__main__":
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight')
+    if args.show:
+        plt.show()
+
+    plt.figure(figsize=(20, 10))
+    plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['markowitz'] + 1))
+    if args.save:
+        plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight')
     if args.show:
         plt.show()
 
