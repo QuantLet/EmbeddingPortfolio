@@ -92,6 +92,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                          columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
                                   'ES-5%', 'SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
                          dtype=np.float32)
+    n_assets = weights['hrp'].shape[-1]
     for strat in strats:
         stats.loc[strat] = [perf[strat].mean(),
                             annualized_volatility(perf[strat], period=period),
@@ -104,7 +105,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
                             ceq(perf[strat]),
-                            sspw(weights[strat]) if strat != 'equal' else np.nan,
+                            sspw(weights[strat]) if strat != 'equal' else n_assets * (1/n_assets)**2,
                             total_average_turnover(weights[strat]) if strat != 'equal' else 0.
                             ]
     if format:
