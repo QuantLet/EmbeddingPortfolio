@@ -16,7 +16,7 @@ from dl_portfolio.constant import CRYPTO_ASSETS
 import matplotlib.pyplot as plt
 import scipy
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'ae_rp_c']
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'ae_rp_c', 'aeaa']
 
 
 def get_ts_weights(cv_results, port) -> pd.DataFrame:
@@ -105,7 +105,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
                             ceq(perf[strat]),
-                            sspw(weights[strat]) if strat != 'equal' else n_assets * (1/n_assets)**2,
+                            sspw(weights[strat]) if strat != 'equal' else n_assets * (1 / n_assets) ** 2,
                             total_average_turnover(weights[strat]) if strat != 'equal' else 0.
                             ]
     if format:
@@ -359,7 +359,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
         for cv in range(n_folds):
             _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget,
                                        compute_weights=compute_weights,
-                                       window=window, **kwargs)
+                                       window=window,  dataset=dataset, **kwargs)
 
     return cv_results
 
@@ -367,7 +367,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
                       portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'],
                       **kwargs):
-    assert all([p in PORTFOLIOS for p in portfolio])
+    assert all([p in PORTFOLIOS for p in portfolio]), [p for p in portfolio if p not in PORTFOLIOS]
     port_w = {}
 
     mu = returns.mean()
@@ -417,6 +417,12 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
         assert budget is not None
         assert embedding is not None
         port_w['ae_rp_c'] = ae_riskparity_weights(returns, embedding, budget, risk_parity='cluster')
+
+    if 'aeaa' in portfolio:
+        LOGGER.info('Computing AE Asset Allocation weights...')
+        assert budget is not None
+        assert embedding is not None
+        port_w['aeaa'] = aeaa_weights(returns, embedding)
 
     return port_w
 
@@ -496,7 +502,6 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
 
     return weights
 
-
 def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget'):
     """
 
@@ -547,6 +552,28 @@ def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget
     weights = pd.Series(dtype='float32')
     for c in cluster_weights:
         weights = pd.concat([weights, cluster_weights[c] * c_weights[c]])
+    weights = weights.reindex(returns.columns)  # rerorder
+    weights.fillna(0., inplace=True)
+
+    return weights
+
+
+def aeaa_weights(returns: Union[np.ndarray, pd.DataFrame], embedding: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
+    max_cluster = embedding.shape[-1] - 1
+    # First get cluster allocation to forget about small contribution
+    clusters, _ = get_cluster_labels(embedding)
+    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
+    n_clusters = embedding.shape[-1]
+
+    # Now get weights of assets inside each cluster
+    cluster_weights = {c: pd.Series([1/len(clusters[c])] * len(clusters[c]), index = clusters[c]) for c in clusters}
+    # {asset: 1 / n_items for asset in clusters[c]}}
+
+    # Compute asset weight inside global portfolio
+    weights = pd.Series(dtype='float32')
+    for c in cluster_weights:
+        weights = pd.concat([weights, cluster_weights[c]])
+    weights = weights / n_clusters  # Rescale each weight
     weights = weights.reindex(returns.columns)  # rerorder
     weights.fillna(0., inplace=True)
 

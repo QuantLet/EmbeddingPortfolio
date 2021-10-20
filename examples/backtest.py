@@ -7,7 +7,10 @@ from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_we
     get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c']
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ae_ivp', 'hrp', 'herc', 'ae_rp', 'ae_rp_c', 'aeaa']
+# PORTFOLIOS = ['equal', 'ae_ivp', 'aeaa']
+# STRAT = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'herc', 'aeerc', 'ae_rp_c']
+STRAT = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'herc', 'aeerc', 'ae_rp_c', 'aeaa']
 
 if __name__ == "__main__":
     import argparse, json
@@ -121,7 +124,6 @@ if __name__ == "__main__":
         ann_perf.to_csv(f"{save_dir}/portfolios_returns.csv")
         pickle.dump(port_weights, open(f"{save_dir}/portfolios_weights.p", "wb"))
 
-        STRAT = PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'herc', 'aeerc', 'ae_rp_c']
         plot_perf(ann_perf, strategies=STRAT,
                   save_path=f"{save_dir}/performance_all.png",
                   show=args.show, legend=True)
@@ -136,7 +138,8 @@ if __name__ == "__main__":
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['herc', 'ae_rp_c'], save_path=f"{save_dir}/performance_herc_aeerc_cluster.png",
                   show=args.show, legend=True)
-        plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'], save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
+        plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'],
+                  save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
                   show=args.show, legend=True)
 
         if 'shrink_markowitz' in PORTFOLIOS:
@@ -149,7 +152,9 @@ if __name__ == "__main__":
         bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show)
         bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
         bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
+        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show)
     else:
+        plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], show=args.show)
         bar_plot_weights(port_weights['aerp'], show=args.show)
@@ -161,42 +166,33 @@ if __name__ == "__main__":
         plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'], show=args.show, legend=True)
         bar_plot_weights(port_weights['hrp'], show=args.show)
         bar_plot_weights(port_weights['ae_rp_c'], show=args.show)
+        bar_plot_weights(port_weights['aeaa'], show=args.show)
 
     # Plot excess return
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['aerp'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_hrp_aerp.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['aeerc'] + 1) - np.cumprod(ann_perf['herc'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_herc_aeerc.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['herc'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_herc_aeerc_cluster.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['markowitz'] + 1))
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     # Plot one cv weight
     cv = 0
@@ -209,8 +205,6 @@ if __name__ == "__main__":
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_hrp_aerp.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(14, 7))
     plt.bar(ASSETS, port_weights['herc'].iloc[cv].values, label='herc')
@@ -220,8 +214,6 @@ if __name__ == "__main__":
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_herc_aeerc.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     plt.figure(figsize=(14, 7))
     plt.bar(ASSETS, port_weights['hrp'].iloc[cv].values, label='hrp')
@@ -231,10 +223,9 @@ if __name__ == "__main__":
     x = plt.xticks(rotation=45)
     if args.save:
         plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight')
-    if args.show:
-        plt.show()
 
     # Get statistics
     stats = backtest_stats(ann_perf, port_weights, period=252, format=True)
     if args.save:
         stats.to_csv(f"{save_dir}/backtest_stats.csv")
+    print(stats.to_string())
