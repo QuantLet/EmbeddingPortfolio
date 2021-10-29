@@ -7,6 +7,7 @@ setup(
     author='Bruno Spilak',
     author_email='bruno.spilak@gmail.com',
     dependency_links=[],
+    python_requires='~=3.8',
     install_requires=[
         "numpy>=1.19.4",
         "pandas>=1.1.4",
