@@ -46,11 +46,13 @@ if __name__ == "__main__":
         LOGGER.info(f"Saving result to {save_dir}")
         os.makedirs(f"{save_dir}/cv_plots/")
 
+
+    # Get results for all runs
+    LOGGER.info(f"Loading results")
     models = os.listdir(args.base_dir)
     models = [m for m in models if m[0] != '.']
     paths = [f"{args.base_dir}/{d}" for d in models]
 
-    # Get results for all runs
     cv_results = {}
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
@@ -60,8 +62,8 @@ if __name__ == "__main__":
     cv_labels = {
         cv: {i: cv_results[i][cv]['labels'] for i in cv_results.keys()} for cv in range(n_folds)
     }
-
     # Compute Rand index
+    LOGGER.info(f"Compute Rand Index")
     EVALUATION['cluster']['rand_index'] = {}
     n_runs = len(cv_results)
     cv_rand = {}
@@ -69,6 +71,7 @@ if __name__ == "__main__":
         cv_rand[cv] = rand_score_permutation(cv_labels[cv])
 
     # Plot heatmap
+    LOGGER.info(f"CV Rand Index heatmap")
     trii = np.triu_indices(n_runs, k=1)
     for cv in cv_rand:
         mean = np.mean(cv_rand[cv][trii])
@@ -85,6 +88,7 @@ if __name__ == "__main__":
     EVALUATION['cluster']['rand_index']['cv'] = [np.mean(cv_rand[cv][trii]) for cv in cv_rand]
 
     # Plot heatmap of average rand
+    LOGGER.info(f"Average Rand Index heatmap")
     avg_rand = np.zeros_like(cv_rand[0])
     trii = np.triu_indices(n_runs, k=1)
     for cv in cv_rand:
@@ -105,6 +109,7 @@ if __name__ == "__main__":
     plt.close()
 
     # Consensus matrix
+    LOGGER.info(f"Consensus matrix heatmap")
     assets = cv_labels[cv][0]['label'].index
     avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
     for cv in cv_labels:
@@ -135,5 +140,7 @@ if __name__ == "__main__":
     plt.close()
 
     # Save final result
+    LOGGER.info(f"Saving result evaluation")
     if args.save:
         json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
+    LOGGER.info(f"Done")
