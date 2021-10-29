@@ -9,24 +9,23 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-# Data
 dataset = 'bond'
-show_plot = True
+show_plot = False
 save = False
+
 resample = {
     'method': 'nbb',
     'where': ['train'],
-    'block_length': 44
+    'block_length': 60,
+    'when': 'each_epoch'
 }
+loss_asset_weights = None
+crix = False
+crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
-crix = True
-loss_asset_weights = {'CRIX': 2}
-loss = 'mse'
-
-crypto_assets = None
-assets = []
 # tf.config.run_functions_eagerly(True)
-seed = np.random.randint(0, 100)
+seed = None  # np.random.randint(0, 100)
+assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
@@ -35,7 +34,7 @@ l_name = 'l2'
 l = 1e-3
 activation = 'relu'
 features_config = None
-model_name = f'{dataset}_activation_{activation}_encoding_{encoding_dim}_time_feature_wu_{weightage}_wo_{ortho_weightage}_{l_name}_{l}'
+model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False  # True
@@ -55,6 +54,7 @@ batch_size = 32
 drop_remainder_obs = False
 val_size = None  # 22*6 # 30 * 24
 test_size = 0
+loss = 'mse'
 label_param = None
 # label_param = {
 #     'lq': 0.05,
@@ -106,62 +106,80 @@ callbacks = {
 data_specs = {
     0: {
         'start': '2016-06-30',
-        'val_start': '2018-12-11',
-        'end': '2019-01-11'
+        'val_start': '2019-11-13',
+        'test_start': '2019-12-12',
+        'end': '2020-01-11'
     },
     1: {
         'start': '2016-06-30',
-        'val_start': '2019-01-12',
-        'end': '2019-02-11'
+        'val_start': '2019-12-13',
+        'test_start': '2020-01-12',
+        'end': '2020-02-11'
     },
     2: {
         'start': '2016-06-30',
-        'val_start': '2019-02-12',
-        'end': '2019-03-11'
+        'val_start': '2020-01-13',
+        'test_start': '2020-02-12',
+        'end': '2020-03-11'
     },
     3: {
         'start': '2016-06-30',
-        'val_start': '2019-03-12',
-        'end': '2019-04-11'
+        'val_start': '2020-02-13',
+        'test_start': '2020-03-12',
+        'end': '2020-04-11'
     },
     4: {
         'start': '2016-06-30',
-        'val_start': '2019-04-12',
-        'end': '2019-05-11'
+        'val_start': '2020-03-13',
+        'test_start': '2020-04-12',
+        'end': '2020-05-11'
     },
     5: {
         'start': '2016-06-30',
-        'val_start': '2019-05-12',
-        'end': '2019-06-11'
+        'val_start': '2020-04-13',
+        'test_start': '2020-05-12',
+        'end': '2020-06-11'
     },
     6: {
         'start': '2016-06-30',
-        'val_start': '2019-06-12',
-        'end': '2019-07-11'
+        'val_start': '2020-05-13',
+        'test_start': '2020-06-12',
+        'end': '2020-07-11'
     },
     7: {
         'start': '2016-06-30',
-        'val_start': '2019-07-12',
-        'end': '2019-08-11'
+        'val_start': '2020-06-13',
+        'test_start': '2020-07-12',
+        'end': '2020-08-11'
     },
     8: {
         'start': '2016-06-30',
-        'val_start': '2019-08-12',
-        'end': '2019-09-11'
+        'val_start': '2020-07-13',
+        'test_start': '2020-08-12',
+        'end': '2020-09-11'
     },
     9: {
         'start': '2016-06-30',
-        'val_start': '2019-09-12',
-        'end': '2019-10-11'
+        'val_start': '2020-08-13',
+        'test_start': '2020-09-12',
+        'end': '2020-10-11'
     },
     10: {
         'start': '2016-06-30',
-        'val_start': '2019-10-12',
-        'end': '2019-11-11'
+        'val_start': '2020-09-13',
+        'test_start': '2020-10-12',
+        'end': '2020-11-11'
     },
     11: {
         'start': '2016-06-30',
-        'val_start': '2019-11-12',
-        'end': '2019-12-11'
+        'val_start': '2020-10-13',
+        'test_start': '2020-11-12',
+        'end': '2020-12-11'
+    },
+    12: {
+        'start': '2016-06-30',
+        'val_start': '2020-11-13',
+        'test_start': '2020-12-12',
+        'end': '2021-01-11'
     }
 }
