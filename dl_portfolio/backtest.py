@@ -16,7 +16,9 @@ from dl_portfolio.constant import CRYPTO_ASSETS
 import matplotlib.pyplot as plt
 import scipy
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'ae_rp_c', 'aeaa']
+PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'hcaa',
+              'ae_rp_c',
+              'aeaa']
 
 
 def get_ts_weights(cv_results, port) -> pd.DataFrame:
@@ -359,7 +361,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
         for cv in range(n_folds):
             _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget,
                                        compute_weights=compute_weights,
-                                       window=window,  dataset=dataset, **kwargs)
+                                       window=window, dataset=dataset, **kwargs)
 
     return cv_results
 
@@ -397,9 +399,14 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
         port_w['hrp'] = hrp_weights(S)
 
     if 'herc' in portfolio:
-        LOGGER.info('Computing HERC weights...')
+        LOGGER.info('Computing HERC weights with variance as risk measure...')
         port_w['herc'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'),
-                                      risk_measure=kwargs.get('risk_measure', 'equal_weighting'))
+                                      risk_measure='variance')
+
+    if 'hcaa' in portfolio:
+        LOGGER.info('Computing HCAA weights...')
+        port_w['hcaa'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'),
+                                      risk_measure='equal_weighting')
 
     if 'rp' in portfolio:
         LOGGER.info('Computing Riskparity weights...')
@@ -420,9 +427,11 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
 
     if 'aeaa' in portfolio:
         LOGGER.info('Computing AE Asset Allocation weights...')
-        assert budget is not None
-        assert embedding is not None
         port_w['aeaa'] = aeaa_weights(returns, embedding)
+
+    if 'kmaa' in portfolio:
+        LOGGER.info('Computing KMeans Asset Allocation weights...')
+        port_w['aeaa'] = kmaa_weights(returns, embedding)
 
     return port_w
 
@@ -502,6 +511,7 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
 
     return weights
 
+
 def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget'):
     """
 
@@ -558,6 +568,26 @@ def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget
     return weights
 
 
+def kmaa_weights(returns: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
+    raise NotImplementedError()
+    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
+    n_clusters = embedding.shape[-1]
+
+    # Now get weights of assets inside each cluster
+    cluster_weights = {c: pd.Series([1 / len(clusters[c])] * len(clusters[c]), index=clusters[c]) for c in clusters}
+    # {asset: 1 / n_items for asset in clusters[c]}}
+
+    # Compute asset weight inside global portfolio
+    weights = pd.Series(dtype='float32')
+    for c in cluster_weights:
+        weights = pd.concat([weights, cluster_weights[c]])
+    weights = weights / n_clusters  # Rescale each weight
+    weights = weights.reindex(returns.columns)  # rerorder
+    weights.fillna(0., inplace=True)
+
+    return weights
+
+
 def aeaa_weights(returns: Union[np.ndarray, pd.DataFrame], embedding: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
@@ -566,7 +596,7 @@ def aeaa_weights(returns: Union[np.ndarray, pd.DataFrame], embedding: Union[np.n
     n_clusters = embedding.shape[-1]
 
     # Now get weights of assets inside each cluster
-    cluster_weights = {c: pd.Series([1/len(clusters[c])] * len(clusters[c]), index = clusters[c]) for c in clusters}
+    cluster_weights = {c: pd.Series([1 / len(clusters[c])] * len(clusters[c]), index=clusters[c]) for c in clusters}
     # {asset: 1 / n_items for asset in clusters[c]}}
 
     # Compute asset weight inside global portfolio
