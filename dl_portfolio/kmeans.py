@@ -9,7 +9,6 @@ from sklearn.cluster import KMeans
 
 
 def run(ae_config, seed=None):
-    random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
     if seed is None:
@@ -19,6 +18,8 @@ def run(ae_config, seed=None):
     LOGGER.info(f"Set seed: {seed}")
 
     if ae_config.save:
+        if not os.path.isdir('log_kmeans'):
+            os.mkdir('log_kmeans')
         iter = len(os.listdir('log_kmeans'))
         save_dir = f"log_kmeans/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
         os.makedirs(save_dir)
