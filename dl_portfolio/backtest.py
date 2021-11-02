@@ -15,10 +15,10 @@ from dl_portfolio.ae_data import load_data
 from dl_portfolio.constant import CRYPTO_ASSETS
 import matplotlib.pyplot as plt
 import scipy
+from sklearn.cluster import KMeans
 
 PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'hcaa',
-              'ae_rp_c',
-              'aeaa']
+              'ae_rp_c', 'kmaa', 'aeaa']
 
 
 def get_ts_weights(cv_results, port) -> pd.DataFrame:
@@ -431,7 +431,8 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
 
     if 'kmaa' in portfolio:
         LOGGER.info('Computing KMeans Asset Allocation weights...')
-        port_w['aeaa'] = kmaa_weights(returns, embedding)
+        assert embedding is not None
+        port_w['kmaa'] = kmaa_weights(returns, n_clusters=embedding.shape[-1])
 
     return port_w
 
@@ -568,10 +569,12 @@ def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget
     return weights
 
 
-def kmaa_weights(returns: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
-    raise NotImplementedError()
-    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
-    n_clusters = embedding.shape[-1]
+def kmaa_weights(returns: pd.DataFrame, n_clusters: int) -> pd.Series:
+    kmeans = KMeans(n_clusters=n_clusters, random_state=0)
+    kmeans.fit(returns.T)
+    labels = pd.DataFrame(kmeans.labels_.reshape(1, -1), columns=returns.columns).T
+    labels.columns = ['label']
+    clusters = {i: list(labels[labels['label'] == i].index) for i in range(n_clusters)}
 
     # Now get weights of assets inside each cluster
     cluster_weights = {c: pd.Series([1 / len(clusters[c])] * len(clusters[c]), index=clusters[c]) for c in clusters}
