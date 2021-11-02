@@ -310,13 +310,14 @@ def load_raffinot_multi_asset():
 
 
 def load_global_bond_data(crix=False, crypto_assets=None):
-    data = pd.read_csv('./data/ALLA/alla_data.csv')
+    data = pd.read_csv('./data/ALLA/alla_data_20211101.csv')
     data = data.interpolate(method='polynomial', order=2)
     data = data.set_index('Date')
     data.index = pd.to_datetime(data.index)
     data = data.dropna()
 
     if crix:
+        raise NotImplementedError("You need to update CRIX data or use old all_data.csv")
         assert crypto_assets is None
         crix = pd.read_pickle('./data/crypto_data/crix_1H_20160630_20210614.p')
         crix = crix.resample('1D', closed='right', label='left').agg('last')
@@ -325,7 +326,7 @@ def load_global_bond_data(crix=False, crypto_assets=None):
         data = pd.concat([data, crix], 1)
         data = data.dropna()
     if crypto_assets is not None:
-        crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20210624.p')
+        crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20211102.p')
         crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
         crypto_data = crypto_data.resample('1H',
                                            closed='right',
