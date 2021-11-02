@@ -9,9 +9,9 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset = 'bond'
+dataset='bond'
 show_plot = False
-save = False
+save = True
 
 resample = {
     'method': 'nbb',
@@ -24,8 +24,8 @@ crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
 # tf.config.run_functions_eagerly(True)
-seed = None  # np.random.randint(0, 100)
-assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
+seed = None # np.random.randint(0, 100)
+assets = None # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
@@ -77,12 +77,11 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
 
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
-
 
 callbacks = {
     'EarlyStopping': {
@@ -181,5 +180,59 @@ data_specs = {
         'val_start': '2020-11-13',
         'test_start': '2020-12-12',
         'end': '2021-01-11'
+    },
+    13: {
+        'start': '2016-06-30',
+        'val_start': '2020-12-13',
+        'test_start': '2021-01-12',
+        'end': '2021-02-11'
+    },
+    14: {
+        'start': '2016-06-30',
+        'val_start': '2021-01-13',
+        'test_start': '2021-02-12',
+        'end': '2021-03-11'
+    },
+    15: {
+        'start': '2016-06-30',
+        'val_start': '2021-02-13',
+        'test_start': '2021-03-12',
+        'end': '2021-04-11'
+    },
+    16: {
+        'start': '2016-06-30',
+        'val_start': '2021-03-13',
+        'test_start': '2021-04-12',
+        'end': '2021-05-11'
+    },
+    17: {
+        'start': '2016-06-30',
+        'val_start': '2021-04-13',
+        'test_start': '2021-05-12',
+        'end': '2021-06-11'
+    },
+    18: {
+        'start': '2016-06-30',
+        'val_start': '2021-05-13',
+        'test_start': '2021-06-12',
+        'end': '2021-07-11'
+    },
+    19: {
+        'start': '2016-06-30',
+        'val_start': '2021-06-13',
+        'test_start': '2021-07-12',
+        'end': '2021-08-11'
+    },
+    20: {
+        'start': '2016-06-30',
+        'val_start': '2021-07-13',
+        'test_start': '2021-08-12',
+        'end': '2021-09-11'
+    },
+    21: {
+        'start': '2016-06-30',
+        'val_start': '2021-08-13',
+        'test_start': '2021-09-12',
+        'end': '2021-10-11'
     }
 }
