@@ -367,8 +367,8 @@ def run(ae_config, seed=None):
                 test_prediction.to_pickle(f"{save_path}/test_prediction.p")
                 test_features.to_pickle(f"{save_path}/test_features.p")
 
-    if ae_config.save:
-        heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)
+    # if ae_config.save:
+    #     heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)
 
 
 def run_nbb(ae_config, seed=None):
