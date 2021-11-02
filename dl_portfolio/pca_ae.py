@@ -140,6 +140,15 @@ def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
 
 
 def heat_map_cluster(load_dir, show=False, save=False, filename='encoder_weights.p', **kwargs):
+    """
+    Heatmap of embedding matrix accros cv folds
+    :param load_dir:
+    :param show:
+    :param save:
+    :param filename:
+    :param kwargs:
+    :return:
+    """
     sets = [sets for sets in os.listdir(load_dir) if sets.isdigit()]
     sets.sort(key=lambda x: int(x))
     encoder_weights = {}
