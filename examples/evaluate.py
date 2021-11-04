@@ -112,10 +112,7 @@ if __name__ == "__main__":
     n_cv = len(cv_results[p])
     n_cols = 6
     n_rows = n_cv // n_cols + 1
-    if n_rows == 3:
-        figsize = (15, 18)
-    else:
-        figsize = (15, 12)
+    figsize = (15, int(n_rows * 6))
     fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
     cbar_ax = fig.add_axes([.91, .3, .03, .4])
     row = -1
