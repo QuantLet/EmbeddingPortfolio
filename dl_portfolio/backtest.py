@@ -389,11 +389,6 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
         LOGGER.info('Computing IVP weights...')
         port_w['ivp'] = ivp_weights(S)
 
-    if 'ae_ivp' in portfolio:
-        LOGGER.info('Computing AE IVP weights...')
-        assert embedding is not None
-        port_w['ae_ivp'] = ae_ivp_weights(returns, embedding)
-
     if 'hrp' in portfolio:
         LOGGER.info('Computing HRP weights...')
         port_w['hrp'] = hrp_weights(S)
@@ -413,6 +408,16 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
         assert budget is not None
         port_w['rp'] = riskparity_weights(S, budget=budget['rc'].values)
 
+    if 'kmaa' in portfolio:
+        LOGGER.info('Computing KMeans Asset Allocation weights...')
+        assert embedding is not None
+        port_w['kmaa'] = kmaa_weights(returns, n_clusters=embedding.shape[-1])
+
+    if 'ae_ivp' in portfolio:
+        LOGGER.info('Computing AE IVP weights...')
+        assert embedding is not None
+        port_w['ae_ivp'] = ae_ivp_weights(returns, embedding)
+
     if 'ae_rp' in portfolio:
         LOGGER.info('Computing AE Riskparity weights...')
         assert budget is not None
@@ -428,11 +433,6 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
     if 'aeaa' in portfolio:
         LOGGER.info('Computing AE Asset Allocation weights...')
         port_w['aeaa'] = aeaa_weights(returns, embedding)
-
-    if 'kmaa' in portfolio:
-        LOGGER.info('Computing KMeans Asset Allocation weights...')
-        assert embedding is not None
-        port_w['kmaa'] = kmaa_weights(returns, n_clusters=embedding.shape[-1])
 
     return port_w
 
@@ -531,38 +531,37 @@ def ae_riskparity_weights(returns, embedding, market_budget, risk_parity='budget
 
     # Now get weights of assets inside each cluster
     if risk_parity == 'budget':
-        cluster_weights = get_cluster_weights(returns.cov(),
-                                              embedding,
-                                              clusters,
-                                              market_budget=market_budget)
+        inner_cluster_weights = get_inner_cluster_weights(returns.cov(),
+                                                          embedding,
+                                                          clusters,
+                                                          market_budget=market_budget)
     elif risk_parity == 'cluster':
-        cluster_weights = get_cluster_weights(returns.cov(),
-                                              embedding,
-                                              clusters)
+        inner_cluster_weights = get_inner_cluster_weights(returns.cov(),
+                                                          embedding,
+                                                          clusters)
     else:
         raise NotImplementedError(risk_parity)
 
     # Now compute return of each cluster
     cluster_returns = pd.DataFrame()
-    for c in cluster_weights:
-        cret = (returns[cluster_weights[c].index] * cluster_weights[c]).sum(1)
+    for c in inner_cluster_weights:
+        cret = (returns[inner_cluster_weights[c].index] * inner_cluster_weights[c]).sum(1)
         cluster_returns = pd.concat([cluster_returns, cret], 1)
-    cluster_returns.columns = list(cluster_weights.keys())
+    cluster_returns.columns = list(inner_cluster_weights.keys())
 
     # Now get risk contribution of each cluster defined by user
-    cluster_rc = {c: (cluster_weights[c]).idxmax() for c in cluster_weights}
+    cluster_rc = {c: (inner_cluster_weights[c]).idxmax() for c in inner_cluster_weights}
     cluster_rc = {c: market_budget.loc[cluster_rc[c], 'rc'] for c in cluster_rc}
 
     # Compute cluster weights with risk parity portfolio
     cov = cluster_returns.cov()
     budget = np.array(list(cluster_rc.values()))
     budget = budget / np.sum(budget)
-    c_weights = rp.RiskParityPortfolio(covariance=cov, budget=budget).weights
-
+    cluster_weight = rp.RiskParityPortfolio(covariance=cov, budget=budget).weights
     # Compute asset weight inside global portfolio
     weights = pd.Series(dtype='float32')
-    for c in cluster_weights:
-        weights = pd.concat([weights, cluster_weights[c] * c_weights[c]])
+    for c in inner_cluster_weights:
+        weights = pd.concat([weights, inner_cluster_weights[c] * cluster_weight[c]])
     weights = weights.reindex(returns.columns)  # rerorder
     weights.fillna(0., inplace=True)
 
@@ -647,14 +646,15 @@ def ae_ivp_weights(returns, embedding):
 
 def get_cluster_var(cov, cluster_items, weights=None):
     """
+
     Compute the variance per cluster
 
     :param cov: covariance matrix
     :type cov: np.ndarray
     :param cluster_items: tickers in the cluster
     :type cluster_items: list
-    :return: the variance per cluster
-    :rtype: float
+    :param weights: portfolio weights. If None we will compute inverse variance weights
+    :return:
     """
     cov_slice = cov.loc[cluster_items, cluster_items]
     if weights is not None:
@@ -662,8 +662,8 @@ def get_cluster_var(cov, cluster_items, weights=None):
     return np.linalg.multi_dot((weights, cov_slice, weights))
 
 
-def get_cluster_weights(cov, embedding, clusters, market_budget=None):
-    cluster_weights = {}
+def get_inner_cluster_weights(cov, embedding, clusters, market_budget=None):
+    weights = {}
     n_clusters = len(clusters)
     for c in clusters:
         cluster_items = clusters[c]
@@ -672,18 +672,15 @@ def get_cluster_weights(cov, embedding, clusters, market_budget=None):
             if market_budget is not None:
                 budget = market_budget.loc[cluster_items, 'rc']
             else:
-                budget = embedding.loc[cluster_items, c] / np.sum(embedding.loc[cluster_items, c])
-
+                budget = embedding.loc[cluster_items, c] ** 2 / np.sum(embedding.loc[cluster_items, c] ** 2)
             cov_slice = cov.loc[cluster_items, cluster_items]
-
-            cluster_weights[c] = pd.Series(
+            weights[c] = pd.Series(
                 rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
                 index=cluster_items
             )
-    cluster_weights = {i: cluster_weights.get(i) for i in range(n_clusters) if
-                       cluster_weights.get(i) is not None}  # reorder dict
+    weights = {i: weights.get(i) for i in range(n_clusters) if weights.get(i) is not None}  # reorder dict
 
-    return cluster_weights
+    return weights
 
 
 def cluster_portfolio(returns, features_cov, embedding, no_leverage=True):
