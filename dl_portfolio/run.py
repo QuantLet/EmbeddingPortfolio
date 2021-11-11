@@ -348,6 +348,7 @@ def run(ae_config, seed=None):
 
         # LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.info(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
+        LOGGER.info(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
 
         if ae_config.save:
             train_data.to_pickle(f"{save_path}/train_returns.p")
