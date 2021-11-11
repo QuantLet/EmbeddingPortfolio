@@ -9,7 +9,7 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset = 'CAC'
+dataset = 'cac'
 show_plot = False
 save = True
 
