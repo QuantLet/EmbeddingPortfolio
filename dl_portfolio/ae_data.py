@@ -7,7 +7,7 @@ import numpy as np
 import datetime as dt
 from dl_portfolio.sample import id_nb_bootstrap
 
-DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'sp500']
+DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'sp500', 'cac']
 
 
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
@@ -255,10 +255,12 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
 
 
 def load_data(dataset='global', **kwargs):
-    assert dataset in DATASETS
+    assert dataset in DATASETS, dataset
     if dataset == 'bond':
         data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
                                              crypto_assets=kwargs.get('crypto_assets', None))
+    elif dataset == 'cac':
+        data, assets = load_cac_data(fillnan=kwargs.get('fillnan', True), start_date=kwargs.get('start_date'))
     elif dataset == 'global':
         assets = kwargs.get('assets', None)
         dropnan = kwargs.get('dropnan', False)
@@ -275,6 +277,21 @@ def load_data(dataset='global', **kwargs):
     else:
         raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
 
+    return data, assets
+
+
+def load_cac_data(fillnan: bool = True, start_date: Optional[str] = None):
+    data = pd.read_csv('data/CAC_2000101_20190101.csv', index_col=0)
+    data.index = pd.to_datetime(data.index)
+    # Droping assets with two many NaNs (recent stocks)
+    to_drop = list(data.columns[data.isna().sum() / len(data) * 100 > 9])
+    data = data.drop(to_drop, axis=1)
+    if start_date is None:
+        start_date = data.dropna().index[0]
+    data = data.loc[start_date:]
+    if fillnan:
+        data = data.interpolate(method='polynomial', order=2)
+    assets = list(data.columns)
     return data, assets
 
 
