@@ -1,5 +1,7 @@
 import datetime as dt
 import os
+from typing import Dict
+from dl_portfolio.regularizers import WeightsOrthogonality
 
 LOG_BASE_DIR = './dl_portfolio/log'
 
@@ -19,3 +21,24 @@ def get_best_model_from_dir(dir_):
     files.sort(key=lambda x: x[1])
     file = files[-1][0]
     return file
+
+
+def config_setter(config, params: Dict):
+    for k in params:
+        if k == 'encoding_dim':
+            config.encoding_dim = params[k]
+        elif k == 'ortho_weightage':
+            config.ortho_weightage = params[k]
+            config.kernel_regularizer = WeightsOrthogonality(
+                config.encoding_dim,
+                weightage=config.ortho_weightage,
+                axis=0,
+                regularizer={
+                    'name': config.l_name,
+                    'params': {config.l_name: config.l}
+                }
+            )
+        elif k == 'weightage':
+            config.weightage = params[k]
+
+    return config
