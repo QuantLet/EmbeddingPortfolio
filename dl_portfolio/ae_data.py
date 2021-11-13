@@ -43,11 +43,11 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
         val_data = None
         test_data = None
 
-    LOGGER.info(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
+    LOGGER.debug(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
     if val_data is not None:
-        LOGGER.info(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
+        LOGGER.debug(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
     if test_data is not None:
-        LOGGER.info(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
+        LOGGER.debug(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
 
     # featurization
     train_data = train_data.pct_change(1).dropna()
@@ -130,19 +130,19 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             where = resample.get('where', ['train'])
             block_length = resample.get('block_length', 44)
             if 'train' in where:
-                LOGGER.info(f"Resampling training data with 'nbb' method with block length {block_length}")
+                LOGGER.debug(f"Resampling training data with 'nbb' method with block length {block_length}")
                 # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
                 # train_data = train_data[nbb_id]
                 # dates['train'] = dates['train'][nbb_id]
                 train_data, dates['train'] = bb_resample_sample(train_data, dates['train'], block_length=block_length)
             if 'val' in where:
-                LOGGER.info(f"Resampling val data with 'nbb' method with block length {block_length}")
+                LOGGER.debug(f"Resampling val data with 'nbb' method with block length {block_length}")
                 # nbb_id = id_nb_bootstrap(len(val_data), block_length=block_length)
                 # val_data = val_data[nbb_id]
                 # dates['val'] = dates['val'][nbb_id]
                 val_data, dates['val'] = bb_resample_sample(val_data, dates['val'], block_length=block_length)
             if 'test' in where:
-                LOGGER.info(f"Resampling test data with 'nbb' method with block length {block_length}")
+                LOGGER.debug(f"Resampling test data with 'nbb' method with block length {block_length}")
                 # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
                 # test_data = test_data[nbb_id]
                 # dates['test'] = dates['test'][nbb_id]
@@ -169,7 +169,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
     start_date = []
     for asset_class in type:
         if asset_class == 'crypto':
-            LOGGER.info('Loading crypto data')
+            LOGGER.debug('Loading crypto data')
             crypto_assets = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP']
             # Load data
             crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800.p')
@@ -183,7 +183,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
             assets = assets + crypto_assets
             del crypto_data
         elif asset_class == 'forex':
-            LOGGER.info('Loading forex data')
+            LOGGER.debug('Loading forex data')
             fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
             fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
             fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
@@ -193,7 +193,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
             assets = assets + fx_assets
 
         elif asset_class == 'forex_metals':
-            LOGGER.info('Loading forex metals data')
+            LOGGER.debug('Loading forex metals data')
             fx_metals_assets = ['XAUUSD', 'XAGUSD']
             fx_m_data = pd.read_pickle('./data/histdatacom/forex_metals_f_3600_2014_2021_close_index.p')
             fx_m_data = fx_m_data.loc[:, pd.IndexSlice[fx_metals_assets, 'close']].droplevel(1, 1)
@@ -202,7 +202,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
             del fx_m_data
             assets = assets + fx_metals_assets
         elif asset_class == 'indices':
-            LOGGER.info('Loading indices data')
+            LOGGER.debug('Loading indices data')
             indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD', 'NSXUSD', 'HKXUSD', 'AUXUSD']
             indices_data = pd.read_pickle('./data/histdatacom/indices_f_3600_2014_2021_close_index.p')
 
@@ -213,7 +213,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
             del indices_data
             assets = assets + indices
         elif asset_class == 'commodities':
-            LOGGER.info('Loading commodities data')
+            LOGGER.debug('Loading commodities data')
             com_assets = ['WTIUSD', 'BCOUSD']
             com_data = pd.read_pickle('./data/histdatacom/commodities_f_3600_2014_2021_close_index.p')
             com_data = com_data.loc[:, pd.IndexSlice[com_assets, 'close']].droplevel(1, 1)
@@ -233,7 +233,7 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
     if freq not in ["1H", "H"]:
         # TODO
         raise NotImplementedError('You must verify logic')
-        LOGGER.info(f"Resampling to {freq} frequency")
+        LOGGER.debug(f"Resampling to {freq} frequency")
         data = data.resample(freq,
                              closed='right',
                              label='right').agg('last')
@@ -540,7 +540,7 @@ def get_sample_weights(close, label_func, **kwargs):
     class_weights = {
         c: class_weights[c] for c in classes
     }
-    LOGGER.info(f"Class weights:\n{class_weights}")
+    LOGGER.debug(f"Class weights:\n{class_weights}")
     sample_weights = np.zeros_like(labels, dtype=np.float32)
     for c in class_weights:
         sample_weights[labels == c] = class_weights[c]

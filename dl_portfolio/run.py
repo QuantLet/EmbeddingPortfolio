@@ -22,7 +22,7 @@ def run(ae_config, seed=None):
 
     np.random.seed(seed)
     tf.random.set_seed(seed)
-    LOGGER.info(f"Set seed: {seed}")
+    LOGGER.debug(f"Set seed: {seed}")
 
     if ae_config.save:
         iter = len(os.listdir(LOG_DIR))
@@ -50,11 +50,11 @@ def run(ae_config, seed=None):
     if ae_config.loss == 'weighted_mse':
         file_name = f"./data/sample_weights_lq_{ae_config.label_param['lq']}_uq_{ae_config.label_param['uq']}_w_{ae_config.label_param['window']}.p"
         if os.path.isfile(file_name):
-            LOGGER.info(f'Loading sample weights from {file_name}')
+            LOGGER.debug(f'Loading sample weights from {file_name}')
             df_sample_weights = pd.read_pickle(file_name)
             df_sample_weights = df_sample_weights[assets]
         else:
-            LOGGER.info('Computing sample weights ...')
+            LOGGER.debug('Computing sample weights ...')
             d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], dropnan=True)
             t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **ae_config.label_param)
             d, _ = load_data(type=['crypto'], dropnan=False)
@@ -65,13 +65,13 @@ def run(ae_config, seed=None):
             del d
             del c_sample_weights
             del t_sample_weights
-            LOGGER.info(f'Saving sample weights to {file_name}')
+            LOGGER.debug(f'Saving sample weights to {file_name}')
             df_sample_weights.to_pickle(
                 file_name)
-            LOGGER.info('Done')
+            LOGGER.debug('Done')
 
     for cv in ae_config.data_specs:
-        LOGGER.info(f'Starting with cv: {cv}')
+        LOGGER.debug(f'Starting with cv: {cv}')
         if ae_config.save:
             save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
@@ -79,7 +79,7 @@ def run(ae_config, seed=None):
             save_path = None
 
         if ae_config.shuffle_columns:
-            LOGGER.info('Shuffle assets order')
+            LOGGER.debug('Shuffle assets order')
             if cv == 0:
                 random_assets = assets.copy()
                 np.random.seed(random_seed)
@@ -91,7 +91,7 @@ def run(ae_config, seed=None):
                 np.random.shuffle(assets)
                 np.random.seed(seed)
 
-        LOGGER.info(f'Assets order: {assets}')
+        LOGGER.debug(f'Assets order: {assets}')
         if ae_config.loss == 'weighted_mse':
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
@@ -114,7 +114,7 @@ def run(ae_config, seed=None):
                                                      loss=ae_config.loss,
                                                      uncorrelated_features=ae_config.uncorrelated_features,
                                                      weightage=ae_config.weightage)
-        print(model.summary())
+        LOGGER.debug(model.summary())
 
         # Create dataset:
         shuffle = False
@@ -141,7 +141,7 @@ def run(ae_config, seed=None):
             loss_asset_weights = {a: 1. for a in assets}
             for a in ae_config.loss_asset_weights:
                 loss_asset_weights[a] = ae_config.loss_asset_weights[a]
-            LOGGER.info(f'Loss asset weights is: {loss_asset_weights}')
+            LOGGER.debug(f'Loss asset weights is: {loss_asset_weights}')
             loss_asset_weights = np.array(list(loss_asset_weights.values()))
             loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
         else:
@@ -181,7 +181,7 @@ def run(ae_config, seed=None):
             # tensorboard viz
             if ae_config.model_type != 'ae_model2':
                 embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
-            LOGGER.info(f"Loading weights from {save_path}/model.h5")
+            LOGGER.debug(f"Loading weights from {save_path}/model.h5")
             model.load_weights(f"{save_path}/model.h5")
 
         plot_history(history, save_path=save_path, show=ae_config.show_plot)
@@ -225,8 +225,8 @@ def run(ae_config, seed=None):
         #     np.random.seed(seed)
         #     train_data = np.transpose(train_data)
 
-        LOGGER.info(f'Train shape: {train_data.shape}')
-        LOGGER.info(f'Validation shape: {val_data.shape}')
+        LOGGER.debug(f'Train shape: {train_data.shape}')
+        LOGGER.debug(f'Validation shape: {val_data.shape}')
 
         # train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, ae_config.model_type, features=features)
         if features:
@@ -250,9 +250,9 @@ def run(ae_config, seed=None):
             val_features = encoder.predict(val_input)
 
         train_features = pd.DataFrame(train_features, index=dates['train'])
-        LOGGER.info(f"Train features covariance:\n{train_features.cov()}")
+        LOGGER.debug(f"Train features covariance:\n{train_features.cov()}")
         val_features = pd.DataFrame(val_features, index=dates['val'])
-        LOGGER.info(f"Val features covariance:\n{val_features.cov()}")
+        LOGGER.debug(f"Val features covariance:\n{val_features.cov()}")
         val_prediction = model.predict(val_input)
         val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
@@ -270,7 +270,7 @@ def run(ae_config, seed=None):
             encoder_weights2 = encoder_layer2.get_weights()[0]
             encoder_weights = np.dot(encoder_weights1, encoder_weights2)
             encoder_weights = pd.DataFrame(encoder_weights, index=assets)
-        LOGGER.info(f"Encoder weights:\n{encoder_weights}")
+        LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
 
         # train_cluster_portfolio = encoder.predict(train_data)
         # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
@@ -305,10 +305,10 @@ def run(ae_config, seed=None):
         # }
 
         # coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
-        # LOGGER.info(
+        # LOGGER.debug(
         #     f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
 
-        # LOGGER.info(
+        # LOGGER.debug(
         #     f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
 
         # Rescale back input data
@@ -321,7 +321,7 @@ def run(ae_config, seed=None):
             test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
 
         if ae_config.shuffle_columns:
-            LOGGER.info('Reorder results with base asset order')
+            LOGGER.debug('Reorder results with base asset order')
             val_prediction = val_prediction.loc[:, base_asset_order]
             train_data = train_data.loc[:, base_asset_order]
             val_data = val_data.loc[:, base_asset_order]
@@ -358,9 +358,9 @@ def run(ae_config, seed=None):
         else:
             heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
 
-        # LOGGER.info(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
-        LOGGER.info(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
-        LOGGER.info(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
+        # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
+        LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
+        LOGGER.debug(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
 
         if ae_config.save:
             train_data.to_pickle(f"{save_path}/train_returns.p")
@@ -393,7 +393,7 @@ def run_nbb(ae_config, seed=None):
 
     np.random.seed(seed)
     tf.random.set_seed(seed)
-    LOGGER.info(f"Set seed: {seed}")
+    LOGGER.debug(f"Set seed: {seed}")
 
     if ae_config.save:
         iter = len(os.listdir(LOG_DIR))
@@ -421,11 +421,11 @@ def run_nbb(ae_config, seed=None):
     if ae_config.loss == 'weighted_mse':
         file_name = f"./data/sample_weights_lq_{ae_config.label_param['lq']}_uq_{ae_config.label_param['uq']}_w_{ae_config.label_param['window']}.p"
         if os.path.isfile(file_name):
-            LOGGER.info(f'Loading sample weights from {file_name}')
+            LOGGER.debug(f'Loading sample weights from {file_name}')
             df_sample_weights = pd.read_pickle(file_name)
             df_sample_weights = df_sample_weights[assets]
         else:
-            LOGGER.info('Computing sample weights ...')
+            LOGGER.debug('Computing sample weights ...')
             d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], dropnan=True)
             t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **ae_config.label_param)
             d, _ = load_data(type=['crypto'], dropnan=False)
@@ -436,10 +436,10 @@ def run_nbb(ae_config, seed=None):
             del d
             del c_sample_weights
             del t_sample_weights
-            LOGGER.info(f'Saving sample weights to {file_name}')
+            LOGGER.debug(f'Saving sample weights to {file_name}')
             df_sample_weights.to_pickle(
                 file_name)
-            LOGGER.info('Done')
+            LOGGER.debug('Done')
 
     if ae_config.save:
         save_path = save_dir
@@ -447,12 +447,12 @@ def run_nbb(ae_config, seed=None):
         save_path = None
 
     if ae_config.shuffle_columns:
-        LOGGER.info('Shuffle assets order')
+        LOGGER.debug('Shuffle assets order')
         np.random.seed(random_seed)
         np.random.shuffle(assets)
         np.random.seed(seed)
 
-    LOGGER.info(f'Assets order: {assets}')
+    LOGGER.debug(f'Assets order: {assets}')
     if ae_config.loss == 'weighted_mse':
         # reorder columns
         df_sample_weights = df_sample_weights[assets]
@@ -499,7 +499,7 @@ def run_nbb(ae_config, seed=None):
         loss_asset_weights = {a: 1. for a in assets}
         for a in ae_config.loss_asset_weights:
             loss_asset_weights[a] = ae_config.loss_asset_weights[a]
-        LOGGER.info(f'Loss asset weights is: {loss_asset_weights}')
+        LOGGER.debug(f'Loss asset weights is: {loss_asset_weights}')
         loss_asset_weights = np.array(list(loss_asset_weights.values()))
         loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
     else:
@@ -520,7 +520,7 @@ def run_nbb(ae_config, seed=None):
     if ae_config.save:
         # tensorboard viz
         embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
-        LOGGER.info(f"Loading weights from {save_path}/model.h5")
+        LOGGER.debug(f"Loading weights from {save_path}/model.h5")
         model.load_weights(f"{save_path}/model.h5")
 
     plot_history(history, save_path=save_path, show=ae_config.show_plot)

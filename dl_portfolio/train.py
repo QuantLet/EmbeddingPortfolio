@@ -115,9 +115,9 @@ def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, 
         val_data = val_data[indices, :]
         # features['val'] = features['val'][indices, :]
 
-    LOGGER.info(f'Train shape: {train_data.shape}')
-    LOGGER.info(f'Validation shape: {val_data.shape}')
-    LOGGER.info(f'Test shape: {test_data.shape}')
+    LOGGER.debug(f'Train shape: {train_data.shape}')
+    LOGGER.debug(f'Validation shape: {val_data.shape}')
+    LOGGER.debug(f'Test shape: {test_data.shape}')
 
     if features:
         train_input = build_model_input(train_data, model_type, features=features['train'], assets=assets)
@@ -188,8 +188,8 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
     #     np.random.seed(seed)
     #     train_data = np.transpose(train_data)
 
-    LOGGER.info(f'Train shape: {train_data.shape}')
-    LOGGER.info(f'Validation shape: {val_data.shape}')
+    LOGGER.debug(f'Train shape: {train_data.shape}')
+    LOGGER.debug(f'Validation shape: {val_data.shape}')
 
     if features:
         train_input = build_model_input(train_data, model_type, features=features['train'], assets=assets)
@@ -254,13 +254,13 @@ def EarlyStopping(MetricList, min_delta=0.1, patience=20, mode='min'):
 
     if mode == 'min':
         if current_metric >= max(last_patience_epochs):
-            print(f'Metric did not decrease for the last {patience} epochs.')
+            LOGGER.debug(f'Metric did not decrease for the last {patience} epochs.')
             return True
         else:
             return False
     else:
         if current_metric <= min(last_patience_epochs):
-            print(f'Metric did not increase for the last {patience} epochs.')
+            LOGGER.debug(f'Metric did not increase for the last {patience} epochs.')
             return True
         else:
             return False
@@ -371,8 +371,9 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
     best_weights = None
     stop_training = False
     for epoch in range(epochs):
+        LOGGER.info(f'Epochs to go: {epochs - epoch}')
         if shuffle:
-            LOGGER.info(f'Shuffling data at epoch {epoch}')
+            LOGGER.debug(f'Shuffling data at epoch {epoch}')
             train_dataset, val_dataset = create_dataset(data,
                                                         assets,
                                                         ae_config.data_specs[cv],
@@ -470,7 +471,7 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
             val_eval = val_metric.result().numpy()
             val_metric.reset_states()
 
-        LOGGER.info(
+        LOGGER.debug(
             f"Epoch {epoch}: loss = {np.round(history['loss'][-1], 4)} - reg_loss = {np.round(history['reg_loss'][-1], 4)} - mse = {np.round(history['mse'][-1], 4)} - rmse = {np.round(history['rmse'][-1], 4)} "
             f"- val_loss = {np.round(history['val_loss'][-1], 4)} - val_reg_loss = {np.round(history['val_reg_loss'][-1], 4)} - val_mse = {np.round(history['val_mse'][-1], 4)} - val_rmse = {np.round(history['val_rmse'][-1], 4)}")
 
@@ -486,18 +487,18 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                 raise NotImplementedError()
 
             if epoch_metric_stop <= np.min(history[early_stopping['monitor']]):
-                LOGGER.info("Model has improved from {0:8.4f} to {1:8.4f}".format(
+                LOGGER.debug("Model has improved from {0:8.4f} to {1:8.4f}".format(
                     np.min(history[early_stopping['monitor']]),
                     val_epoch_loss))
                 best_epoch = epoch
-                LOGGER.info(f"Restoring best model from epoch: {best_epoch}")
+                LOGGER.debug(f"Restoring best model from epoch: {best_epoch}")
                 if restore_best_weights:
                     best_weights = model.get_weights()
                     if save_path:
-                        LOGGER.info('Saving best model')
+                        LOGGER.debug('Saving best model')
                         model.save(f"{save_path}/model.h5")
             else:
-                LOGGER.info(
+                LOGGER.debug(
                     "Model has not improved from {0:8.4f}".format(np.min(history[early_stopping['monitor']])))
             if epoch >= early_stopping['patience']:
                 stop_training = EarlyStopping(history[early_stopping['monitor']],
@@ -508,7 +509,7 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                 stop_training = False
 
         if stop_training:
-            LOGGER.info(f"Stopping training at epoch {epoch}")
+            LOGGER.debug(f"Stopping training at epoch {epoch}")
             break
 
     if restore_best_weights:

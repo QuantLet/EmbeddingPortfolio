@@ -2,7 +2,7 @@ from dl_portfolio.kmeans import run as run_kmeans
 from dl_portfolio.run import run as run_ae
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
-import os
+import os, logging
 from dl_portfolio.constant import LOG_DIR
 
 if __name__ == "__main__":
@@ -18,9 +18,6 @@ if __name__ == "__main__":
                         default=None,
                         type=int,
                         help="Seed")
-    parser.add_argument("--verbose",
-                        action="store_true",
-                        help="increase output verbosity")
     parser.add_argument("--n_jobs",
                         default=1,
                         type=int,
@@ -37,7 +34,23 @@ if __name__ == "__main__":
                         type=str,
                         default="loky",
                         help="Joblib backend")
+    parser.add_argument("-v",
+                        "--verbose",
+                        help="Be verbose",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.INFO,
+                        default=logging.WARNING)
+    parser.add_argument('-d',
+                        '--debug',
+                        help="Debugging statements",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.DEBUG,
+                        default=logging.WARNING)
     args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel)
+    LOGGER.setLevel(args.loglevel)
 
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
