@@ -179,7 +179,8 @@ def run(ae_config, seed=None):
 
         if ae_config.save:
             # tensorboard viz
-            embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
+            if ae_config.model_type != 'ae_model2':
+                embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
             LOGGER.info(f"Loading weights from {save_path}/model.h5")
             model.load_weights(f"{save_path}/model.h5")
 
@@ -257,10 +258,18 @@ def run(ae_config, seed=None):
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
 
         ## Get encoder weights
-        encoder_layer = get_layer_by_name(name='encoder', model=model)
-        encoder_weights = encoder_layer.get_weights()
-        # decoder_weights = model.layers[2].get_weights()
-        encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
+        if ae_config.model_type != 'ae_model2':
+            encoder_layer = get_layer_by_name(name='encoder', model=model)
+            encoder_weights = encoder_layer.get_weights()
+            # decoder_weights = model.layers[2].get_weights()
+            encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
+        else:
+            encoder_layer1 = get_layer_by_name(name='encoder1', model=model)
+            encoder_weights1 = encoder_layer1.get_weights()[0]
+            encoder_layer2 = get_layer_by_name(name='encoder2', model=model)
+            encoder_weights2 = encoder_layer2.get_weights()[0]
+            encoder_weights = np.dot(encoder_weights1, encoder_weights2)
+            encoder_weights = pd.DataFrame(encoder_weights, index=assets)
         LOGGER.info(f"Encoder weights:\n{encoder_weights}")
 
         # train_cluster_portfolio = encoder.predict(train_data)
@@ -335,7 +344,10 @@ def run(ae_config, seed=None):
 
         # Plot heatmap
         if ae_config.kernel_constraint is not None:
-            vmax = 1.
+            if type(ae_config.kernel_constraint).__name__ == 'NonNegAndUnitNorm':
+                vmax = 1
+            else:
+                vmax = None  # np.max(encoder_weights.max())
             vmin = 0.
         else:
             vmax = None

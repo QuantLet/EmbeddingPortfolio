@@ -44,6 +44,12 @@ def build_model(model_type, input_dim, encoding_dim, **kwargs):
                                                   encoding_dim,
                                                   **kwargs
                                                   )
+
+    elif model_type == 'ae_model2':
+        model, encoder, extra_features = ae_model2(input_dim,
+                                                   encoding_dim,
+                                                   **kwargs
+                                                   )
     elif model_type == 'pca_ae_model':
         model, encoder, extra_features = pca_ae_model(input_dim,
                                                       encoding_dim,
@@ -231,6 +237,14 @@ def ae_model(input_dim: int,
     batch_size = kwargs.get('batch_size', None)
     weightage = kwargs.get('weightage', 1.)
 
+    if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
+        print(kernel_regularizer.regularizer)
+        dkernel_regularizer = WeightsOrthogonality(
+            input_dim,
+            weightage=kernel_regularizer.weightage,
+            axis=0)
+        dkernel_regularizer.regularizer = dkernel_regularizer.regularizer
+
     with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
         asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
         encoder_layer = tf.keras.layers.Dense(encoding_dim,
@@ -244,8 +258,8 @@ def ae_model(input_dim: int,
                                               dtype=tf.float32)
         decoder_layer = tf.keras.layers.Dense(input_dim,
                                               activation='linear',
-                                              # kernel_initializer=kernel_initializer,
-                                              # kernel_regularizer=kernel_regularizer,
+                                              kernel_initializer=kernel_initializer,
+                                              kernel_regularizer=dkernel_regularizer,
                                               # activity_regularizer=activity_regularizer,
                                               # kernel_constraint=kernel_constraint,
                                               use_bias=True,
@@ -274,6 +288,101 @@ def ae_model(input_dim: int,
             autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
         else:
             output = decoder_layer(encoding)
+            autoencoder = tf.keras.models.Model(asset_input, output)
+            extra_features = None
+
+        encoder = tf.keras.models.Model(asset_input, encoding)
+
+        return autoencoder, encoder, extra_features
+
+
+def ae_model2(input_dim: int,
+              encoding_dim: int,
+              n_features: int = None,
+              extra_features_dim: int = 1,
+              activation: str = 'linear',
+              kernel_initializer: str = 'glorot_uniform',
+              activity_regularizer=None,
+              kernel_constraint=None,
+              kernel_regularizer=None,
+              **kwargs
+              ):
+    uncorrelated_features = kwargs.get('uncorrelated_features', True)
+    batch_size = kwargs.get('batch_size', None)
+    weightage = kwargs.get('weightage', 1.)
+
+    if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
+        print(kernel_regularizer.regularizer)
+        kernel_regularizer1 = WeightsOrthogonality(
+            int(input_dim / 2),
+            weightage=kernel_regularizer.weightage,
+            axis=0,
+            # regularizer=kernel_regularizer.regularizer
+        )
+        kernel_regularizer1.regularizer = kernel_regularizer.regularizer
+        kernel_regularizer2 = WeightsOrthogonality(
+            encoding_dim,
+            weightage=kernel_regularizer.weightage,
+            axis=0,
+            # regularizer=kernel_regularizer.regularizer
+        )
+        kernel_regularizer2.regularizer = kernel_regularizer.regularizer
+
+    with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
+        asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
+        encoder_layer1 = tf.keras.layers.Dense(int(input_dim / 2),
+                                               activation=activation,
+                                               kernel_initializer=kernel_initializer,
+                                               kernel_regularizer=kernel_regularizer1,
+                                               activity_regularizer=activity_regularizer,
+                                               kernel_constraint=kernel_constraint,
+                                               use_bias=True,
+                                               name='encoder1',
+                                               dtype=tf.float32)
+        encoder_layer2 = tf.keras.layers.Dense(encoding_dim,
+                                               activation=activation,
+                                               kernel_initializer=kernel_initializer,
+                                               kernel_regularizer=kernel_regularizer2,
+                                               activity_regularizer=activity_regularizer,
+                                               kernel_constraint=kernel_constraint,
+                                               use_bias=True,
+                                               name='encoder2',
+                                               dtype=tf.float32)
+        decoder_layer1 = tf.keras.layers.Dense(int(input_dim / 2),
+                                               activation='linear',
+                                               kernel_constraint=kernel_constraint,
+                                               use_bias=True,
+                                               name='decoder1',
+                                               dtype=tf.float32)
+        decoder_layer2 = tf.keras.layers.Dense(input_dim,
+                                               activation='linear',
+                                               kernel_constraint=kernel_constraint,
+                                               use_bias=True,
+                                               name='decoder2',
+                                               dtype=tf.float32)
+        encoding = encoder_layer2(encoder_layer1(asset_input))
+
+        if uncorrelated_features:
+            activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
+                                                                   weightage=weightage)
+
+            encoding = activity_regularizer_layer(encoding)
+        encoder = tf.keras.models.Model(asset_input, encoding)
+
+        # Extra input
+        if n_features is not None:
+            extra_input = tf.keras.layers.Input(n_features, batch_size=batch_size, dtype=tf.float32, name='extra_input')
+            extra_features_layer = tf.keras.layers.Dense(extra_features_dim,
+                                                         activation='linear',
+                                                         use_bias=True,
+                                                         name='extra_features',
+                                                         dtype=tf.float32)
+            extra_features = extra_features_layer(extra_input)
+            hidden_layer = tf.keras.layers.concatenate([encoding, extra_features])
+            output = decoder_layer2(decoder_layer1(hidden_layer))
+            autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
+        else:
+            output = decoder_layer2(decoder_layer1(encoding))
             autoencoder = tf.keras.models.Model(asset_input, output)
             extra_features = None
 

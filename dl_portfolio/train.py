@@ -18,7 +18,7 @@ def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.n
     if model_type == 'pca_permut_ae_model':
         raise NotImplementedError()
         data = [data[:, i].reshape(-1, 1) for i in range(len(assets))]
-    elif model_type in ['ae_model', 'pca_ae_model']:
+    elif model_type in ['ae_model', 'ae_model2', 'pca_ae_model']:
         pass
     else:
         raise NotImplementedError()
