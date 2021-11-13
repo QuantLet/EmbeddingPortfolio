@@ -672,7 +672,6 @@ class DenseTied(tf.keras.layers.Dense):
     def build(self, input_shape):
         assert len(input_shape) >= 2
         input_dim = input_shape[-1]
-        print('input_shape', input_shape)
         if self.n_features:
             self.features_kernel = self.add_weight("kernel",
                                                    shape=[int(self.n_features), self.units],

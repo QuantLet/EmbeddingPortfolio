@@ -11,9 +11,16 @@ from dl_portfolio.train import fit, embedding_visualization, plot_history, creat
 import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
+from typing import Optional
 
+def run(ae_config, log_dir: Optional[str]=None, seed: Optional[int]=None):
+    """
 
-def run(ae_config, seed=None):
+    :param ae_config: config
+    :param log_dir: if given save the result in log_dir folder, if not given use LOG_DIR
+    :param seed: if given use specific seed
+    :return:
+    """
     random_seed = np.random.randint(0, 100)
     if ae_config.seed:
         seed = ae_config.seed
@@ -114,7 +121,7 @@ def run(ae_config, seed=None):
                                                      loss=ae_config.loss,
                                                      uncorrelated_features=ae_config.uncorrelated_features,
                                                      weightage=ae_config.weightage)
-        LOGGER.debug(model.summary())
+        # LOGGER.info(model.summary())
 
         # Create dataset:
         shuffle = False
@@ -475,7 +482,6 @@ def run_nbb(ae_config, seed=None):
                                                  loss=ae_config.loss,
                                                  uncorrelated_features=ae_config.uncorrelated_features,
                                                  weightage=ae_config.weightage)
-    print(model.summary())
 
     # Create dataset:
     data_spec = ae_config.data_specs

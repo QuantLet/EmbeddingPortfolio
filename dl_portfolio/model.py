@@ -350,14 +350,12 @@ class CashBias(tf.keras.layers.Layer):
         super(CashBias, self).__init__(*args, **kwargs)
 
     def build(self, input_shape):
-        print(input_shape)
         self.bias = self.add_weight('cash_bias',
                                     shape=(input_shape[-1], 1),
                                     initializer=tf.keras.initializers.Ones(),
                                     trainable=True)
 
     def call(self, x):
-        print(x.shape)
 
         return tf.stack([x, self.bias])  # tf.concat([x, self.bias], -1)
         # tf.keras.layers.Concatenate

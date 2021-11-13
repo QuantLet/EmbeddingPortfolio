@@ -168,7 +168,6 @@ def heat_map_cluster(load_dir, show=False, save=False, filename='encoder_weights
     fig, axs = plt.subplots(n_sets, n_clusters, figsize=(10, 10 * n_sets), sharey=True)
     if n_sets > 1:
         for i, s in enumerate(encoder_weights.keys()):
-            print(i)
             for j, c in enumerate(list(encoder_weights[s].columns)):
                 ax = sns.heatmap(encoder_weights[s][c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
                                  ax=axs[i, j], cbar=j == n_clusters - 1, **kwargs)
@@ -238,7 +237,6 @@ def ae_model(input_dim: int,
     weightage = kwargs.get('weightage', 1.)
 
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
-        print(kernel_regularizer.regularizer)
         dkernel_regularizer = WeightsOrthogonality(
             input_dim,
             weightage=kernel_regularizer.weightage,
@@ -312,7 +310,6 @@ def ae_model2(input_dim: int,
     weightage = kwargs.get('weightage', 1.)
 
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
-        print(kernel_regularizer.regularizer)
         kernel_regularizer1 = WeightsOrthogonality(
             int(input_dim / 2),
             weightage=kernel_regularizer.weightage,
@@ -618,4 +615,3 @@ if __name__ == "__main__":
                                                   kernel_constraint=None,
                                                   kernel_regularizer=None)
     model.load_weights('test_model.h5')
-    print(model.summary())
