@@ -1,8 +1,7 @@
 from dl_portfolio.run import run
 from dl_portfolio.logger import LOGGER
-from joblib import parallel_backend, Parallel, delayed
+from joblib import Parallel, delayed
 import os
-from dl_portfolio.constant import LOG_DIR
 from dl_portfolio.utils import config_setter
 import json
 from sklearn.model_selection import ParameterGrid

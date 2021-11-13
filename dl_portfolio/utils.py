@@ -40,5 +40,7 @@ def config_setter(config, params: Dict):
             )
         elif k == 'weightage':
             config.weightage = params[k]
+        else:
+            raise NotImplementedError()
 
     return config
