@@ -7,10 +7,11 @@ from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_we
     get_average_perf, get_ts_weights
 import datetime as dt
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-# PORTFOLIOS = ['equal', 'ae_ivp', 'aeaa']
-# STRAT = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'herc', 'aeerc', 'ae_rp_c']
-STRAT = ['equal', 'markowitz', 'shrink_markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+
+# PORTFOLIOS = ['ae_rp_c']
+# STRAT = ['ae_rp_c']
 
 if __name__ == "__main__":
     import argparse, json
@@ -49,6 +50,9 @@ if __name__ == "__main__":
                                                                index=cryptos,
                                                                columns=market_budget.columns)])
         # market_budget = market_budget.drop('CRIX')
+        market_budget['rc'] = market_budget['rc'].astype(int)
+    elif args.dataset == "raffinot_multi_asset":
+        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
         raise NotImplementedError()
