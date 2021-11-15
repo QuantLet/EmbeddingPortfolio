@@ -20,8 +20,6 @@ from tensorflow.keras.utils import CustomObjectScope
 from tensorflow.keras.callbacks import Callback
 import tensorflow_probability as tfp
 
-LOG_DIR = 'dl_portfolio/log_AE'
-
 
 def build_model(model_type, input_dim, encoding_dim, **kwargs):
     if model_type == 'pca_permut_ae_model':
