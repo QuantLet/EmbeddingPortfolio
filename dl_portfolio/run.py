@@ -373,11 +373,11 @@ def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
         LOGGER.debug(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
 
         if ae_config.save:
-            train_data.to_pickle(f"{save_path}/train_returns.p")
+            # train_data.to_pickle(f"{save_path}/train_returns.p")
             val_data.to_pickle(f"{save_path}/val_returns.p")
             val_prediction.to_pickle(f"{save_path}/val_prediction.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
-            train_features.to_pickle(f"{save_path}/train_features.p")
+            # train_features.to_pickle(f"{save_path}/train_features.p")
             val_features.to_pickle(f"{save_path}/val_features.p")
             ae_config.scaler_func['attributes'] = scaler.__dict__
             pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
