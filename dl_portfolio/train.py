@@ -342,7 +342,7 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
         else:
             train_metric.update_state(y, pred)
 
-        return loss_value, reg_loss
+        return float(loss_value), float(reg_loss)
 
     @tf.function
     def test_step(x, y, *args, **kwargs):
@@ -397,38 +397,37 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                         train_dataset):
                     loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
                                                       weights_batch)
-                    batch_loss.append(float(loss_value))
-                    batch_reg_loss.append(float(reg_loss))
+                    batch_loss.append(loss_value)
+                    batch_reg_loss.append(reg_loss)
             else:
                 for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
                     loss_value, reg_loss = train_step(x_batch_train, y_batch_train, weights_batch)
-                    batch_loss.append(float(loss_value))
-                    batch_reg_loss.append(float(reg_loss))
+                    batch_loss.append(loss_value)
+                    batch_reg_loss.append(reg_loss)
         else:
             if loss_asset_weights is None:
                 if extra_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
                         loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
-                        batch_loss.append(float(loss_value))
-                        batch_reg_loss.append(float(reg_loss))
+                        batch_loss.append(loss_value)
+                        batch_reg_loss.append(reg_loss)
                 else:
                     for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
                         loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
-                        batch_loss.append(float(loss_value))
-                        batch_reg_loss.append(float(reg_loss))
+                        batch_loss.append(loss_value)
+                        batch_reg_loss.append(reg_loss)
             else:
                 if extra_features:
                     for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
                         loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
                                                           loss_asset_weights)
-                        batch_loss.append(float(loss_value))
-                        batch_reg_loss.append(float(reg_loss))
+                        batch_loss.append(loss_value)
+                        batch_reg_loss.append(reg_loss)
                 else:
                     for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train,
-                                                          loss_asset_weights)
-                        batch_loss.append(float(loss_value))
-                        batch_reg_loss.append(float(reg_loss))
+                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train, loss_asset_weights)
+                        batch_loss.append(loss_value)
+                        batch_reg_loss.append(reg_loss)
 
         # Compute loss over epoch
         epoch_loss = np.mean(batch_loss)
