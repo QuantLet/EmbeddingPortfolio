@@ -14,7 +14,7 @@ from dl_portfolio.constant import LOG_DIR
 from typing import Optional
 
 
-def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
+def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
     """
 
     :param ae_config: config
@@ -47,12 +47,12 @@ def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
 
-    if ae_config.dataset == 'bond':
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
-    else:
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq)
+    # if ae_config.dataset == 'bond':
+    #     data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+    #                              freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
+    # else:
+    #     data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+    #                              freq=ae_config.freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -363,10 +363,10 @@ def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
             vmax = None
             vmin = None
 
-        if ae_config.save:
-            heat_map(encoder_weights, show=ae_config.show_plot, save_dir=f"{save_path}", vmax=vmax, vmin=vmin)
-        else:
-            heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
+        # if ae_config.save:
+        #     heat_map(encoder_weights, show=ae_config.show_plot, save_dir=f"{save_path}", vmax=vmax, vmin=vmin)
+        # else:
+        #     heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
 
         # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
@@ -374,11 +374,11 @@ def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
 
         if ae_config.save:
             # train_data.to_pickle(f"{save_path}/train_returns.p")
-            val_data.to_pickle(f"{save_path}/val_returns.p")
-            val_prediction.to_pickle(f"{save_path}/val_prediction.p")
+            # val_data.to_pickle(f"{save_path}/val_returns.p")
+            # val_prediction.to_pickle(f"{save_path}/val_prediction.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
             # train_features.to_pickle(f"{save_path}/train_features.p")
-            val_features.to_pickle(f"{save_path}/val_features.p")
+            # val_features.to_pickle(f"{save_path}/val_features.p")
             ae_config.scaler_func['attributes'] = scaler.__dict__
             pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
             # encoding_pca.to_pickle(f"{save_path}/encoding_pca.p")
@@ -386,9 +386,10 @@ def run(ae_config, log_dir: Optional[str] = None, seed: Optional[int] = None):
             # pickle.dump(pca_cluster_portfolio, open(f"{save_path}/pca_cluster_portfolio.p", "wb"))
 
             if test_data is not None:
-                test_data.to_pickle(f"{save_path}/test_returns.p")
-                test_prediction.to_pickle(f"{save_path}/test_prediction.p")
-                test_features.to_pickle(f"{save_path}/test_features.p")
+                pass
+                # test_data.to_pickle(f"{save_path}/test_returns.p")
+                # test_prediction.to_pickle(f"{save_path}/test_prediction.p")
+                # test_features.to_pickle(f"{save_path}/test_features.p")
 
     # if ae_config.save:
     #     heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)

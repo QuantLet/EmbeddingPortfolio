@@ -1,9 +1,10 @@
 from dl_portfolio.kmeans import run as run_kmeans
 from dl_portfolio.run import run as run_ae
 from dl_portfolio.logger import LOGGER
-from joblib import parallel_backend, Parallel, delayed
+from joblib import Parallel, delayed
 import os, logging
 from dl_portfolio.constant import LOG_DIR
+from dl_portfolio.ae_data import load_data
 
 if __name__ == "__main__":
     import argparse
@@ -62,13 +63,20 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans'")
 
+    if ae_config.dataset == 'bond':
+        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
+    else:
+        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                                 freq=ae_config.freq)
+
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
-                run(ae_config, seed=int(seed))
+                run(ae_config, data, assets, seed=int(seed))
         else:
             Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
+                delayed(run)(ae_config, data, assets, seed=int(seed)) for seed in args.seeds
             )
 
     else:
@@ -76,17 +84,17 @@ if __name__ == "__main__":
             for i in range(args.n):
                 LOGGER.info(f'Starting experiment {i + 1} out of {args.n} experiments')
                 if args.seed:
-                    run(ae_config, seed=args.seed)
+                    run(ae_config, data, assets, seed=args.seed)
                 else:
-                    run(ae_config, seed=i)
+                    run(ae_config, data, assets, seed=i)
                 LOGGER.info(f'Experiment {i + 1} finished')
                 LOGGER.info(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
                 Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
+                    delayed(run)(ae_config, data, assets, seed=args.seed) for i in range(args.n)
                 )
             else:
                 Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, seed=seed) for seed in range(args.n)
+                    delayed(run)(ae_config, data, assets, seed=seed) for seed in range(args.n)
                 )
