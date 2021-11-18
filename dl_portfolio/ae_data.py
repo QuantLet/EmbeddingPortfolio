@@ -7,7 +7,8 @@ import numpy as np
 import datetime as dt
 from dl_portfolio.sample import id_nb_bootstrap
 
-DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'sp500', 'cac']
+DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'raffinot_bloomberg_comb_update_2021', 'sp500',
+            'cac']
 
 
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
@@ -272,6 +273,8 @@ def load_data(dataset='global', **kwargs):
         data, assets = load_global_crypto_data()
     elif dataset == 'raffinot_multi_asset':
         data, assets = load_raffinot_multi_asset()
+    elif dataset == 'raffinot_bloomberg_comb_update_2021':
+        data, assets = load_bloomberg_comb_update_2021()
     elif dataset == 'sp500':
         data, assets = load_sp500_assets(kwargs.get('start_date', '1989-01-01'))
     else:
@@ -311,6 +314,16 @@ def load_sp500_assets(start_date='1989-01-01'):
     data = data.loc[max_start_date:, assets]
     data = data.interpolate(method='polynomial', order=2)
     data.dropna(inplace=True)
+
+    return data, assets
+
+
+def load_bloomberg_comb_update_2021():
+    data = pd.read_csv('data/raffinot/bloomberg_comb_update_2021.csv', index_col=0)
+    data.index = pd.to_datetime(data.index)
+    data = data.interpolate(method='polynomial', order=2)
+    data = data.astype(np.float32)
+    assets = list(data.columns)
 
     return data, assets
 
