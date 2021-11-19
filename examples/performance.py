@@ -215,28 +215,29 @@ if __name__ == "__main__":
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['aerp'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
     if args.save:
-        plt.savefig(f"{save_dir}/excess_performance_hrp_aerp.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/excess_performance_hrp_aerp.png", bbox_inches='tight', transparent=True)
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['aeerc'] + 1) - np.cumprod(ann_perf['hcaa'] + 1))
     if args.save:
-        plt.savefig(f"{save_dir}/excess_performance_hcaa_aeerc.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/excess_performance_hcaa_aeerc.png", bbox_inches='tight', transparent=True)
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['hcaa'] + 1))
     if args.save:
-        plt.savefig(f"{save_dir}/excess_performance_hcaa_aeerc_cluster.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/excess_performance_hcaa_aeerc_cluster.png", bbox_inches='tight', transparent=True)
 
     plt.figure(figsize=(20, 10))
     plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['hrp'] + 1))
     if args.save:
-        plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight', transparent=True)
 
     if 'markowitz' in PORTFOLIOS:
         plt.figure(figsize=(20, 10))
         plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['markowitz'] + 1))
         if args.save:
-            plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight')
+            plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight',
+                        transparent=True)
 
     # Plot one cv weight
     cv = 0
@@ -248,7 +249,7 @@ if __name__ == "__main__":
     plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
-        plt.savefig(f"{save_dir}/weights_hrp_aerp.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/weights_hrp_aerp.png", bbox_inches='tight', transparent=True)
 
     plt.figure(figsize=(14, 7))
     plt.bar(ASSETS, port_weights['hcaa'].iloc[cv].values, label='hcaa')
@@ -257,7 +258,7 @@ if __name__ == "__main__":
     plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
-        plt.savefig(f"{save_dir}/weights_hcaa_aeerc.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/weights_hcaa_aeerc.png", bbox_inches='tight', transparent=True)
 
     plt.figure(figsize=(14, 7))
     plt.bar(ASSETS, port_weights['hrp'].iloc[cv].values, label='hrp')
@@ -266,7 +267,7 @@ if __name__ == "__main__":
     plt.ylim([0, 0.9])
     x = plt.xticks(rotation=45)
     if args.save:
-        plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight', transparent=True)
 
     # Get statistics
     stats = backtest_stats(ann_perf, port_weights, period=252, format=True)
@@ -339,7 +340,7 @@ if __name__ == "__main__":
 
     fig.tight_layout(rect=[0, 0, .9, 1])
     if args.save:
-        plt.savefig(f"{save_dir}/cv_embedding_weights.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/cv_embedding_weights.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -370,7 +371,7 @@ if __name__ == "__main__":
                 vmin=-1,
                 cbar=True)
     if args.save:
-        plt.savefig(f"{save_dir}/corr_factors_heatmap_0.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/corr_factors_heatmap_0.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -385,7 +386,7 @@ if __name__ == "__main__":
                 vmin=-1,
                 cbar=True)
     if args.save:
-        plt.savefig(f"{save_dir}/corr_pred_heatmap_0.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/corr_pred_heatmap_0.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -398,7 +399,7 @@ if __name__ == "__main__":
     _ = plt.ylim([-1, 1])
 
     if args.save:
-        plt.savefig(f"{save_dir}/avg_corr.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/avg_corr.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -426,7 +427,7 @@ if __name__ == "__main__":
         sns.heatmap(triu, vmin=0, vmax=1)
         plt.title(f"{CV_DATES[cv]}\nMean: {mean.round(2)}, Std: {std.round(2)}")
         if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight')
+            plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight', transparent=True)
         if args.show:
             plt.show()
         plt.close()
@@ -448,7 +449,7 @@ if __name__ == "__main__":
     sns.heatmap(avg_rand, vmin=0, vmax=1)
     plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
     if args.save:
-        plt.savefig(f"{save_dir}/rand_avg.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/rand_avg.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -470,7 +471,7 @@ if __name__ == "__main__":
         plt.figure(figsize=(10, 10))
         sns.heatmap(cons_mat, square=True)
         if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight')
+            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight', transparent=True)
         if args.show:
             plt.show()
         plt.close()
@@ -481,7 +482,7 @@ if __name__ == "__main__":
     plt.figure(figsize=(10, 10))
     sns.heatmap(avg_cons_mat, square=True)
     if args.save:
-        plt.savefig(f"{save_dir}/avg_cons_mat.png", bbox_inches='tight')
+        plt.savefig(f"{save_dir}/avg_cons_mat.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
