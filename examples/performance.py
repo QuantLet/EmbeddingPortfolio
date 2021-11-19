@@ -394,7 +394,7 @@ if __name__ == "__main__":
     rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
     plt.figure(figsize=(10, 6))
     plt.bar(range(len(avg_cv_corr)), avg_cv_corr, color=my_cmap(rescale(avg_cv_corr)), width=0.5)
-    _ = plt.xticks(range(len(avg_cv_corr)), range(len(avg_cv_corr)))
+    _ = plt.xticks(range(len(avg_cv_corr)), range(len(avg_cv_corr)), rotation=90)
     _ = plt.ylim([-1, 1])
 
     if args.save:
