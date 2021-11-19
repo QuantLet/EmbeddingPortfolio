@@ -53,20 +53,20 @@ def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: 
                                                            data_spec['end'],
                                                            assets,
                                                            val_start=data_spec['val_start'],
-                                                           test_start=data_spec.get('test_start'))
+                                                           test_start=data_spec.get('test_start'),
+                                                           scaler=scaler)
     else:
         _, test_data, _, _, dates, features = get_features(data,
                                                            data_spec['start'],
                                                            data_spec['end'],
                                                            assets,
                                                            val_start=data_spec['val_start'],
-                                                           test_start=data_spec.get('test_start'))
-    std = np.sqrt(scaler['attributes']['var_'])
-    test_data = (test_data - scaler['attributes']['mean_']) / std
-
+                                                           test_start=data_spec.get('test_start'),
+                                                           scaler=scaler)
     # Prediction
     pred = model.predict(test_data)
-    pred = pred * std + scaler['attributes']['mean_']
+    pred *= np.sqrt(scaler['attributes']['var_'])
+    pred += scaler['attributes']['mean_']
     pred = pd.DataFrame(pred, columns=assets, index=dates[test_set])
 
     test_features = encoder.predict(test_data)

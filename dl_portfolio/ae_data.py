@@ -1,6 +1,6 @@
 import pandas as pd
 from dl_portfolio.logger import LOGGER
-from typing import List, Optional
+from typing import List, Optional, Dict, Union
 from sklearn import preprocessing
 from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
@@ -18,8 +18,24 @@ def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
 
 
 def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
-                 rescale=None, scaler='StandardScaler', resample=None, features_config: Optional[List] = None,
+                 rescale=None, scaler: Union[str, Dict] = 'StandardScaler', resample=None,
+                 features_config: Optional[List] = None,
                  **kwargs):
+    """
+
+    :param data:
+    :param start:
+    :param end:
+    :param assets:
+    :param val_start:
+    :param test_start:
+    :param rescale:
+    :param scaler: if str, then must be name of scaler and we fit the scaler, if Dict, then we use the parameter defined in scaler to transform (used for inference)
+    :param resample:
+    :param features_config:
+    :param kwargs:
+    :return:
+    """
     data = data[assets]
     # Train/val/test split
     assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
@@ -70,21 +86,36 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
         test_dates = None
 
     # standardization
-    if scaler == 'StandardScaler':
-        kwargs['with_std'] = kwargs.get('with_std', True)
-        kwargs['with_mean'] = kwargs.get('with_mean', True)
-        scaler = preprocessing.StandardScaler(**kwargs)
-    elif scaler == 'MinMaxScaler':
-        assert 'feature_range' in kwargs
-        scaler = preprocessing.MinMaxScaler(**kwargs)
+    if scaler is not None:
+        if isinstance(scaler, str):
+            if scaler == 'StandardScaler':
+                kwargs['with_std'] = kwargs.get('with_std', True)
+                kwargs['with_mean'] = kwargs.get('with_mean', True)
+                scaler = preprocessing.StandardScaler(**kwargs)
+            elif scaler == 'MinMaxScaler':
+                assert 'feature_range' in kwargs
+                scaler = preprocessing.MinMaxScaler(**kwargs)
+            else:
+                raise NotImplementedError(scaler)
 
-    scaler.fit(train_data)
-    train_data = scaler.transform(train_data)
-    if val_data is not None:
-        val_data = scaler.transform(val_data)
+            scaler.fit(train_data)
+            train_data = scaler.transform(train_data)
+            if val_data is not None:
+                val_data = scaler.transform(val_data)
 
-    if test_data is not None:
-        test_data = scaler.transform(test_data)
+            if test_data is not None:
+                test_data = scaler.transform(test_data)
+
+        elif isinstance(scaler, dict):
+            mean_ = scaler['attributes']['mean_']
+            std = scaler['attributes']['scale_'] #  same as np.sqrt(scaler['attributes']['var_'])
+            train_data = (train_data - mean_) / std
+            val_data = (val_data - mean_) / std
+            test_data = (test_data - mean_) / std
+
+        else:
+            raise NotImplementedError(scaler)
+
 
     if rescale is not None:
         train_data = train_data * rescale
