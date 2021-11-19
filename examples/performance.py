@@ -130,8 +130,6 @@ if __name__ == "__main__":
                                        ae_config=ae_config)
         port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True,
                                          market_budget=market_budget)
-        if i > 1:
-            break
 
     K = cv_results[i][0]['embedding'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
