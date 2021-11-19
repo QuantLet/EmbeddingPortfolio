@@ -26,8 +26,8 @@ from dl_portfolio.ae_data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.utils import load_result
 
-PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'hcaa',
-              'ae_rp_c', 'kmaa', 'aeaa']
+PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
+              'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
 
 
 def get_ts_weights(cv_results, port) -> pd.DataFrame:
@@ -92,7 +92,7 @@ def bar_plot_weights(weights, show=False, legend=False, save_path=None):
         plt.show()
 
 
-def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = True):
+def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = True, **kwargs):
     """
 
     :param perf:
@@ -106,8 +106,18 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                          columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
                                   'ES-5%', 'SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
                          dtype=np.float32)
+    assets = weights['hrp'].columns
     n_assets = weights['hrp'].shape[-1]
     for strat in strats:
+        if strat == 'equal':
+            weights['equal'] = pd.DataFrame([1 / n_assets] * n_assets).T
+            weights['equal'].columns = assets
+
+        elif strat == 'equal_class':
+            market_budget = kwargs.get('market_budget')
+            assert market_budget is not None
+            weights['equal_class'] = pd.DataFrame(equal_class_weights(market_budget)).T
+
         stats.loc[strat] = [perf[strat].mean(),
                             annualized_volatility(perf[strat], period=period),
                             scipy.stats.skew(perf[strat], axis=0),
@@ -119,7 +129,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
                             ceq(perf[strat]),
-                            sspw(weights[strat]) if strat != 'equal' else n_assets * (1 / n_assets) ** 2,
+                            sspw(weights[strat]),
                             total_average_turnover(weights[strat]) if strat != 'equal' else 0.
                             ]
     if format:
@@ -241,7 +251,8 @@ def cv_portfolio_perf(cv_results: Dict,
                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
                                           'ae_rp'],
                       annualized: bool = True,
-                      fee: float = 2e-4):
+                      fee: float = 2e-4,
+                      **kwargs):
     """
 
     :param cv_results:
@@ -251,7 +262,7 @@ def cv_portfolio_perf(cv_results: Dict,
     :return:
     """
     assert all([p in PORTFOLIOS for p in portfolios])
-
+    N = cv_results[0]['returns'].shape[-1]
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
@@ -261,19 +272,32 @@ def cv_portfolio_perf(cv_results: Dict,
     for cv in cv_results:
         for p in portfolios:
             if p == 'equal':
-                port_perf['equal'][cv] = portfolio_return('equal', cv_results[cv]['returns'])
+                port_perf['equal'][cv] = portfolio_return(cv_results[cv]['returns'], weights=1 / N)
+            elif p == 'equal_class':
+                market_budget = kwargs.get('market_budget')
+                assert market_budget is not None
+                weights = equal_class_weights(market_budget)
+                port_perf['equal_class'][cv] = portfolio_return(cv_results[cv]['returns'], weights=weights)
             else:
                 if cv_results[cv]['port'][p] is not None:
-                    port_perf[p][cv] = portfolio_return(p, cv_results[cv]['returns'], cv_results[cv]['port'][p])
+                    port_perf[p][cv] = portfolio_return(cv_results[cv]['returns'], weights=cv_results[cv]['port'][p])
                 else:
                     LOGGER.info(f'Warning: No weight for {p} portfolio at cv {cv}. Setting to NaN')
                     port_perf[p][cv] = cv_results[cv]['returns'] * np.nan
+            # Volatility target weights
             if annualized:
                 if p == 'equal':
-                    train_port_perf = portfolio_return('equal', cv_results[cv]['train_returns'])
+                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=1 / N)
                     cost = 0
+                elif p == 'equal_class':
+                    market_budget = kwargs.get('market_budget')
+                    assert market_budget is not None
+                    weights = equal_class_weights(market_budget)
+                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=weights)
+
                 else:
-                    train_port_perf = portfolio_return(p, cv_results[cv]['train_returns'], cv_results[cv]['port'][p])
+                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'],
+                                                       weights=cv_results[cv]['port'][p])
                     if cv == 0:
                         cost = fee * np.sum(np.abs(np.ones_like(cv_results[cv]['port'][p]) - cv_results[cv]['port'][p]))
                     else:
@@ -291,14 +315,11 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf
 
 
-def portfolio_return(portfolio, returns, weights: Optional[np.ndarray] = None):
-    if portfolio == 'equal':
-        port_perf = returns.mean(1)
+def portfolio_return(returns, weights: Optional[Union[float, np.ndarray]] = None):
+    if weights is None:
+        port_perf = returns.mean(1) * np.nan
     else:
-        if weights is None:
-            port_perf = returns.mean(1) * np.nan
-        else:
-            port_perf = (returns * weights).sum(1)
+        port_perf = (returns * weights).sum(1)
     return port_perf
 
 
@@ -627,6 +648,18 @@ def aeaa_weights(returns: Union[np.ndarray, pd.DataFrame], embedding: Union[np.n
     weights = weights / n_clusters  # Rescale each weight
     weights = weights.reindex(returns.columns)  # rerorder
     weights.fillna(0., inplace=True)
+
+    return weights
+
+
+def equal_class_weights(market_budget: pd.DataFrame):
+    market_class = np.unique(market_budget['market'].values, return_counts=True)
+    inner_class_weight = {c: 1 / market_class[1][i] for i, c in enumerate(market_class[0])}
+    weights = pd.Series(index=market_budget.index)
+    for c in inner_class_weight:
+        assets = market_budget.index[market_budget['market'] == c]
+        weights.loc[assets] = inner_class_weight[c]
+    weights /= np.sum(weights)
 
     return weights
 

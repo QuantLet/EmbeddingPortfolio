@@ -19,8 +19,8 @@ from dl_portfolio.logger import LOGGER
 
 # PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-PORTFOLIOS = ['equal', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-STRAT = ['equal', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # PORTFOLIOS = ['ae_rp_c']
 # STRAT = ['ae_rp_c']
@@ -128,7 +128,10 @@ if __name__ == "__main__":
                                        window=args.window,
                                        n_jobs=args.n_jobs,
                                        ae_config=ae_config)
-        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True)
+        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True,
+                                         market_budget=market_budget)
+        if i > 1:
+            break
 
     K = cv_results[i][0]['embedding'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
@@ -137,7 +140,7 @@ if __name__ == "__main__":
     # Get portfolio weights time serioes
     port_weights = {}
     for p in PORTFOLIOS:
-        if p != 'equal':
+        if p not in ['equal', 'equal_class']:
             port_weights[p] = get_ts_weights(cv_results, port=p)
 
     # Get average perf across runs
@@ -270,7 +273,7 @@ if __name__ == "__main__":
         plt.savefig(f"{save_dir}/weights_hrp_aeerc_cluster.png", bbox_inches='tight', transparent=True)
 
     # Get statistics
-    stats = backtest_stats(ann_perf, port_weights, period=252, format=True)
+    stats = backtest_stats(ann_perf, port_weights, period=252, format=True, market_budget=market_budget)
     if args.save:
         stats.to_csv(f"{save_dir}/backtest_stats.csv")
     print(stats.to_string())
