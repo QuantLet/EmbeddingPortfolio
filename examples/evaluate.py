@@ -1,20 +1,22 @@
-import pandas as pd
+import argparse
+import datetime as dt
+import json
+import logging
+import os
+import sys
+
 import matplotlib.pyplot as plt
 import numpy as np
-import os, pickle
+import pandas as pd
 import seaborn as sns
-import sys, pickle
-import numpy as np
-from dl_portfolio.logger import LOGGER
-from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
-from dl_portfolio.backtest import portfolio_weights, cv_portfolio_perf, get_cv_results, bar_plot_weights, get_mdd, \
-    calmar_ratio, sharpe_ratio
 from sklearn import metrics, preprocessing
-from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, compute_serial_matrix
-import datetime as dt
+
+from dl_portfolio.backtest import get_cv_results
+from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation
+from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
+from dl_portfolio.logger import LOGGER
 
 if __name__ == "__main__":
-    import argparse, json
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_dir",
@@ -37,7 +39,23 @@ if __name__ == "__main__":
     parser.add_argument("--save",
                         action='store_true',
                         help="Save results")
+    parser.add_argument("-v",
+                        "--verbose",
+                        help="Be verbose",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.INFO,
+                        default=logging.WARNING)
+    parser.add_argument('-d',
+                        '--debug',
+                        help="Debugging statements",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.DEBUG,
+                        default=logging.WARNING)
     args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel)
+    LOGGER.setLevel(args.loglevel)
 
     EVALUATION = {'model': {}, 'cluster': {}}
 
@@ -58,6 +76,8 @@ if __name__ == "__main__":
     models = os.listdir(args.base_dir)
     models = [m for m in models if m[0] != '.']
     paths = [f"{args.base_dir}/{d}" for d in models]
+    sys.path.append(paths[0])
+    import ae_config
 
     # Get results for all runs
     cv_results = {}
@@ -66,7 +86,7 @@ if __name__ == "__main__":
     for i, path in enumerate(paths):
         print(len(paths) - i)
         cv_results[i] = get_cv_results(path, args.test_set, n_folds, dataset=args.dataset, compute_weights=False,
-                                       n_jobs=args.n_jobs)
+                                       n_jobs=args.n_jobs, ae_config=ae_config)
     K = cv_results[i][0]['embedding'].shape[-1]
 
     cv_dates = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
