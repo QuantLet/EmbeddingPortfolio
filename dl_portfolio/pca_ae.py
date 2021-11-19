@@ -538,53 +538,6 @@ def pca_ae_model(input_dim: int,
 #     return autoencoder, encoder
 
 
-def get_features(data, start: str, end: str, assets: List, val_size=30 * 6, rescale=None):
-    if end == str(data.index[-1]):
-        end = '2020-03-08 00:00:00'
-    else:
-        end = pd.to_datetime(end) + dt.timedelta(days=6 * 30)
-    train_data = data.loc[start:end, assets].iloc[:-1, :]
-    train_data = train_data.loc[:, pd.IndexSlice[:, 'price']].droplevel(1, 1)
-
-    val_data = data.loc[end:, assets]
-    val_data = val_data.loc[:, pd.IndexSlice[:, 'price']].droplevel(1, 1)
-    val_data = val_data.iloc[:val_size]
-
-    test_data = data.loc[val_data.index[-1]:, assets].iloc[1:]
-    test_data = test_data.loc[:, pd.IndexSlice[:, 'price']].droplevel(1, 1)
-    test_data = test_data.iloc[:val_size]
-
-    # featurization
-    train_data = train_data.pct_change(1).dropna()
-    train_dates = train_data.index
-    train_data = train_data.values
-    val_data = val_data.pct_change(1).dropna()
-    val_dates = val_data.index
-    val_data = val_data.values
-    test_data = test_data.pct_change(1).dropna()
-    test_dates = test_data.index
-    test_data = test_data.values
-
-    # standardization
-    scaler = preprocessing.StandardScaler(with_std=True, with_mean=True)
-    scaler.fit(train_data)
-    train_data = scaler.transform(train_data)
-    val_data = scaler.transform(val_data)
-    test_data = scaler.transform(test_data)
-
-    if rescale is not None:
-        train_data = train_data * rescale
-        val_data = val_data * rescale
-        test_data = test_data * rescale
-
-    dates = {
-        'train': train_dates,
-        'val': val_dates,
-        'test': test_dates
-    }
-    return train_data, val_data, test_data, scaler, dates
-
-
 if __name__ == "__main__":
     n_features = 1
     model, encoder, extra_features = pca_ae_model(input_dim=5,
