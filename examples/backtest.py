@@ -6,9 +6,13 @@ from dl_portfolio.logger import LOGGER
 from dl_portfolio.backtest import cv_portfolio_perf, get_cv_results, bar_plot_weights, backtest_stats, plot_perf, \
     get_average_perf, get_ts_weights
 import datetime as dt
+import sys, logging
+from dl_portfolio.ae_data import load_data
 
-PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+# PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+# STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+STRAT = ['equal', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # PORTFOLIOS = ['ae_rp_c']
 # STRAT = ['ae_rp_c']
@@ -41,7 +45,23 @@ if __name__ == "__main__":
     parser.add_argument("--save",
                         action='store_true',
                         help="Save results")
+    parser.add_argument("-v",
+                        "--verbose",
+                        help="Be verbose",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.INFO,
+                        default=logging.WARNING)
+    parser.add_argument('-d',
+                        '--debug',
+                        help="Debugging statements",
+                        action="store_const",
+                        dest="loglevel",
+                        const=logging.DEBUG,
+                        default=logging.WARNING)
     args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel)
+    LOGGER.setLevel(args.loglevel)
 
     if args.dataset == 'bond':
         market_budget = pd.read_csv('data/market_budget_bond.csv', index_col=0)
@@ -51,7 +71,7 @@ if __name__ == "__main__":
                                                                columns=market_budget.columns)])
         # market_budget = market_budget.drop('CRIX')
         market_budget['rc'] = market_budget['rc'].astype(int)
-    elif args.dataset == "raffinot_multi_asset":
+    elif args.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
         market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
@@ -68,10 +88,14 @@ if __name__ == "__main__":
         json.dump(meta, open(f"{save_dir}/meta.json", "w"))
 
     models = os.listdir(args.base_dir)
-    paths = [f"{args.base_dir}/{d}" for d in models if models[0] != '.']
+    paths = [f"{args.base_dir}/{d}" for d in models if d[0] != '.']
 
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
+
+    sys.path.append(paths[0])
+    import ae_config
+
 
     #####
     cv_results = {}
@@ -92,7 +116,8 @@ if __name__ == "__main__":
                                        portfolios=portfolios,
                                        market_budget=market_budget,
                                        window=args.window,
-                                       n_jobs=args.n_jobs)
+                                       n_jobs=args.n_jobs,
+                                       ae_config=ae_config)
         port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True)
 
     dates = [cv_results[0][cv]['test_features'].index[0] for cv in cv_results[0]]
@@ -142,14 +167,16 @@ if __name__ == "__main__":
                   show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hcaa', 'ae_rp_c'], save_path=f"{save_dir}/performance_hcaa_aeerc_cluster.png",
                   show=args.show, legend=True)
-        plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'],
+        if 'markowitz' in PORTFOLIOS:
+            plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'],
                   save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
                   show=args.show, legend=True)
 
         if 'shrink_markowitz' in PORTFOLIOS:
             bar_plot_weights(port_weights['shrink_markowitz'], save_path=f"{save_dir}/weights_shrink_markowitz.png",
                              show=args.show)
-        bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
+        if 'markowitz' in PORTFOLIOS:
+            bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
         bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
         bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show)
         bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show)
@@ -193,10 +220,11 @@ if __name__ == "__main__":
     if args.save:
         plt.savefig(f"{save_dir}/excess_performance_hrp_aeerc_cluster.png", bbox_inches='tight')
 
-    plt.figure(figsize=(20, 10))
-    plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['markowitz'] + 1))
-    if args.save:
-        plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight')
+    if 'markowitz' in PORTFOLIOS:
+        plt.figure(figsize=(20, 10))
+        plt.plot(np.cumprod(ann_perf['ae_rp_c'] + 1) - np.cumprod(ann_perf['markowitz'] + 1))
+        if args.save:
+            plt.savefig(f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png", bbox_inches='tight')
 
     # Plot one cv weight
     cv = 0

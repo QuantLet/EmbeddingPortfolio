@@ -1,21 +1,30 @@
+import pickle
+import scipy
+
+import matplotlib.pyplot as plt
+import tensorflow as tf
 import pandas as pd
 import numpy as np
 import riskparityportfolio as rp
+
+from typing import Union, Dict, Optional, List
+from joblib import Parallel, delayed
+from sklearn.cluster import KMeans
+
 from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
-from dl_portfolio.logger import LOGGER
-from typing import Union, Dict, Optional, List
-import pickle
-from joblib import Parallel, delayed
+
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
 from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
+
+from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.constant import CRYPTO_ASSETS
-import matplotlib.pyplot as plt
-import scipy
-from sklearn.cluster import KMeans
+from dl_portfolio.ae_data import get_features
+from dl_portfolio.pca_ae import build_model
+from dl_portfolio.utils import load_result
 
 PORTFOLIOS = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc', 'hcaa',
               'ae_rp_c', 'kmaa', 'aeaa']
@@ -36,7 +45,10 @@ def get_ts_weights(cv_results, port) -> pd.DataFrame:
         else:
             w = pd.DataFrame(cv_results[0][cv]['port'][port]).T
             weights = pd.concat([weights, w])
-    weights.index = dates
+    try:
+        weights.index = dates
+    except Exception as _exc:
+        raise Exception(f"Probblem with portfolio '{port}':\n{_exc}")
 
     return weights
 
@@ -228,13 +240,23 @@ def get_timeseries_weights(cv_results):
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
                                           'ae_rp'],
-                      annualized: bool = True):
+                      annualized: bool = True,
+                      fee: float = 2e-4):
+    """
+
+    :param cv_results:
+    :param portfolios:
+    :param annualized:
+    :param fee: 2 bps = 0.02 %
+    :return:
+    """
     assert all([p in PORTFOLIOS for p in portfolios])
 
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
         port_perf[p]['total'] = pd.DataFrame()
+        port_perf[p]['cost'] = []
 
     for cv in cv_results:
         for p in portfolios:
@@ -249,13 +271,20 @@ def cv_portfolio_perf(cv_results: Dict,
             if annualized:
                 if p == 'equal':
                     train_port_perf = portfolio_return('equal', cv_results[cv]['train_returns'])
+                    cost = 0
                 else:
                     train_port_perf = portfolio_return(p, cv_results[cv]['train_returns'], cv_results[cv]['port'][p])
+                    if cv == 0:
+                        cost = fee * np.sum(np.abs(np.ones_like(cv_results[cv]['port'][p]) - cv_results[cv]['port'][p]))
+                    else:
+                        cost = fee * np.sum(np.abs(cv_results[cv - 1]['port'][p] - cv_results[cv]['port'][p]))
 
                 # Check Jaeger et al 2021
                 base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
                 leverage = 0.05 / base_vol
+                cost = cost * leverage
                 port_perf[p][cv] = leverage * port_perf[p][cv]
+                port_perf[p][cv].iloc[0] = port_perf[p][cv].iloc[0] - cost
 
             port_perf[p]['total'] = pd.concat([port_perf[p]['total'], port_perf[p][cv]])
 
@@ -263,70 +292,57 @@ def cv_portfolio_perf(cv_results: Dict,
 
 
 def portfolio_return(portfolio, returns, weights: Optional[np.ndarray] = None):
-    if portfolio != 'equal':
-        assert weights is not None
     if portfolio == 'equal':
         port_perf = returns.mean(1)
     else:
-        port_perf = (returns * weights).sum(1)
+        if weights is None:
+            port_perf = returns.mean(1) * np.nan
+        else:
+            port_perf = (returns * weights).sum(1)
     return port_perf
 
 
-def one_cv(base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True, window: Optional[int] = None,
+def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True,
+           window: Optional[int] = None,
            dataset='global', **kwargs):
+    ae_config = kwargs.get('ae_config')
     res = {}
-    scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
-    embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
-    returns = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_returns.p')
-    returns.sort_index(inplace=True)
-    pred = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_prediction.p')
-    pred.sort_index(inplace=True)
-    train_features = pd.read_pickle(f'{base_dir}/{cv}/train_features.p')
-    train_features.sort_index(inplace=True)
-    test_features = pd.read_pickle(f'{base_dir}/{cv}/{test_set}_features.p')
-    test_features.sort_index(inplace=True)
 
-    assets = list(returns.columns)
-    if 'CRIX' in assets:
-        crix = True
-        crypto_assets = None
-    else:
-        crix = False
-        crypto_assets = CRYPTO_ASSETS
-    train_returns, _ = load_data(dataset=dataset, assets=assets, freq='1D', crix=crix, crypto_assets=crypto_assets)
-    train_returns = train_returns.pct_change(1).dropna()
-    train_returns = train_returns[assets]
-    assert np.sum(train_returns.isna().sum()) == 0
-    train_returns = train_returns.loc[:returns.index[0]].iloc[:-1]
-    assets = train_returns.columns
+    scaler, dates, test_data, test_features, pred, embedding = load_result(test_set, data, assets, base_dir, cv,
+                                                                           ae_config)
+
+    std = np.sqrt(scaler['attributes']['var_'])
+    data = data.pct_change(1).dropna()
+    data = data[assets]
+    assert np.sum(data.isna().sum()) == 0
+    train_returns = data.loc[dates['train']]
+    returns = data.loc[dates[test_set]]
 
     if window is not None:
         assert isinstance(window, int)
         train_returns = train_returns.iloc[-window:]
 
     residuals = returns - pred
-
-    std = np.sqrt(scaler['attributes']['var_'])
     scaled_residuals = residuals * std
     scaled_embedding = np.dot(np.diag(std, k=0), embedding)
 
     res['embedding'] = embedding
     res['scaler'] = scaler
     res['scaled_embedding'] = scaled_embedding
-    res['train_features'] = train_features
+    # res['train_features'] = train_features
     res['test_features'] = test_features
     res['test_pred'] = pred
-    res['Sf'] = train_features.cov()
+    # res['Sf'] = train_features.cov()
     res['Su'] = scaled_residuals.cov()
-    res['H'] = pd.DataFrame(np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
-                            index=embedding.index, columns=embedding.index)
+    # res['H'] = pd.DataFrame(np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
+    #                         index=embedding.index, columns=embedding.index)
     res['w'] = embedding
     res['train_returns'] = train_returns
     res['returns'] = returns
     if compute_weights:
         assert market_budget is not None
         res['port'] = portfolio_weights(train_returns,
-                                        shrink_cov=res['H'],
+                                        # shrink_cov=res['H'],
                                         budget=market_budget.loc[assets],
                                         embedding=embedding,
                                         portfolio=portfolios,
@@ -344,10 +360,13 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
                    window: Optional[int] = None, n_jobs: int = None, dataset='global', **kwargs):
     assert test_set in ['val', 'test']
 
+    ae_config = kwargs.get('ae_config')
+    data, assets = load_data(dataset=dataset, assets=ae_config.assets, freq=ae_config.freq, crix=ae_config.crix,
+                             crypto_assets=ae_config.crypto_assets)
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
-                delayed(one_cv)(base_dir, cv, test_set, portfolios, market_budget=market_budget,
+                delayed(one_cv)(data, assets, base_dir, cv, test_set, portfolios, market_budget=market_budget,
                                 compute_weights=compute_weights,
                                 window=window, dataset=dataset, **kwargs)
                 for cv in range(n_folds)
@@ -359,7 +378,7 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
     else:
         cv_results = {}
         for cv in range(n_folds):
-            _, cv_results[cv] = one_cv(base_dir, cv, test_set, portfolios, market_budget=market_budget,
+            _, cv_results[cv] = one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=market_budget,
                                        compute_weights=compute_weights,
                                        window=window, dataset=dataset, **kwargs)
 
@@ -438,7 +457,7 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
 
 
 def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov: bool = False,
-                      risk_free_rate: float = 0.):
+                      risk_free_rate: float = 0.) -> pd.Series:
     if fix_cov:
         S = risk_models.fix_nonpositive_semidefinite(S, fix_method='spectral')
 
@@ -455,14 +474,14 @@ def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov
     return weights
 
 
-def hrp_weights_old(S: pd.DataFrame):
+def hrp_weights_old(S: pd.DataFrame) -> pd.Series:
     hrp = HRPOpt(cov_matrix=S)
     weights = hrp.optimize()
     weights = pd.Series(weights, index=S.index)
     return weights
 
 
-def hrp_weights(S: pd.DataFrame, linkage: str = 'single'):
+def hrp_weights(S: pd.DataFrame, linkage: str = 'single') -> pd.Series:
     # constructing our Single Linkage portfolio
     hrp_single = HierarchicalRiskParity()
     hrp_single.allocate(asset_names=S.columns,
@@ -477,7 +496,7 @@ def hrp_weights(S: pd.DataFrame, linkage: str = 'single'):
 
 
 def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: str = 'equal_weighting',
-                 covariance_matrix=None, optimal_num_clusters=None):
+                 covariance_matrix=None, optimal_num_clusters=None) -> pd.Series:
     hercEW_single = HierarchicalEqualRiskContribution()
     hercEW_single.allocate(asset_names=returns.columns,
                            asset_returns=returns,
@@ -493,7 +512,7 @@ def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: s
     return weights
 
 
-def ivp_weights(S: Union[pd.DataFrame, np.ndarray]):
+def ivp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
     # Compute the inverse-variance portfolio
     ivp = 1. / np.diag(S.values)
     weights = ivp / ivp.sum()
@@ -506,7 +525,7 @@ def ivp_weights(S: Union[pd.DataFrame, np.ndarray]):
     return weights
 
 
-def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray):
+def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
     weights = rp.RiskParityPortfolio(covariance=S, budget=budget).weights
     weights = pd.Series(weights, index=S.index)
 
