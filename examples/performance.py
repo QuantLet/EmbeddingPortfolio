@@ -11,8 +11,7 @@ import seaborn as sns
 from sklearn import metrics, preprocessing
 
 from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
-    get_average_perf, get_ts_weights
-from dl_portfolio.backtest import get_cv_results
+    get_average_perf, get_ts_weights, get_cv_results
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
@@ -22,8 +21,8 @@ from dl_portfolio.logger import LOGGER
 PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
 STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
-# PORTFOLIOS = ['ae_rp_c']
-# STRAT = ['ae_rp_c']
+# PORTFOLIOS = ['markowitz']
+# STRAT = ['markowitz']
 
 
 if __name__ == "__main__":
@@ -33,9 +32,6 @@ if __name__ == "__main__":
     parser.add_argument("--base_dir",
                         type=str,
                         help="Experiments dir")
-    parser.add_argument("--dataset",
-                        type=str,
-                        help="Dataset name")
     parser.add_argument("--test_set",
                         default='val',
                         type=str,
@@ -71,21 +67,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.basicConfig(level=args.loglevel)
     LOGGER.setLevel(args.loglevel)
-
-    if args.dataset == 'bond':
-        market_budget = pd.read_csv('data/market_budget_bond.csv', index_col=0)
-        cryptos = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
-        market_budget = pd.concat([market_budget, pd.DataFrame(np.array([['crypto', 1]] * len(cryptos)),
-                                                               index=cryptos,
-                                                               columns=market_budget.columns)])
-        # market_budget = market_budget.drop('CRIX')
-        market_budget['rc'] = market_budget['rc'].astype(int)
-    elif args.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
-        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
-        market_budget['rc'] = market_budget['rc'].astype(int)
-    else:
-        raise NotImplementedError()
-
     meta = vars(args)
     if args.save:
         save_dir = f"performance/{args.test_set}_{args.base_dir}" + '_' + dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -107,6 +88,21 @@ if __name__ == "__main__":
     sys.path.append(paths[0])
     import ae_config
 
+    # Load Market budget
+    if ae_config.dataset == 'bond':
+        market_budget = pd.read_csv('data/market_budget_bond.csv', index_col=0)
+        cryptos = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+        market_budget = pd.concat([market_budget, pd.DataFrame(np.array([['crypto', 1]] * len(cryptos)),
+                                                               index=cryptos,
+                                                               columns=market_budget.columns)])
+        # market_budget = market_budget.drop('CRIX')
+        market_budget['rc'] = market_budget['rc'].astype(int)
+    elif ae_config.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
+        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
+        market_budget['rc'] = market_budget['rc'].astype(int)
+    else:
+        raise NotImplementedError()
+
     # Main loop to get results
     cv_results = {}
     train_cov = {}
@@ -122,7 +118,7 @@ if __name__ == "__main__":
         cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,
-                                       dataset=args.dataset,
+                                       dataset=ae_config.dataset,
                                        portfolios=portfolios,
                                        market_budget=market_budget,
                                        window=args.window,

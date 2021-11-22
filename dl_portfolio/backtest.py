@@ -14,7 +14,7 @@ from sklearn.cluster import KMeans
 from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
-
+import cvxpy as cp
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
 from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
@@ -68,7 +68,7 @@ def plot_perf(perf, strategies=['aerp'], save_path=None, show=False, legend=True
     if legend:
         plt.legend()
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
 
@@ -84,10 +84,15 @@ def bar_plot_weights(weights, show=False, legend=False, save_path=None):
         ax.bar(labels, weights[c],
                label=c, width=1, align='edge',
                bottom=weights.iloc[:, :i].sum(1))
+
+    ax.tick_params(axis='x', labelrotation=45)
+    if len(weights) > 45:
+        _ = ax.set_xticks(list(range(0, len(weights), 6)))
+
     if legend:
         plt.legend()
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
 
@@ -245,6 +250,77 @@ def get_timeseries_weights(cv_results):
         pweights.index = dates
         weights[p] = pweights
     return weights
+
+
+def compute_balance(price, weights, prev_weights, prev_K, fee=2e-4, leverage=1):
+    returns = price.pct_change(1).dropna()
+    port_return = leverage * (returns * weights).sum(1)
+
+    # Compute trading cost
+    cost = leverage * fee * np.sum(np.abs(prev_weights - weights))
+    # Calculate capital with trading cost at the begining of period
+    K0 = prev_K * (1 - cost)
+    # Compute balance on the period
+    K = K0 * (port_return + 1).cumprod()
+    # Calculate number of shares at beginning of period
+    N = leverage * K0 * weights / price.loc[price.index[0]]
+
+    return K, N, cost
+
+
+def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: float = 2e-4, **kwargs) -> Union[
+    pd.DataFrame, pd.DataFrame, List]:
+    """
+
+    :param price:
+    :param cv_results:
+    :param fee:
+    :param leverage:
+    :return:
+    """
+    shares = []
+    costs = []
+    balance = pd.DataFrame()
+    assets = price.columns
+    n_assets = price.shape[-1]
+    if portfolio == 'equal':
+        weights = pd.Series([1 / n_assets] * n_assets, index=assets)
+    elif portfolio == 'equal_class':
+        market_budget = kwargs.get('market_budget')
+        assert market_budget is not None
+        weights = equal_class_weights(market_budget)
+
+    for cv in cv_results:
+        cv_ret = cv_results[cv]['returns'].copy()
+        loc = price.index.get_loc(cv_ret.index[0])
+        t0 = price.index[loc - 1]
+        t1 = cv_ret.index[-1]
+        cv_price = price.loc[t0:t1]
+        if portfolio not in ['equal', 'equal_class']:
+            weights = cv_results[cv]['port'][portfolio].copy()
+
+        # First compute leverage
+        train_port_returns = portfolio_return(price.loc[:t0].iloc[-80:-1], weights=weights)
+        base_vol = np.max((np.std(train_port_returns[-20:]), np.std(train_port_returns[-60:]))) * np.sqrt(252)
+        leverage = 0.05 / base_vol
+
+        if cv == 0:
+            prev_K = 1
+            prev_weights = np.ones_like(weights)
+        else:
+            prev_K = balance.values[-1]
+            prev_N = shares[-1]
+            prev_weights = price.loc[t0] * prev_N / prev_K
+
+        K, N, cost = compute_balance(cv_price, weights, prev_weights, prev_K, fee=fee, leverage=leverage)
+        shares.append(N)
+        balance = pd.concat([balance, K])
+        costs.append(cost)
+
+    port_returns = pd.DataFrame([[1.]] + balance.values.tolist()).pct_change(1).dropna().astype(np.float32)
+    port_returns.index = balance.index
+
+    return balance, port_returns, costs
 
 
 def cv_portfolio_perf(cv_results: Dict,
@@ -417,7 +493,6 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None,
 
     if 'markowitz' in portfolio:
         LOGGER.info('Computing Markowitz weights...')
-        markowitz_weights(mu, S)
         port_w['markowitz'] = markowitz_weights(mu, S)
 
     if 'shrink_markowitz' in portfolio:
@@ -481,16 +556,47 @@ def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov
                       risk_free_rate: float = 0.) -> pd.Series:
     if fix_cov:
         S = risk_models.fix_nonpositive_semidefinite(S, fix_method='spectral')
-
+    weights = None
     try:
+        LOGGER.info(f"Trying Markowitz with default 'ECOS' solver")
         ef = EfficientFrontier(mu, S, verbose=False)
         # ef.add_objective(objective_functions.L2_reg, gamma=0)
         weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
         weights = pd.Series(weights, index=weights.keys())
-
+        LOGGER.info("Success")
     except Exception as _exc:
         LOGGER.info(f'Error with max sharpe: {_exc}')
-        weights = None
+        try:
+            LOGGER.info(f"Trying Markowitz with 'SCS' solver")
+            ef = EfficientFrontier(mu, S, verbose=True, solver='SCS')
+            # ef.add_objective(objective_functions.L2_reg, gamma=0)
+            weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
+            weights = pd.Series(weights, index=weights.keys())
+            LOGGER.info("Success")
+        except Exception as _exc:
+            LOGGER.info(f'Error with max sharpe: {_exc}')
+            try:
+                LOGGER.info(f"Trying Markowitz with 'OSQP' solver")
+                ef = EfficientFrontier(mu, S, verbose=True, solver='OSQP')
+                # ef.add_objective(objective_functions.L2_reg, gamma=0)
+                weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
+                weights = pd.Series(weights, index=weights.keys())
+                LOGGER.info("Success")
+            except Exception as _exc:
+                LOGGER.info(f'Error with max sharpe: {_exc}')
+                try:
+                    LOGGER.info(f"Trying Markowitz with 'CVXOPT' solver")
+
+                    # ef = EfficientFrontier(mu, S, verbose=True, solver=cp.CVXOPT, solver_options={'feastol': 1e-4})
+                    ef = EfficientFrontier(mu, S, verbose=True, solver=cp.SCS)
+                    weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
+                    weights = pd.Series(weights, index=weights.keys())
+                    LOGGER.info("Success")
+                except Exception as _exc:
+                    LOGGER.info(f'Error with max sharpe: {_exc}')
+
+    if weights is None:
+        raise _exc
 
     return weights
 
