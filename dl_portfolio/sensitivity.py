@@ -47,6 +47,6 @@ def plot_sensitivity(sensitivity: pd.DataFrame, save_path=None, show=False, max_
     plt.yticks(range(len(ytickslabels)), ytickslabels)
 
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
