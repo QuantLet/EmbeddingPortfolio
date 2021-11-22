@@ -585,7 +585,7 @@ def plot_history(history, save_path=None, show=False):
         axs[2].legend()
 
     if save_path:
-        plt.savefig(f"{save_path}/history.png")
+        plt.savefig(f"{save_path}/history.png", transparent=True)
 
     if show:
         plt.show()

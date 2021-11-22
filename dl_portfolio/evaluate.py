@@ -117,7 +117,7 @@ def qqplot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optional[str] = No
         axs[row, col].plot(x, x, color="k", ls="--")
         axs[row, col].set_title(a)
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
 
@@ -137,7 +137,7 @@ def pred_vs_true_plot(true: pd.DataFrame, pred: pd.DataFrame, save_path: Optiona
         axs[row, col].plot(x, x, color="k", ls="--")
         axs[row, col].set_title(a)
     if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
+        plt.savefig(save_path, bbox_inches='tight', transparent=True)
     if show:
         plt.show()
 
@@ -156,7 +156,7 @@ def plot_train_history(train_history: Dict, test_history: Dict, save_dir: Option
     axs[2].plot(test_history['cum_ret'])
     axs[2].set_title('Cum return')
     if save_dir:
-        plt.savefig(save_dir)
+        plt.savefig(save_dir, transparent=True)
     if show:
         plt.show()
 

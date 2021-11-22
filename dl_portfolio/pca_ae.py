@@ -138,7 +138,7 @@ def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
         ax = sns.heatmap(encoder_weights[c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
                          ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
     if save_dir:
-        plt.savefig(f'{save_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
+        plt.savefig(f'{save_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0, transparent=True)
     if show:
         plt.show()
 
@@ -174,7 +174,7 @@ def heat_map_cluster(load_dir, show=False, save=False, filename='encoder_weights
             ax = sns.heatmap(encoder_weights[last_set][c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
                              ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
     if save:
-        plt.savefig(f'{load_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0)
+        plt.savefig(f'{load_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0, transparent=True)
     if show:
         plt.show()
     plt.close()
