@@ -11,15 +11,15 @@ import seaborn as sns
 from sklearn import metrics, preprocessing
 
 from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
-    get_average_perf, get_ts_weights, get_cv_results
+    get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 
 # PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+STRAT = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # PORTFOLIOS = ['markowitz']
 # STRAT = ['markowitz']
@@ -124,26 +124,45 @@ if __name__ == "__main__":
                                        window=args.window,
                                        n_jobs=args.n_jobs,
                                        ae_config=ae_config)
-        port_perf[i] = cv_portfolio_perf(cv_results[i], portfolios=portfolios, annualized=True,
-                                         market_budget=market_budget)
+
+    # Get average weights for AE portfolio across runs
+    port_weights = get_dl_average_weights(cv_results)
+    # Build dictionary for cv_portfolio_perf
+    cv_returns = {}
+    for cv in cv_results[0]:
+        cv_returns[cv] = cv_results[0][cv]['returns'].copy()
+        date = cv_results[0][cv]['returns'].index[0]
+        for port in PORTFOLIOS:
+            if port not in ['equal', 'equal_class'] and 'ae' not in port:
+                weights = pd.DataFrame(cv_results[0][cv]['port'][port]).T
+                weights.index = [date]
+                port_weights[cv][port] = weights
+    cv_portfolio = {
+        cv: {
+            'returns': cv_returns[cv],
+            'train_returns': cv_results[0][cv]['train_returns'],
+            'port': {port: port_weights[cv][port].values for port in port_weights[cv]
+                     # if port not in ['equal', 'equal_classs']
+                     }
+        } for cv in cv_returns
+    }
+    port_perf = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True, market_budget=market_budget)
 
     K = cv_results[i][0]['embedding'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
     ASSETS = list(cv_results[i][0]['returns'].columns)
 
-    # Get portfolio weights time serioes
-    port_weights = {}
-    for p in PORTFOLIOS:
-        if p not in ['equal', 'equal_class']:
-            port_weights[p] = get_ts_weights(cv_results, port=p)
-
+    # Get portfolio weights time series
+    # port_weights = {}
+    # for p in PORTFOLIOS:
+    #     if p not in ['equal', 'equal_class']:
+    #         port_weights[p] = get_ts_weights(cv_results, port=p)
+    port_weights = get_ts_weights(port_weights)
+    print(port_weights)
     # Get average perf across runs
     ann_perf = pd.DataFrame()
     for p in PORTFOLIOS:
-        if 'ae' in p:
-            ann_perf[p] = get_average_perf(port_perf, port=p)
-        else:
-            ann_perf[p] = port_perf[0][p]['total'][0]
+        ann_perf[p] = port_perf[p]['total'].iloc[:, 0]
 
     # Some renaming
     port_weights['aerp'] = port_weights['ae_ivp'].copy()
@@ -186,13 +205,14 @@ if __name__ == "__main__":
                              show=args.show)
         if 'markowitz' in PORTFOLIOS:
             bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
-        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
-        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show)
-        bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show)
-        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show)
-        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show)
-        bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show)
-        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show)
+        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=True)
+        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show, legend=True)
+        bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show, legend=True)
+        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show, legend=True)
+        bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=True)
+        bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show,
+                         legend=True)
+        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show, legend=True)
     else:
         plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=True)
         plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)

@@ -25,12 +25,52 @@ from dl_portfolio.constant import CRYPTO_ASSETS
 from dl_portfolio.ae_data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.utils import load_result
+from dl_portfolio.constant import DATA_SPECS_BOND
 
 PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
               'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
 
 
-def get_ts_weights(cv_results, port) -> pd.DataFrame:
+def get_target_vol_gmv_robust_perf(dataset: str):
+    # Load pyrobustm results
+    if dataset == 'bond':
+        crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+        GMV_robust_weights = pd.read_csv('GMV_robust_weights_bond.csv', index_col=0)
+        data_specs = DATA_SPECS_BOND
+    else:
+        crypto_assets = None
+        GMV_robust_weights = pd.read_csv('.csv', index_col=0)
+    GMV_robust_weights.index = pd.to_datetime(GMV_robust_weights.index)
+    # Load data
+    data, assets = load_data(dataset=dataset,
+                             assets=None,
+                             freq='1D',
+                             crix=False,
+                             crypto_assets=crypto_assets)
+
+    returns = data.pct_change(1).dropna()
+    port_perf = {}
+    port_perf['GMV_robust'] = {}
+    port_perf['GMV_robust'] = pd.DataFrame()
+
+    for cv in data_specs:
+        test_start = data_specs[cv]['test_start']
+        test_end = data_specs[cv]['end']
+        weights = {'GMV_robust': GMV_robust_weights.loc[data_specs[cv]['test_start']:].iloc[0]}
+        if cv == 0:
+            prev_weights = {'GMV_robust': np.ones_like(weights) for p in ['GMV_robust']}
+        train_returns = returns.loc[:test_start].iloc[-1000:-1]
+        test_returns = returns.loc[test_start:test_end]
+        one_cv_perf = get_portfolio_perf(train_returns, test_returns, weights, portfolios=['GMV_robust'],
+                                         prev_weights=prev_weights)
+
+        prev_weights = weights.copy()
+        port_perf['GMV_robust'] = pd.concat([port_perf['GMV_robust'], one_cv_perf['GMV_robust']])
+
+    return port_perf
+
+
+def get_ts_weights_from_cv_results(cv_results, port) -> pd.DataFrame:
     dates = [cv_results[0][cv]['returns'].index[0] for cv in cv_results[0]]
     weights = pd.DataFrame()
     for cv in cv_results[0]:
@@ -51,6 +91,37 @@ def get_ts_weights(cv_results, port) -> pd.DataFrame:
         raise Exception(f"Probblem with portfolio '{port}':\n{_exc}")
 
     return weights
+
+
+def get_ts_weights(port_weights: Dict) -> Dict:
+    portfolios = port_weights[0].keys()
+    all_weights = {}
+    for p in portfolios:
+        weights = pd.DataFrame()
+        for cv in port_weights.keys():
+            weights = pd.concat([weights, port_weights[cv][p]])
+        weights.index = pd.to_datetime(weights.index)
+        all_weights[p] = weights
+    return all_weights
+
+
+def get_dl_average_weights(cv_results):
+    port_weights = {cv: {} for cv in cv_results[0]}
+    portfolios = cv_results[0][0]['port'].keys()
+    for cv in cv_results[0]:
+        date = cv_results[0][cv]['returns'].index[0]
+        for port in portfolios:
+            if 'ae' in port:
+                weights = pd.DataFrame()
+                for i in cv_results:
+                    w = pd.DataFrame(cv_results[i][cv]['port'][port]).T
+                    weights = pd.concat([weights, w])
+                weights = weights.mean()
+                weights = pd.DataFrame(weights).T
+                weights.index = [date]
+                port_weights[cv][port] = weights
+
+    return port_weights
 
 
 def get_average_perf(port_perf: Dict, port: str) -> pd.DataFrame:
@@ -323,6 +394,59 @@ def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: floa
     return balance, port_returns, costs
 
 
+def get_portfolio_perf(train_returns: pd.DataFrame, returns: pd.DataFrame, weights: Dict,
+                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
+                                           'ae_rp'],
+                       prev_weights: Optional[Dict] = None, fee: float = 2e-4, annualized: bool = True, **kwargs):
+    """
+
+    :param train_returns:
+    :param returns:
+    :param weights: Dict with portfolio keys and corresponding weight
+    :param prev_weights: Dict with portfolio keys and corresponding weight for the previous period (to compute fees)
+    :return:
+    """
+    N = returns.shape[-1]
+    port_perf = {}
+    for p in portfolios:
+        if p == 'equal':
+            port_perf['equal'] = portfolio_return(returns, weights=1 / N)
+        elif p == 'equal_class':
+            market_budget = kwargs.get('market_budget')
+            assert market_budget is not None
+            w = equal_class_weights(market_budget)
+            port_perf['equal_class'] = portfolio_return(returns, weights=w)
+        else:
+            if weights[p] is not None:
+                port_perf[p] = portfolio_return(returns, weights=weights[p])
+            else:
+                LOGGER.info(f'Warning: No weight for {p} portfolio... Setting to NaN')
+                port_perf[p] = returns * np.nan
+        # Volatility target weights
+        if annualized:
+            if p == 'equal':
+                train_port_perf = portfolio_return(train_returns, weights=1 / N)
+                cost = 0
+            elif p == 'equal_class':
+                market_budget = kwargs.get('market_budget')
+                assert market_budget is not None
+                w = equal_class_weights(market_budget)
+                train_port_perf = portfolio_return(train_returns, weights=w)
+                cost = 0
+            else:
+                train_port_perf = portfolio_return(train_returns, weights=weights[p])
+                cost = fee * np.sum(np.abs(prev_weights[p] - weights[p]))
+
+            # Check Jaeger et al 2021
+            base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
+            leverage = 0.05 / base_vol
+            cost = cost * leverage
+            port_perf[p] = leverage * port_perf[p]
+            port_perf[p].iloc[0] = port_perf[p].iloc[0] - cost
+
+    return port_perf
+
+
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
                                           'ae_rp'],
@@ -338,55 +462,70 @@ def cv_portfolio_perf(cv_results: Dict,
     :return:
     """
     assert all([p in PORTFOLIOS for p in portfolios])
-    N = cv_results[0]['returns'].shape[-1]
     port_perf = {}
     for p in portfolios:
         port_perf[p] = {}
         port_perf[p]['total'] = pd.DataFrame()
-        port_perf[p]['cost'] = []
 
     for cv in cv_results:
+        weights = cv_results[cv]['port'].copy()
+        if cv == 0:
+            prev_weights = {p: np.ones_like(cv_results[cv]['port'][p]) for p in portfolios if
+                            p not in ['equal', 'equal_class']}
+        else:
+            prev_weights = cv_results[cv - 1]['port'].copy()
+        one_cv_perf = get_portfolio_perf(cv_results[cv]['train_returns'],
+                                         cv_results[cv]['returns'],
+                                         weights,
+                                         portfolios=portfolios,
+                                         prev_weights=prev_weights,
+                                         fee=fee,
+                                         annualized=annualized,
+                                         **kwargs)
         for p in portfolios:
-            if p == 'equal':
-                port_perf['equal'][cv] = portfolio_return(cv_results[cv]['returns'], weights=1 / N)
-            elif p == 'equal_class':
-                market_budget = kwargs.get('market_budget')
-                assert market_budget is not None
-                weights = equal_class_weights(market_budget)
-                port_perf['equal_class'][cv] = portfolio_return(cv_results[cv]['returns'], weights=weights)
-            else:
-                if cv_results[cv]['port'][p] is not None:
-                    port_perf[p][cv] = portfolio_return(cv_results[cv]['returns'], weights=cv_results[cv]['port'][p])
-                else:
-                    LOGGER.info(f'Warning: No weight for {p} portfolio at cv {cv}. Setting to NaN')
-                    port_perf[p][cv] = cv_results[cv]['returns'] * np.nan
-            # Volatility target weights
-            if annualized:
-                if p == 'equal':
-                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=1 / N)
-                    cost = 0
-                elif p == 'equal_class':
-                    market_budget = kwargs.get('market_budget')
-                    assert market_budget is not None
-                    weights = equal_class_weights(market_budget)
-                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=weights)
+            port_perf[p]['total'] = pd.concat([port_perf[p]['total'], one_cv_perf[p]])
 
-                else:
-                    train_port_perf = portfolio_return(cv_results[cv]['train_returns'],
-                                                       weights=cv_results[cv]['port'][p])
-                    if cv == 0:
-                        cost = fee * np.sum(np.abs(np.ones_like(cv_results[cv]['port'][p]) - cv_results[cv]['port'][p]))
-                    else:
-                        cost = fee * np.sum(np.abs(cv_results[cv - 1]['port'][p] - cv_results[cv]['port'][p]))
-
-                # Check Jaeger et al 2021
-                base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
-                leverage = 0.05 / base_vol
-                cost = cost * leverage
-                port_perf[p][cv] = leverage * port_perf[p][cv]
-                port_perf[p][cv].iloc[0] = port_perf[p][cv].iloc[0] - cost
-
-            port_perf[p]['total'] = pd.concat([port_perf[p]['total'], port_perf[p][cv]])
+        # for p in portfolios:
+        #     if p == 'equal':
+        #         port_perf['equal'][cv] = portfolio_return(cv_results[cv]['returns'], weights=1 / N)
+        #     elif p == 'equal_class':
+        #         market_budget = kwargs.get('market_budget')
+        #         assert market_budget is not None
+        #         weights = equal_class_weights(market_budget)
+        #         port_perf['equal_class'][cv] = portfolio_return(cv_results[cv]['returns'], weights=weights)
+        #     else:
+        #         if cv_results[cv]['port'][p] is not None:
+        #             port_perf[p][cv] = portfolio_return(cv_results[cv]['returns'], weights=cv_results[cv]['port'][p])
+        #         else:
+        #             LOGGER.info(f'Warning: No weight for {p} portfolio at cv {cv}. Setting to NaN')
+        #             port_perf[p][cv] = cv_results[cv]['returns'] * np.nan
+        #     # Volatility target weights
+        #     if annualized:
+        #         if p == 'equal':
+        #             train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=1 / N)
+        #             cost = 0
+        #         elif p == 'equal_class':
+        #             market_budget = kwargs.get('market_budget')
+        #             assert market_budget is not None
+        #             weights = equal_class_weights(market_budget)
+        #             train_port_perf = portfolio_return(cv_results[cv]['train_returns'], weights=weights)
+        #
+        #         else:
+        #             train_port_perf = portfolio_return(cv_results[cv]['train_returns'],
+        #                                                weights=cv_results[cv]['port'][p])
+        #             if cv == 0:
+        #                 cost = fee * np.sum(np.abs(np.ones_like(cv_results[cv]['port'][p]) - cv_results[cv]['port'][p]))
+        #             else:
+        #                 cost = fee * np.sum(np.abs(cv_results[cv - 1]['port'][p] - cv_results[cv]['port'][p]))
+        #
+        #         # Check Jaeger et al 2021
+        #         base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
+        #         leverage = 0.05 / base_vol
+        #         cost = cost * leverage
+        #         port_perf[p][cv] = leverage * port_perf[p][cv]
+        #         port_perf[p][cv].iloc[0] = port_perf[p][cv].iloc[0] - cost
+        #
+        #     port_perf[p]['total'] = pd.concat([port_perf[p]['total'], port_perf[p][cv]])
 
     return port_perf
 
@@ -855,32 +994,6 @@ def cluster_portfolio(returns, features_cov, embedding, no_leverage=True):
         port_returns = port_returns + cluster_ret.values
 
     return port_returns, cluster_weights, asset_weights
-
-
-def get_portfolio_perf(train_returns, returns, features, embedding, fx_levrage=1.):
-    # AE port
-    features_cov = features.cov()
-    port_returns, cluster_weights, asset_weights = cluster_portfolio(returns, features_cov, embedding)
-
-    ae = {
-        'returns': port_returns,
-        'cluster_weights': cluster_weights,
-        'asset_weights': asset_weights
-    }
-    # ivp
-    cov = np.cov(train_returns, rowvar=False)
-    weights = ivp_weights(cov)
-    port_returns = (returns * weights).sum(1)
-    ivp = {
-        'returns': port_returns,
-        'weights': weights
-    }
-    # equally
-    port_returns = returns.mean(1)
-    equally_weighted = {
-        'returns': port_returns
-    }
-    return equally_weighted, ivp, ae
 
 
 def get_mdd(performance: [pd.Series, np.ndarray]):
