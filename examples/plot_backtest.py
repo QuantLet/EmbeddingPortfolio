@@ -66,6 +66,7 @@ if __name__ == "__main__":
     if args.save:
         if args.save_dir:
             save_dir = f"performance/{args.save_dir}"
+            os.mkdir(save_dir)
         else:
             save_dir = f"performance/{args.log_dir}"
 
