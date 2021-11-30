@@ -544,7 +544,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     ae_config = kwargs.get('ae_config')
     res = {}
 
-    scaler, dates, test_data, test_features, pred, embedding = load_result(test_set, data, assets, base_dir, cv,
+    model, scaler, dates, test_data, test_features, pred, embedding = load_result(test_set, data, assets, base_dir, cv,
                                                                            ae_config)
 
     std = np.sqrt(scaler['attributes']['var_'])

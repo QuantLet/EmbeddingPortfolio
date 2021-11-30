@@ -72,7 +72,7 @@ def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: 
     test_features = encoder.predict(test_data)
     test_features = pd.DataFrame(test_features, index=dates[test_set])
 
-    return scaler, dates, test_data, test_features, pred, embedding
+    return model, scaler, dates, test_data, test_features, pred, embedding
 
 
 def create_log_dir(model_name, model_type):
