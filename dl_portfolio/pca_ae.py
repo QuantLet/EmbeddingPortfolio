@@ -53,6 +53,11 @@ def build_model(model_type, input_dim, encoding_dim, **kwargs):
                                                       encoding_dim,
                                                       **kwargs
                                                       )
+    elif model_type == 'nl_pca_ae_model':
+        model, encoder, extra_features = nl_pca_ae_model(input_dim,
+                                                         encoding_dim,
+                                                         **kwargs
+                                                         )
 
     else:
         raise NotImplementedError()
@@ -386,13 +391,103 @@ def ae_model2(input_dim: int,
         return autoencoder, encoder, extra_features
 
 
+def nl_pca_ae_model(input_dim: int,
+                    encoding_dim: int,
+                    n_features: int = None,
+                    activation: str = 'linear',
+                    kernel_initializer: str = 'glorot_uniform',
+                    kernel_constraint=None,
+                    kernel_regularizer=None,
+                    **kwargs
+                    ):
+    uncorrelated_features = kwargs.get('uncorrelated_features', True)
+    weightage = kwargs.get('weightage', 1.)
+    batch_size = kwargs.get('batch_size', None)
+    loss = kwargs.get('loss', None)
+    batch_normalization = kwargs.get('batch_normalization', False)
+    dropout = kwargs.get('dropout', None)
+
+    asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
+
+    kernel_regularizer_1 = WeightsOrthogonality(
+        int(input_dim / 2),
+        weightage=1e-2,
+        axis=0,
+        regularizer={'name': 'l2', 'params': {'l2': 1e-3}}
+    )
+    kernel_regularizer_2 = WeightsOrthogonality(
+        encoding_dim,
+        weightage=1e-2,
+        axis=0,
+        regularizer={'name': 'l2', 'params': {'l2': 1e-3}}
+    )
+    encoder_layer_1 = tf.keras.layers.Dense(int(input_dim / 2),
+                                            activation=activation,
+                                            kernel_initializer=kernel_initializer,
+                                            kernel_regularizer=kernel_regularizer_1,
+                                            kernel_constraint=kernel_constraint,
+                                            use_bias=True,
+                                            name='encoder1',
+                                            dtype=tf.float32)
+
+    encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                          activation=activation,
+                                          kernel_initializer=kernel_initializer,
+                                          kernel_regularizer=kernel_regularizer_2,
+                                          kernel_constraint=kernel_constraint,
+                                          use_bias=True,
+                                          name='encoder2',
+                                          dtype=tf.float32)
+
+    decoder_layer_1 = DenseTied(int(input_dim / 2),
+                                tied_to=encoder_layer,
+                                n_features=n_features,
+                                activation=activation,
+                                use_bias=True,
+                                dtype=tf.float32,
+                                name='decoder1')
+
+    decoder_layer = DenseTied(input_dim,
+                              tied_to=encoder_layer_1,
+                              n_features=n_features,
+                              activation='linear',
+                              use_bias=True,
+                              dtype=tf.float32,
+                              name='decoder2')
+
+    encoding = encoder_layer(encoder_layer_1(asset_input))
+
+    if dropout is not None:
+        dropout_layer = tf.keras.layers.Dropout(dropout)
+        encoding = dropout_layer(encoding)
+
+    # if batch_normalization:
+    #     batch_norm_layer = tf.keras.layers.BatchNormalization()
+    #     encoding = batch_norm_layer(encoding)
+
+    if uncorrelated_features:
+        activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
+                                                               weightage=weightage)
+
+        encoding = activity_regularizer_layer(encoding)
+    encoder = tf.keras.models.Model(asset_input, encoding)
+
+    output = decoder_layer(decoder_layer_1(encoding))
+    autoencoder = tf.keras.models.Model(asset_input, output)
+    extra_features = None
+    if loss == 'mse_with_covariance_penalty':
+        loss = mse_with_covariance_penalty(asset_input, [output, encoding])
+        autoencoder.add_loss(loss)
+
+    return autoencoder, encoder, extra_features
+
+
 def pca_ae_model(input_dim: int,
                  encoding_dim: int,
                  n_features: int = None,
                  extra_features_dim: int = 1,
                  activation: str = 'linear',
                  kernel_initializer: str = 'glorot_uniform',
-                 activity_regularizer=None,
                  kernel_constraint=None,
                  kernel_regularizer=None,
                  **kwargs
@@ -404,13 +499,11 @@ def pca_ae_model(input_dim: int,
     batch_normalization = kwargs.get('batch_normalization', False)
     dropout = kwargs.get('dropout', None)
 
-    # with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
     asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
     encoder_layer = tf.keras.layers.Dense(encoding_dim,
                                           activation=activation,
                                           kernel_initializer=kernel_initializer,
                                           kernel_regularizer=kernel_regularizer,
-                                          # activity_regularizer=activity_regularizer,
                                           kernel_constraint=kernel_constraint,
                                           use_bias=True,
                                           name='encoder',

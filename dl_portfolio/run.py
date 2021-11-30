@@ -12,6 +12,7 @@ import tensorflow as tf
 import numpy as np
 from dl_portfolio.constant import LOG_DIR
 from typing import Optional
+import matplotlib.pyplot as plt
 
 
 def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
@@ -268,18 +269,23 @@ def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
 
         ## Get encoder weights
-        if ae_config.model_type != 'ae_model2':
-            encoder_layer = get_layer_by_name(name='encoder', model=model)
-            encoder_weights = encoder_layer.get_weights()
-            # decoder_weights = model.layers[2].get_weights()
-            encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
-        else:
+        if ae_config.model_type in ['ae_model2', 'nl_pca_ae_model']:
             encoder_layer1 = get_layer_by_name(name='encoder1', model=model)
             encoder_weights1 = encoder_layer1.get_weights()[0]
             encoder_layer2 = get_layer_by_name(name='encoder2', model=model)
             encoder_weights2 = encoder_layer2.get_weights()[0]
             encoder_weights = np.dot(encoder_weights1, encoder_weights2)
+            print(pd.DataFrame(encoder_weights1))
+            print(pd.DataFrame(encoder_weights2))
             encoder_weights = pd.DataFrame(encoder_weights, index=assets)
+            heat_map(pd.DataFrame(encoder_weights1), show=True, vmin=0., vmax=1.)
+            heat_map(pd.DataFrame(encoder_weights2), show=True, vmin=0., vmax=1.)
+            heat_map(encoder_weights, show=True)
+        else:
+            encoder_layer = get_layer_by_name(name='encoder', model=model)
+            encoder_weights = encoder_layer.get_weights()
+            # decoder_weights = model.layers[2].get_weights()
+            encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
         LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
 
         # train_cluster_portfolio = encoder.predict(train_data)
@@ -371,6 +377,14 @@ def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
         LOGGER.debug(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
+
+        if ae_config.show_plot:
+            if test_data is not None:
+                for c in test_data.columns:
+                    plt.plot(test_data[c], label='true')
+                    plt.plot(test_prediction[c], label='pred')
+                    plt.title(c)
+                    plt.show()
 
         if ae_config.save:
             # train_data.to_pickle(f"{save_path}/train_returns.p")
