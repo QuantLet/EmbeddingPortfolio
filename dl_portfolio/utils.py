@@ -8,10 +8,108 @@ import pandas as pd
 import tensorflow as tf
 
 from dl_portfolio.ae_data import get_features
-from dl_portfolio.pca_ae import build_model
+from dl_portfolio.pca_ae import build_model, create_decoder
 from dl_portfolio.regularizers import WeightsOrthogonality
 
+from sklearn.linear_model import LinearRegression
+
 LOG_BASE_DIR = './dl_portfolio/log'
+
+
+def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config):
+    """
+
+    :param test_set:
+    :param data:
+    :param assets:
+    :param base_dir:
+    :param ae_config:
+    :return:
+    """
+
+    test_data = pd.DataFrame()
+    prediction = pd.DataFrame()
+    # pred_nnls_factors = pd.DataFrame()
+    pred_nnls_model = pd.DataFrame()
+    factors_nnls = pd.DataFrame()
+    relu_activation = pd.DataFrame()
+    embedding = {}
+    mse = {
+        'original': [],
+        'nnls_factors': [],
+        'nnls_model': []
+    }
+
+    # cv = 0
+    for cv in ae_config.data_specs:
+        print(f'CV: {cv}')
+        model, scaler, dates, test_data_i, test_features, pred, embed = load_result(test_set,
+                                                                                        data,
+                                                                                        assets,
+                                                                                        base_dir,
+                                                                                        cv,
+                                                                                        ae_config)
+        embedding[cv] = embed
+        pred -= scaler['attributes']['mean_']
+        pred /= np.sqrt(scaler['attributes']['var_'])
+        mse_or = np.mean((test_data_i - pred) ** 2, 0)
+
+        relu_activation_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
+        relu_activation_i = relu_activation_layer.predict(test_data_i)
+        relu_activation = pd.concat([relu_activation, pd.DataFrame(relu_activation_i,
+                                                                   index=pred.index)])
+
+        # Fit linear encoder to the factors
+        # input_dim = model.layers[0].input_shape[0][-1]
+        # encoding_dim = model.layers[1].output_shape[-1]
+        # vlin_encoder = create_linear_encoder_with_constraint(input_dim, encoding_dim)
+        # lin_encoder.fit(test_data_i, relu_activation_i, batch_size = 1, epochs=500, verbose=2,
+        #                 max_queue_size=20, workers=2*os.cpu_count()-1, use_multiprocessing=True)
+        # factors_nnls_i = lin_encoder.predict(test_data_i)
+        # lin_embedding = pd.DataFrame(encoder.layers[1].weights[0].numpy(), index=embed.index)
+
+        # # Fit non-negative linear least square to the factor
+        reg_nnls = LinearRegression(positive=True)
+        reg_nnls.fit(test_data_i, relu_activation_i)
+        factors_nnls_i = reg_nnls.predict(test_data_i)
+        factors_nnls = pd.concat([factors_nnls, pd.DataFrame(factors_nnls_i, index=pred.index)])
+
+        # Get reconstruction error based on nnls embedding
+        weights = reg_nnls.coef_.copy()
+        # Compute bias
+        bias = np.mean(test_data_i, 0) - np.dot(np.mean(factors_nnls_i, 0), weights)
+        # Reconstruction
+        pred_nnls_model_i = np.dot(factors_nnls_i, weights) + bias
+
+        mse_nnls_model = np.mean((test_data_i - pred_nnls_model_i) ** 2, 0)
+
+        prediction = pd.concat([prediction, pred])
+        # pred_nnls_factors = pd.concat([pred_nnls_factors, pd.DataFrame(pred_nnls_factors_i,
+        #                                                                columns=pred.columns,
+        #                                                                index=pred.index)])
+        pred_nnls_model = pd.concat([pred_nnls_model, pd.DataFrame(pred_nnls_model_i,
+                                                                   columns=pred.columns,
+                                                                   index=pred.index)])
+
+        test_data = pd.concat([test_data, pd.DataFrame(test_data_i,
+                                                       columns=pred.columns,
+                                                       index=pred.index)])
+
+        mse['original'].append(mse_or)
+        mse['nnls_model'].append(mse_nnls_model)
+
+    results = {
+        'test_data': test_data,
+        'prediction': prediction,
+        # 'pred_nnls_factors': pred_nnls_factors,
+        'pred_nnls_model': pred_nnls_model,
+        'factors_nnls': factors_nnls,
+        'relu_activation': relu_activation,
+        'mse': mse,
+        'embedding': embedding
+    }
+
+    return results
 
 
 def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str, ae_config):

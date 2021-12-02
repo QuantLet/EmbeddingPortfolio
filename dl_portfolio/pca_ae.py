@@ -9,7 +9,7 @@ from dl_portfolio.custom_layer import DenseTied, TransposeDense, UncorrelatedFea
 from dl_portfolio.constraints import PositiveSkewnessConstraint, NonNegAndUnitNorm, \
     UncorrelatedFeaturesConstraint
 from dl_portfolio.regularizers import WeightsOrthogonality
-from typing import List
+from typing import List, Optional
 from dl_portfolio.logger import LOGGER
 import tensorflow as tf
 import datetime as dt
@@ -19,6 +19,51 @@ import seaborn as sns
 from tensorflow.keras.utils import CustomObjectScope
 from tensorflow.keras.callbacks import Callback
 import tensorflow_probability as tfp
+
+
+def create_linear_encoder_with_constraint(input_dim, encoding_dim):
+    asset_input = tf.keras.layers.Input(input_dim, dtype=tf.float32, name='asset_input')
+    kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
+    kernel_regularizer = WeightsOrthogonality(
+        encoding_dim,
+        weightage=1,
+        axis=0,
+        regularizer={'name': 'l2', 'params': {'l2': 1e-3}}
+    )
+    encoder_layer = tf.keras.layers.Dense(encoding_dim,
+                                          activation='linear',
+                                          kernel_initializer=tf.keras.initializers.HeNormal(),
+                                          kernel_regularizer=kernel_regularizer,
+                                          kernel_constraint=kernel_constraint,
+                                          use_bias=True,
+                                          name='encoder',
+                                          dtype=tf.float32)
+    encoder = tf.keras.models.Model(asset_input, encoder_layer(asset_input))
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
+    encoder.compile(optimizer, 'mse')
+
+    return encoder
+
+
+def create_decoder(pca_ae_model, weights: Optional[List[np.ndarray]] = None):
+    output_dim = pca_ae_model.layers[0].input_shape[0][-1]
+    encoding_dim = pca_ae_model.layers[1].output_shape[-1]
+
+    factors = tf.keras.layers.Input(encoding_dim, dtype=tf.float32, name='relu_factor')
+    batch_norm = pca_ae_model.layers[2]
+    output = tf.keras.layers.Dense(output_dim,
+                                   activation='linear',
+                                   dtype=tf.float32)
+    if weights is None:
+        W = pca_ae_model.layers[1].get_weights()[0].T
+        b = pca_ae_model.layers[-1].get_weights()[0]
+        weights = [W, b]
+
+    decoder = tf.keras.models.Model(factors, output(batch_norm(factors)))
+    decoder.layers[-1].set_weights(weights)
+
+    return decoder
 
 
 def build_model(model_type, input_dim, encoding_dim, **kwargs):
