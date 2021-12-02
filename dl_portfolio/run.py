@@ -261,9 +261,9 @@ def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             val_features = encoder.predict(val_input)
 
         train_features = pd.DataFrame(train_features, index=dates['train'])
-        LOGGER.debug(f"Train features covariance:\n{train_features.cov()}")
+        LOGGER.info(f"Train features correlation:\n{train_features.corr()}")
         val_features = pd.DataFrame(val_features, index=dates['val'])
-        LOGGER.debug(f"Val features covariance:\n{val_features.cov()}")
+        LOGGER.info(f"Val features correlation:\n{val_features.corr()}")
         val_prediction = model.predict(val_input)
         val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
@@ -362,17 +362,19 @@ def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         if ae_config.kernel_constraint is not None:
             if type(ae_config.kernel_constraint).__name__ == 'NonNegAndUnitNorm':
                 vmax = 1
+                vmin = 0.
+            elif type(ae_config.kernel_constraint).__name__ == 'UnitNorm':
+                vmax = 1
+                vmin = -1
             else:
                 vmax = None  # np.max(encoder_weights.max())
-            vmin = 0.
+                vmin = 0.
         else:
             vmax = None
             vmin = None
 
-        # if ae_config.save:
-        #     heat_map(encoder_weights, show=ae_config.show_plot, save_dir=f"{save_path}", vmax=vmax, vmin=vmin)
-        # else:
-        #     heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
+        if ae_config.show_plot:
+            heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
 
         # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
