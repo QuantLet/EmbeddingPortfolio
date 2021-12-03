@@ -115,7 +115,7 @@ class NonnegativeLinear(LinearModel, RegressorMixin):
     Examples
     --------
     >>> import numpy as np
-    >>> from mcmodels.regressors import NonnegativeLinear
+    >>> from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
     >>> # generate some fake data
     >>> n_samples, n_features = 10, 5
     >>> np.random.seed(0)

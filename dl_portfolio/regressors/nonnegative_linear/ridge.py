@@ -217,7 +217,7 @@ class NonnegativeRidge(NonnegativeLinear):
     Examples
     --------
     >>> import numpy as np
-    >>> from mcmodels.regressors import NonnegativeRidge
+    >>> from dl_portfolio.regressors import NonnegativeRidge
     >>> # generate some fake data
     >>> n_samples, n_features = 10, 5
     >>> np.random.seed(0)
