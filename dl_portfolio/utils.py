@@ -7,16 +7,88 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
+from dl_portfolio.logger import LOGGER
 from dl_portfolio.ae_data import get_features
 from dl_portfolio.pca_ae import build_model, create_decoder
 from dl_portfolio.regularizers import WeightsOrthogonality
+from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge
+from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
 
 from sklearn.linear_model import LinearRegression
 
 LOG_BASE_DIR = './dl_portfolio/log'
 
 
-def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config):
+def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config,
+                    reg_type: str = 'nn_ridge', **kwargs):
+    model, scaler, dates, test_data, test_features, prediction, embedding = load_result(test_set,
+                                                                                        data,
+                                                                                        assets,
+                                                                                        base_dir,
+                                                                                        cv,
+                                                                                        ae_config)
+    prediction -= scaler['attributes']['mean_']
+    prediction /= np.sqrt(scaler['attributes']['var_'])
+    mse_or = np.mean((test_data - prediction) ** 2, 0)
+
+    relu_activation_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
+    relu_activation = relu_activation_layer.predict(test_data)
+    relu_activation = pd.DataFrame(relu_activation, index=prediction.index)
+
+    # Fit linear encoder to the factors
+    # input_dim = model.layers[0].input_shape[0][-1]
+    # encoding_dim = model.layers[1].output_shape[-1]
+    # vlin_encoder = create_linear_encoder_with_constraint(input_dim, encoding_dim)
+    # lin_encoder.fit(test_data_i, relu_activation_i, batch_size = 1, epochs=500, verbose=2,
+    #                 max_queue_size=20, workers=2*os.cpu_count()-1, use_multiprocessing=True)
+    # factors_nnls_i = lin_encoder.predict(test_data_i)
+    # lin_embedding = pd.DataFrame(encoder.layers[1].weights[0].numpy(), index=embed.index)
+
+    # # Fit non-negative linear least square to the factor
+    if reg_type == 'nn_ridge':
+        if ae_config.l_name == 'l2':
+            alpha = kwargs.get('alpha', ae_config.l)
+            kwargs['alpha'] = alpha
+        else:
+            alpha = kwargs.get('alpha')
+            assert alpha is not None
+        reg_nnls = NonnegativeRidge(**kwargs)
+    elif reg_type == 'nn_ls_custom':
+        reg_nnls = NonnegativeLinear()
+    elif reg_type == 'nn_ls':
+        reg_nnls = LinearRegression(positive=True, fit_intercept=False, **kwargs)
+    else:
+        raise NotImplementedError(reg_type)
+
+    x = test_data.copy()
+    mean_ = np.mean(x, 0)
+    # Center the data as we do not fit intercept
+    x = x - mean_
+    reg_nnls.fit(x, relu_activation)
+    # Now compute intercept: it is just the mean of the dependent variable
+    intercept_ = np.mean(relu_activation).values
+    factors_nnls = reg_nnls.predict(x) + intercept_
+    factors_nnls = pd.DataFrame(factors_nnls, index=prediction.index)
+
+    # Get reconstruction error based on nnls embedding
+    weights = reg_nnls.coef_.copy()
+    # Compute bias (reconstruction intercept)
+    bias = mean_ - np.dot(np.mean(factors_nnls, 0), weights)
+    # Reconstruction
+    pred_nnls_model = np.dot(factors_nnls, weights) + bias
+    mse_nnls_model = np.mean((test_data - pred_nnls_model) ** 2, 0)
+    # pred_nnls_factors = pd.concat([pred_nnls_factors, pd.DataFrame(pred_nnls_factors_i,
+    #                                                                columns=pred.columns,
+    #                                                                index=pred.index)])
+    pred_nnls_model = pd.DataFrame(pred_nnls_model, columns=prediction.columns, index=prediction.index)
+    test_data = pd.DataFrame(test_data, columns=prediction.columns, index=prediction.index)
+    reg_coef = pd.DataFrame(weights.T, index=embedding.index)
+
+    return test_data, embedding, reg_coef, relu_activation, factors_nnls, prediction, pred_nnls_model, mse_or, mse_nnls_model
+
+
+def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config,
+                      reg_type: str = 'nn_ridge', **kwargs):
     """
 
     :param test_set:
@@ -24,6 +96,7 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     :param assets:
     :param base_dir:
     :param ae_config:
+    :param reg_type: regression type to fit "nn_ridge" for non negative Ridge or "nn_ls" for non negative LS
     :return:
     """
 
@@ -34,6 +107,7 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     factors_nnls = pd.DataFrame()
     relu_activation = pd.DataFrame()
     embedding = {}
+    reg_coef = {}
     mse = {
         'original': [],
         'nnls_factors': [],
@@ -42,59 +116,24 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
 
     # cv = 0
     for cv in ae_config.data_specs:
-        print(f'CV: {cv}')
-        model, scaler, dates, test_data_i, test_features, pred, embed = load_result(test_set,
-                                                                                        data,
-                                                                                        assets,
-                                                                                        base_dir,
-                                                                                        cv,
-                                                                                        ae_config)
-        embedding[cv] = embed
-        pred -= scaler['attributes']['mean_']
-        pred /= np.sqrt(scaler['attributes']['var_'])
-        mse_or = np.mean((test_data_i - pred) ** 2, 0)
+        LOGGER.info(f'CV: {cv}')
+        test_data_i, embedding_i, reg_coef_i, relu_activation_i, factors_nnls_i, pred, pred_nnls_model_i, mse_or, mse_nnls_model = fit_nnls_one_cv(
+            cv,
+            test_set,
+            data,
+            assets,
+            base_dir,
+            ae_config,
+            reg_type=reg_type,
+            **kwargs)
 
-        relu_activation_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
-        relu_activation_i = relu_activation_layer.predict(test_data_i)
-        relu_activation = pd.concat([relu_activation, pd.DataFrame(relu_activation_i,
-                                                                   index=pred.index)])
-
-        # Fit linear encoder to the factors
-        # input_dim = model.layers[0].input_shape[0][-1]
-        # encoding_dim = model.layers[1].output_shape[-1]
-        # vlin_encoder = create_linear_encoder_with_constraint(input_dim, encoding_dim)
-        # lin_encoder.fit(test_data_i, relu_activation_i, batch_size = 1, epochs=500, verbose=2,
-        #                 max_queue_size=20, workers=2*os.cpu_count()-1, use_multiprocessing=True)
-        # factors_nnls_i = lin_encoder.predict(test_data_i)
-        # lin_embedding = pd.DataFrame(encoder.layers[1].weights[0].numpy(), index=embed.index)
-
-        # # Fit non-negative linear least square to the factor
-        reg_nnls = LinearRegression(positive=True)
-        reg_nnls.fit(test_data_i, relu_activation_i)
-        factors_nnls_i = reg_nnls.predict(test_data_i)
-        factors_nnls = pd.concat([factors_nnls, pd.DataFrame(factors_nnls_i, index=pred.index)])
-
-        # Get reconstruction error based on nnls embedding
-        weights = reg_nnls.coef_.copy()
-        # Compute bias
-        bias = np.mean(test_data_i, 0) - np.dot(np.mean(factors_nnls_i, 0), weights)
-        # Reconstruction
-        pred_nnls_model_i = np.dot(factors_nnls_i, weights) + bias
-
-        mse_nnls_model = np.mean((test_data_i - pred_nnls_model_i) ** 2, 0)
-
+        embedding[cv] = embedding_i
+        reg_coef[cv] = reg_coef_i
+        relu_activation = pd.concat([relu_activation, relu_activation_i])
+        factors_nnls = pd.concat([factors_nnls, factors_nnls_i])
         prediction = pd.concat([prediction, pred])
-        # pred_nnls_factors = pd.concat([pred_nnls_factors, pd.DataFrame(pred_nnls_factors_i,
-        #                                                                columns=pred.columns,
-        #                                                                index=pred.index)])
-        pred_nnls_model = pd.concat([pred_nnls_model, pd.DataFrame(pred_nnls_model_i,
-                                                                   columns=pred.columns,
-                                                                   index=pred.index)])
-
-        test_data = pd.concat([test_data, pd.DataFrame(test_data_i,
-                                                       columns=pred.columns,
-                                                       index=pred.index)])
-
+        pred_nnls_model = pd.concat([pred_nnls_model, pred_nnls_model_i])
+        test_data = pd.concat([test_data, test_data_i])
         mse['original'].append(mse_or)
         mse['nnls_model'].append(mse_nnls_model)
 
@@ -106,7 +145,8 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
         'factors_nnls': factors_nnls,
         'relu_activation': relu_activation,
         'mse': mse,
-        'embedding': embedding
+        'embedding': embedding,
+        'reg_coef': reg_coef
     }
 
     return results
