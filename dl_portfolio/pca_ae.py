@@ -15,7 +15,6 @@ import tensorflow as tf
 import datetime as dt
 import os
 import seaborn as sns
-# from superkeras.permutational_layer import *
 from tensorflow.keras.utils import CustomObjectScope
 from tensorflow.keras.callbacks import Callback
 import tensorflow_probability as tfp
