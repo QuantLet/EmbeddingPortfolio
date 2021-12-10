@@ -9,9 +9,9 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
-dataset='bond'
-show_plot = False
-save = True
+dataset = 'bond'
+show_plot = True
+save = False
 
 resample = {
     'method': 'nbb',
@@ -24,15 +24,15 @@ crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
 # tf.config.run_functions_eagerly(True)
-seed = None # np.random.randint(0, 100)
-assets = None # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
+seed = None  # np.random.randint(0, 100)
+assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
-ortho_weightage = 1e-2
+ortho_weightage = 1
 l_name = 'l2'
 l = 1e-3
-activation = 'relu'
+activation = 'tanh'
 features_config = None
 model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
 model_name = model_name.replace('.', 'd')
@@ -67,7 +67,7 @@ rescale = None
 # Constraints and regularizer
 batch_normalization = True
 activity_regularizer = None
-kernel_initializer = tf.keras.initializers.HeNormal(seed=seed)
+kernel_initializer = 'glorot_uniform'  # tf.keras.initializers.HeNormal(seed=seed)
 # kernel_initializer = NonNegAndUnitNormInit(initializer='he_normal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
     encoding_dim,
@@ -77,11 +77,11 @@ kernel_regularizer = WeightsOrthogonality(
 )
 # kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0) # tf.keras.constraints.NonNeg()#
-
+kernel_constraint = tf.keras.constraints.UnitNorm()
 
 def scheduler(epoch):
     return 1e-3 * np.exp(-epoch / 5000)
+
 
 callbacks = {
     'EarlyStopping': {
@@ -94,145 +94,10 @@ callbacks = {
     }
 }
 
-# data_specs = {
-#     0: {
-#         'start': '2016-06-30',
-#         'val_start': '2018-12-11',
-#         'end': '2019-01-11'
-#     }
-# }
-
 data_specs = {
     0: {
         'start': '2016-06-30',
-        'val_start': '2019-11-13',
-        'test_start': '2019-12-12',
-        'end': '2020-01-11'
-    },
-    1: {
-        'start': '2016-06-30',
-        'val_start': '2019-12-13',
-        'test_start': '2020-01-12',
-        'end': '2020-02-11'
-    },
-    2: {
-        'start': '2016-06-30',
-        'val_start': '2020-01-13',
-        'test_start': '2020-02-12',
-        'end': '2020-03-11'
-    },
-    3: {
-        'start': '2016-06-30',
-        'val_start': '2020-02-13',
-        'test_start': '2020-03-12',
-        'end': '2020-04-11'
-    },
-    4: {
-        'start': '2016-06-30',
-        'val_start': '2020-03-13',
-        'test_start': '2020-04-12',
-        'end': '2020-05-11'
-    },
-    5: {
-        'start': '2016-06-30',
-        'val_start': '2020-04-13',
-        'test_start': '2020-05-12',
-        'end': '2020-06-11'
-    },
-    6: {
-        'start': '2016-06-30',
-        'val_start': '2020-05-13',
-        'test_start': '2020-06-12',
-        'end': '2020-07-11'
-    },
-    7: {
-        'start': '2016-06-30',
-        'val_start': '2020-06-13',
-        'test_start': '2020-07-12',
-        'end': '2020-08-11'
-    },
-    8: {
-        'start': '2016-06-30',
-        'val_start': '2020-07-13',
-        'test_start': '2020-08-12',
-        'end': '2020-09-11'
-    },
-    9: {
-        'start': '2016-06-30',
-        'val_start': '2020-08-13',
-        'test_start': '2020-09-12',
-        'end': '2020-10-11'
-    },
-    10: {
-        'start': '2016-06-30',
-        'val_start': '2020-09-13',
-        'test_start': '2020-10-12',
-        'end': '2020-11-11'
-    },
-    11: {
-        'start': '2016-06-30',
-        'val_start': '2020-10-13',
-        'test_start': '2020-11-12',
-        'end': '2020-12-11'
-    },
-    12: {
-        'start': '2016-06-30',
-        'val_start': '2020-11-13',
-        'test_start': '2020-12-12',
-        'end': '2021-01-11'
-    },
-    13: {
-        'start': '2016-06-30',
-        'val_start': '2020-12-13',
-        'test_start': '2021-01-12',
-        'end': '2021-02-11'
-    },
-    14: {
-        'start': '2016-06-30',
-        'val_start': '2021-01-13',
-        'test_start': '2021-02-12',
-        'end': '2021-03-11'
-    },
-    15: {
-        'start': '2016-06-30',
-        'val_start': '2021-02-13',
-        'test_start': '2021-03-12',
-        'end': '2021-04-11'
-    },
-    16: {
-        'start': '2016-06-30',
-        'val_start': '2021-03-13',
-        'test_start': '2021-04-12',
-        'end': '2021-05-11'
-    },
-    17: {
-        'start': '2016-06-30',
-        'val_start': '2021-04-13',
-        'test_start': '2021-05-12',
-        'end': '2021-06-11'
-    },
-    18: {
-        'start': '2016-06-30',
-        'val_start': '2021-05-13',
-        'test_start': '2021-06-12',
-        'end': '2021-07-11'
-    },
-    19: {
-        'start': '2016-06-30',
-        'val_start': '2021-06-13',
-        'test_start': '2021-07-12',
-        'end': '2021-08-11'
-    },
-    20: {
-        'start': '2016-06-30',
-        'val_start': '2021-07-13',
-        'test_start': '2021-08-12',
-        'end': '2021-09-11'
-    },
-    21: {
-        'start': '2016-06-30',
-        'val_start': '2021-08-13',
-        'test_start': '2021-09-12',
-        'end': '2021-10-11'
+        'val_start': '2018-12-11',
+        'end': '2019-01-11'
     }
 }
