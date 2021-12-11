@@ -117,6 +117,10 @@ class SemiNMF(BaseEstimator):
         G += 0.2
         return G
 
+    def evaluate(self, X):
+        F = self.transform(X)
+        return reconstruction_error(X, F, self.components, loss=self.loss)
+
     @staticmethod
     def _update_f(X, G):
         return X.dot(G.dot(np.linalg.inv(G.T.dot(G))))

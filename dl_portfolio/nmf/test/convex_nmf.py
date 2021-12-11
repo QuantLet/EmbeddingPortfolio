@@ -54,6 +54,9 @@ if __name__ == "__main__":
     print(factors)
     pred = convex_nmf.inverse_transform(factors)
 
+    print(convex_nmf.evaluate(X_train))
+    print(convex_nmf.evaluate(X_test))
+
     for i in range(X_train.shape[-1]):
         plt.plot(X_train[:, i])
         plt.plot(pred[:, i])
