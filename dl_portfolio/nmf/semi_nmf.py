@@ -54,6 +54,8 @@ class SemiNMF(BaseEstimator):
         return self
 
     def fit(self, X, verbose: Optional[int] = None):
+        X = X.astype(np.float32)
+
         if verbose is not None:
             self.verbose = verbose
 
