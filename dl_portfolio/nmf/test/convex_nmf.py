@@ -28,7 +28,7 @@ if __name__ == "__main__":
     d = X_train.shape[1]
     p = encoding_dim
 
-    convex_nmf = ConvexNMF(n_components=p, random_state=seed, tol=0)
+    convex_nmf = ConvexNMF(n_components=p, random_state=seed, verbose=1)
 
     # convex_nmf._check_params(X_train)
     # G = convex_nmf._initilize_g(X_train)

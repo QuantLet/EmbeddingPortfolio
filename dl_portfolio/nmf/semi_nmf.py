@@ -5,14 +5,13 @@ import time
 from typing import Optional
 from sklearn.base import BaseEstimator
 from sklearn.cluster import KMeans
-from sklearn.decomposition._nmf import _beta_divergence
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.nmf.utils import negative_matrix, positive_matrix
+from dl_portfolio.nmf.utils import negative_matrix, positive_matrix, reconstruction_error
 
 
 class SemiNMF(BaseEstimator):
-    def __init__(self, n_components, max_iter=200, tol=1e-4, random_state=None, verbose=0, beta_loss=2, shuffle=False):
+    def __init__(self, n_components, max_iter=200, tol=1e-6, random_state=None, verbose=0, loss="mse", shuffle=False):
         self.n_components = n_components
         self.tol = tol
         self.max_iter = max_iter
@@ -21,7 +20,7 @@ class SemiNMF(BaseEstimator):
         self.shuffle = shuffle
         self._is_fitted = False
         self.components = None
-        self.beta_loss = beta_loss
+        self.loss = loss
 
     def _check_params(self, X):
         # n_components
@@ -66,7 +65,7 @@ class SemiNMF(BaseEstimator):
         F = self._update_f(X, G)
 
         # used for the convergence criterion
-        error_at_init = _beta_divergence(X, F, G.T, beta=self.beta_loss, square_root=True)
+        error_at_init = reconstruction_error(X, F, G, loss=self.loss)
         previous_error = error_at_init
 
         for n_iter in range(self.max_iter):
@@ -79,17 +78,8 @@ class SemiNMF(BaseEstimator):
                 if self.verbose:
                     LOGGER.info('Reached max iteration number, stopping')
 
-            error = _beta_divergence(X, F, G.T, beta=self.beta_loss, square_root=True)
-
-            if self.verbose:
-                iter_time = time.time()
-                LOGGER.info(
-                    "Epoch %02d reached after %.3f seconds, error: %f"
-                    % (n_iter, iter_time - start_time, error)
-                )
-
             if self.tol > 0 and n_iter % 10 == 0:
-                error = _beta_divergence(X, F, G.T, beta=self.beta_loss, square_root=True)
+                error = reconstruction_error(X, F, G, loss=self.loss)
 
                 if self.verbose:
                     iter_time = time.time()

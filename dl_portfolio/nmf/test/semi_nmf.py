@@ -28,7 +28,7 @@ if __name__ == "__main__":
     d = X_train.shape[1]
     p = encoding_dim
 
-    semi_nmf = SemiNMF(n_components=p, random_state=seed, tol=0)
+    semi_nmf = SemiNMF(n_components=p, random_state=seed)
 
     # semi_nmf = semi_nmf._check_params(X_train)
     # G = semi_nmf._initilize_g(X_train)
