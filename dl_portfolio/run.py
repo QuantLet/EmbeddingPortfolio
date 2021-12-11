@@ -1,3 +1,5 @@
+import json
+
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
@@ -16,6 +18,7 @@ from dl_portfolio.data import drop_remainder
 from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_from_df, labelQuantile
 from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, build_model_input
 from dl_portfolio.constant import LOG_DIR
+from dl_portfolio.nmf.convex_nmf import ConvexNMF
 
 
 def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
@@ -50,13 +53,6 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
         os.makedirs(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-
-    # if ae_config.dataset == 'bond':
-    #     data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-    #                              freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
-    # else:
-    #     data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-    #                              freq=ae_config.freq)
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -414,7 +410,7 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
     #     heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)
 
 
-def run_kmeans(ae_config, seed=None):
+def run_kmeans(ae_config, data, assets, seed=None):
     if ae_config.seed:
         seed = ae_config.seed
     if seed is None:
@@ -431,13 +427,6 @@ def run_kmeans(ae_config, seed=None):
         os.makedirs(save_dir)
         copyfile('./dl_portfolio/config/ae_config.py',
                  os.path.join(save_dir, 'ae_config.py'))
-
-    if ae_config.dataset == 'bond':
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
-    else:
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq)
 
     for cv in ae_config.data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
@@ -472,3 +461,61 @@ def run_kmeans(ae_config, seed=None):
             pickle.dump(kmeans, open(f"{save_path}/model.p", "wb"))
             pickle.dump(clusters, open(f"{save_path}/clusters.p", "wb"))
             labels.to_pickle(f"{save_path}/labels.p")
+
+
+def run_convex_nmf(ae_config, data, assets, seed=None, verbose=0):
+    if ae_config.seed:
+        seed = ae_config.seed
+    if seed is None:
+        seed = np.random.randint(0, 1000)
+
+    np.random.seed(seed)
+    LOGGER.info(f"Set seed: {seed}")
+
+    if ae_config.save:
+        if not os.path.isdir('log_convex_nmf'):
+            os.mkdir('log_convex_nmf')
+        iter = len(os.listdir('log_convex_nmf'))
+        save_dir = f"log_convex_nmf/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+        os.makedirs(save_dir)
+        copyfile('./dl_portfolio/config/ae_config.py',
+                 os.path.join(save_dir, 'ae_config.py'))
+    mse = {}
+    for cv in ae_config.data_specs:
+        LOGGER.info(f'Starting with cv: {cv}')
+        if ae_config.save:
+            save_path = f"{save_dir}/{cv}"
+            os.mkdir(f"{save_dir}/{cv}")
+        else:
+            save_path = None
+
+        LOGGER.info(f'Assets order: {assets}')
+        data_spec = ae_config.data_specs[cv]
+        train_data, val_data, test_data, scaler, dates, features = get_features(data,
+                                                                                data_spec['start'],
+                                                                                data_spec['end'],
+                                                                                assets,
+                                                                                val_start=data_spec['val_start'],
+                                                                                test_start=data_spec.get('test_start'),
+                                                                                scaler='StandardScaler',
+                                                                                resample={
+                                                                                    'method': 'nbb',
+                                                                                    'where': ['train'],
+                                                                                    'block_length': 60
+                                                                                })
+        nmf = ConvexNMF(n_components=ae_config.encoding_dim, random_state=seed, verbose=verbose)
+        nmf.fit(train_data)
+        encoder_weights = pd.DataFrame(nmf.components, index=assets)
+        mse[cv] = {
+            'train': nmf.evaluate(train_data),
+            'test': nmf.evaluate(val_data) if test_data is None else nmf.evaluate(test_data)
+        }
+
+        if ae_config.save:
+            nmf.save(f"{save_path}/model.p")
+            encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
+            ae_config.scaler_func['attributes'] = scaler.__dict__
+            pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
+
+    if ae_config.save:
+        json.dump(mse, open(f"{save_dir}/evaluation.json", "w"))

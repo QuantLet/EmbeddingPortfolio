@@ -10,6 +10,8 @@ from sklearn.cluster import KMeans
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.utils import negative_matrix, positive_matrix, reconstruction_error
 
+EPSILON = 1e-12
+
 
 class SemiNMF(BaseEstimator):
     def __init__(self, n_components, max_iter=200, tol=1e-6, random_state=None, verbose=0, loss="mse", shuffle=False):
@@ -142,6 +144,10 @@ class SemiNMF(BaseEstimator):
         numerator = X_TF_plus + G.dot(F_TF_minus)
         denominator = X_TF_minus + G.dot(F_TF_plus)
 
+        # TODO: Handle denominator has 0
+        denominator += EPSILON
         assert (denominator != 0).all(), "Division by 0"
+        # if not (denominator != 0).all():
+        #     denominator[:,:] = np.nan
 
         return G * np.sqrt(numerator / denominator)

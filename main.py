@@ -1,4 +1,4 @@
-from dl_portfolio.run import run_ae, run_kmeans
+from dl_portfolio.run import run_ae, run_kmeans, run_convex_nmf
 from dl_portfolio.logger import LOGGER
 from joblib import Parallel, delayed
 import os, logging
@@ -29,7 +29,7 @@ if __name__ == "__main__":
     parser.add_argument("--run",
                         type=str,
                         default='ae',
-                        help="Type of run: 'ae' or 'kmeans'")
+                        help="Type of run: 'ae' or 'kmeans' or 'convex_nmf'")
     parser.add_argument("--backend",
                         type=str,
                         default="loky",
@@ -52,15 +52,17 @@ if __name__ == "__main__":
     logging.basicConfig(level=args.loglevel)
     LOGGER.setLevel(args.loglevel)
 
+    if args.run == "ae":
+        run = run_ae
+    elif args.run == "kmeans":
+        run = run_kmeans
+    elif args.run == "convex_nmf":
+        run = run_convex_nmf
+    else:
+        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'convex_nmf'")
+
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
-
-    if args.run == 'ae':
-        run = run_ae
-    elif args.run == 'kmeans':
-        run = run_kmeans
-    else:
-        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans'")
 
     if ae_config.dataset == 'bond':
         data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
