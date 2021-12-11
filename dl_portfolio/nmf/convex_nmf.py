@@ -1,4 +1,3 @@
-import numbers
 import numpy as np
 import time
 
@@ -18,37 +17,9 @@ class ConvexNMF(SemiNMF):
         self.G = G
         self.encoding = None
 
-    def _check_params(self, X):
-        # n_components
-        self._n_components = self.n_components
-        if self._n_components is None:
-            self._n_components = X.shape[1]
-        if (
-                not isinstance(self._n_components, numbers.Integral)
-                or self._n_components <= 0
-        ):
-            raise ValueError(
-                "Number of components must be a positive integer; got "
-                f"(n_components={self._n_components!r})"
-            )
-
-        # max_iter
-        if not isinstance(self.max_iter, numbers.Integral) or self.max_iter < 0:
-            raise ValueError(
-                "Maximum number of iterations must be a positive "
-                f"integer; got (max_iter={self.max_iter!r})"
-            )
-
-        # tol
-        if not isinstance(self.tol, numbers.Number) or self.tol < 0:
-            raise ValueError(
-                "Tolerance for stopping criteria must be positive; got "
-                f"(tol={self.tol!r})"
-            )
-
-        return self
-
     def fit(self, X, verbose: Optional[int] = None):
+        X = X.astype(np.float32)
+
         if verbose is not None:
             self.verbose = verbose
 
@@ -56,9 +27,7 @@ class ConvexNMF(SemiNMF):
         self._check_params(X)
         # Initialize G and F
         G, W = self._initilize_g_w(X, self.G)
-        print(G, W)
         F = X.dot(W)
-        print(F)
 
         # used for the convergence criterion
         error_at_init = _beta_divergence(X, F, G.T, beta=self.beta_loss, square_root=True)
@@ -110,10 +79,6 @@ class ConvexNMF(SemiNMF):
         W = self.encoding.copy()
         F = X.dot(W)
         return F
-
-    def inverse_transform(self, F):
-        assert self._is_fitted, "You must fit the model first"
-        return np.dot(F, self.components.T)
 
     def _initilize_g_w(self, X, G=None):
         if G is None:
