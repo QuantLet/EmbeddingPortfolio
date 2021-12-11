@@ -193,8 +193,9 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
                          columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
                                   'ES-5%', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
                          dtype=np.float32)
-    assets = weights['hrp'].columns
-    n_assets = weights['hrp'].shape[-1]
+    ports = list(weights.keys())
+    assets = weights[ports[0]].columns
+    n_assets = weights[ports[0]].shape[-1]
     for strat in strats:
         if strat == 'equal':
             weights['equal'] = pd.DataFrame([1 / n_assets] * n_assets).T
@@ -373,7 +374,7 @@ def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: floa
     elif portfolio == 'equal_class':
         market_budget = kwargs.get('market_budget')
         assert market_budget is not None
-        market_budget = market_budget.loc[assets,:]
+        market_budget = market_budget.loc[assets, :]
         weights = equal_class_weights(market_budget)
 
     for cv in cv_results:
@@ -429,7 +430,7 @@ def get_portfolio_perf(train_returns: pd.DataFrame, returns: pd.DataFrame, weigh
         elif p == 'equal_class':
             market_budget = kwargs.get('market_budget')
             assert market_budget is not None
-            market_budget = market_budget.loc[returns.columns,:]
+            market_budget = market_budget.loc[returns.columns, :]
             w = equal_class_weights(market_budget)
             port_perf['equal_class'] = portfolio_return(returns, weights=w)
         else:
@@ -446,7 +447,7 @@ def get_portfolio_perf(train_returns: pd.DataFrame, returns: pd.DataFrame, weigh
             elif p == 'equal_class':
                 market_budget = kwargs.get('market_budget')
                 assert market_budget is not None
-                market_budget = market_budget.loc[returns.columns,:]
+                market_budget = market_budget.loc[returns.columns, :]
                 w = equal_class_weights(market_budget)
                 train_port_perf = portfolio_return(train_returns, weights=w)
                 cost = 0
@@ -555,14 +556,13 @@ def portfolio_return(returns, weights: Optional[Union[float, np.ndarray]] = None
     return port_perf
 
 
-def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True,
-           window: Optional[int] = None,
-           dataset='global', **kwargs):
+def one_cv(model_type, data, assets, base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True,
+           window: Optional[int] = None, dataset='global', **kwargs):
     ae_config = kwargs.get('ae_config')
     res = {}
 
-    model, scaler, dates, test_data, test_features, pred, embedding = load_result(test_set, data, assets, base_dir, cv,
-                                                                           ae_config)
+    model, scaler, dates, test_data, test_features, pred, embedding = load_result(model_type, test_set, data, assets,
+                                                                                  base_dir, cv, ae_config)
 
     std = np.sqrt(scaler['attributes']['var_'])
     data = data.pct_change(1).dropna()
@@ -609,7 +609,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     return cv, res
 
 
-def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=None, compute_weights=True,
+def get_cv_results(model_type, base_dir, test_set, n_folds, portfolios=None, market_budget=None, compute_weights=True,
                    window: Optional[int] = None, n_jobs: int = None, dataset='global', **kwargs):
     assert test_set in ['val', 'test']
 
@@ -619,9 +619,9 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
-                delayed(one_cv)(data, assets, base_dir, cv, test_set, portfolios, market_budget=market_budget,
-                                compute_weights=compute_weights,
-                                window=window, dataset=dataset, **kwargs)
+                delayed(one_cv)(model_type, data, assets, base_dir, cv, test_set, portfolios,
+                                market_budget=market_budget, compute_weights=compute_weights, window=window,
+                                dataset=dataset, **kwargs)
                 for cv in range(n_folds)
             )
         # Build dictionary
@@ -631,9 +631,9 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
     else:
         cv_results = {}
         for cv in range(n_folds):
-            _, cv_results[cv] = one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=market_budget,
-                                       compute_weights=compute_weights,
-                                       window=window, dataset=dataset, **kwargs)
+            _, cv_results[cv] = one_cv(model_type, data, assets, base_dir, cv, test_set, portfolios,
+                                       market_budget=market_budget, compute_weights=compute_weights, window=window,
+                                       dataset=dataset, **kwargs)
 
     return cv_results
 

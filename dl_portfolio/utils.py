@@ -19,9 +19,10 @@ from sklearn.linear_model import LinearRegression
 LOG_BASE_DIR = './dl_portfolio/log'
 
 
-def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config,
-                    reg_type: str = 'nn_ridge', **kwargs):
-    model, scaler, dates, test_data, test_features, prediction, embedding = load_result(test_set,
+def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str,
+                    ae_config, reg_type: str = 'nn_ridge', **kwargs):
+    model, scaler, dates, test_data, test_features, prediction, embedding = load_result("ae",
+                                                                                        test_set,
                                                                                         data,
                                                                                         assets,
                                                                                         base_dir,
@@ -152,9 +153,11 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     return results
 
 
-def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str, ae_config):
+def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str,
+                ae_config):
     """
 
+    :param model_type: 'ae' or 'nmf'
     :param test_set:
     :param data:
     :param assets:
@@ -163,27 +166,36 @@ def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: 
     :param ae_config:
     :return:
     """
+    assert model_type in ["ae", "nmf"]
+
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
     embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
     input_dim = len(assets)
-    model, encoder, extra_features = build_model(ae_config.model_type,
-                                                 input_dim,
-                                                 ae_config.encoding_dim,
-                                                 n_features=None,
-                                                 extra_features_dim=1,
-                                                 activation=ae_config.activation,
-                                                 batch_normalization=ae_config.batch_normalization,
-                                                 kernel_initializer=ae_config.kernel_initializer,
-                                                 kernel_constraint=ae_config.kernel_constraint,
-                                                 kernel_regularizer=ae_config.kernel_regularizer,
-                                                 activity_regularizer=ae_config.activity_regularizer,
-                                                 batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
-                                                 loss=ae_config.loss,
-                                                 uncorrelated_features=ae_config.uncorrelated_features,
-                                                 weightage=ae_config.weightage)
-    model.load_weights(f'{base_dir}/{cv}/model.h5')
-    layer_name = list(filter(lambda x: 'uncorrelated_features_layer' in x, [l.name for l in model.layers]))[0]
-    encoder = tf.keras.Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
+
+    if model_type == "ae":
+        model, encoder, extra_features = build_model(ae_config.model_type,
+                                                     input_dim,
+                                                     ae_config.encoding_dim,
+                                                     n_features=None,
+                                                     extra_features_dim=1,
+                                                     activation=ae_config.activation,
+                                                     batch_normalization=ae_config.batch_normalization,
+                                                     kernel_initializer=ae_config.kernel_initializer,
+                                                     kernel_constraint=ae_config.kernel_constraint,
+                                                     kernel_regularizer=ae_config.kernel_regularizer,
+                                                     activity_regularizer=ae_config.activity_regularizer,
+                                                     batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
+                                                     loss=ae_config.loss,
+                                                     uncorrelated_features=ae_config.uncorrelated_features,
+                                                     weightage=ae_config.weightage)
+        model.load_weights(f'{base_dir}/{cv}/model.h5')
+        layer_name = list(filter(lambda x: 'uncorrelated_features_layer' in x, [l.name for l in model.layers]))[0]
+        encoder = tf.keras.Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
+    elif model_type == "nmf":
+        model = pickle.load(open(f'{base_dir}/{cv}/model.p', "rb"))
+    else:
+        raise NotImplementedError()
+
     data_spec = ae_config.data_specs[cv]
     if test_set:
         _, _, test_data, _, dates, features = get_features(data,
@@ -202,12 +214,18 @@ def load_result(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: 
                                                            test_start=data_spec.get('test_start'),
                                                            scaler=scaler)
     # Prediction
-    pred = model.predict(test_data)
+    if model_type == "ae":
+        pred = model.predict(test_data)
+        test_features = encoder.predict(test_data)
+    elif model_type == "nmf":
+        test_features = model.transform(test_data)
+        pred = model.inverse_transform(test_features)
+    else:
+        raise NotImplementedError()
+
     pred *= np.sqrt(scaler['attributes']['var_'])
     pred += scaler['attributes']['mean_']
     pred = pd.DataFrame(pred, columns=assets, index=dates[test_set])
-
-    test_features = encoder.predict(test_data)
     test_features = pd.DataFrame(test_features, index=dates[test_set])
 
     return model, scaler, dates, test_data, test_features, pred, embedding
