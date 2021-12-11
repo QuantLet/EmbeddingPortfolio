@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
@@ -44,11 +45,16 @@ if __name__ == "__main__":
 
     convex_nmf.fit(X_train, verbose=1)
     print(convex_nmf.components)
+    plt.figure(figsize=(10, 10))
+    sns.heatmap(convex_nmf.components, yticklabels=assets)
+    plt.show()
+
+    print(convex_nmf.encoding)
     factors = convex_nmf.transform(X_train)
     print(factors)
     pred = convex_nmf.inverse_transform(factors)
 
     for i in range(X_train.shape[-1]):
-        plt.plot(X_train[:,i])
-        plt.plot(pred[:,i])
+        plt.plot(X_train[:, i])
+        plt.plot(pred[:, i])
         plt.show()

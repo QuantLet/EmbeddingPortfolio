@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.nmf.semi_nmf import SemiNMF
@@ -42,12 +43,15 @@ if __name__ == "__main__":
 
     semi_nmf.fit(X_train, verbose=1)
     print(semi_nmf.components)
+    plt.figure(figsize=(10, 10))
+    sns.heatmap(semi_nmf.components, yticklabels=assets)
+    plt.show()
+
     factors = semi_nmf.transform(X_train)
     print(factors)
     pred = semi_nmf.inverse_transform(factors)
 
-
     for i in range(X_train.shape[-1]):
-        plt.plot(X_train[:,i])
-        plt.plot(pred[:,i])
+        plt.plot(X_train[:, i])
+        plt.plot(pred[:, i])
         plt.show()
