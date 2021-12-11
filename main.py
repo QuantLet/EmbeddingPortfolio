@@ -1,5 +1,4 @@
-from dl_portfolio.kmeans import run as run_kmeans
-from dl_portfolio.run import run_ae
+from dl_portfolio.run import run_ae, run_kmeans
 from dl_portfolio.logger import LOGGER
 from joblib import Parallel, delayed
 import os, logging
