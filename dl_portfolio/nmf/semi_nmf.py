@@ -1,13 +1,14 @@
 import numbers
 import numpy as np
+import time
 
 from typing import Optional
 from sklearn.base import BaseEstimator
 from sklearn.cluster import KMeans
+from sklearn.decomposition._nmf import _beta_divergence
 
 from dl_portfolio.logger import LOGGER
-from sklearn.decomposition._nmf import _beta_divergence
-import time
+from dl_portfolio.nmf.utils import negative_matrix, positive_matrix
 
 
 class SemiNMF(BaseEstimator):
@@ -76,7 +77,6 @@ class SemiNMF(BaseEstimator):
                 if self.verbose:
                     LOGGER.info('Reached max iteration number, stopping')
 
-
             error = _beta_divergence(X, F, G.T, beta=self.beta_loss, square_root=True)
 
             if self.verbose:
@@ -131,13 +131,14 @@ class SemiNMF(BaseEstimator):
 
     @staticmethod
     def _update_g(X, G, F):
-        F_TF_minus = (np.abs(F.T.dot(F)) - F.T.dot(F)) / 2
-        F_TF_plus = (np.abs(F.T.dot(F)) + F.T.dot(F)) / 2
-        X_TF_minus = (np.abs(X.T.dot(F)) - X.T.dot(F)) / 2
-        X_TF_plus = (np.abs(X.T.dot(F)) + X.T.dot(F)) / 2
+        F_TF_minus = negative_matrix(F.T.dot(F))
+        F_TF_plus = positive_matrix(F.T.dot(F))
 
-        denominator = X_TF_minus + G.dot(F_TF_plus)
+        X_TF_minus = negative_matrix(X.T.dot(F))
+        X_TF_plus = positive_matrix(X.T.dot(F))
+
         numerator = X_TF_plus + G.dot(F_TF_minus)
+        denominator = X_TF_minus + G.dot(F_TF_plus)
 
         assert (denominator != 0).all(), "Division by 0"
 
