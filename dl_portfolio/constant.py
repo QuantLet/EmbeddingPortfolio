@@ -1,3 +1,5 @@
+import pandas as pd
+
 BASE_FREQ = 1800
 BASE_COLUMNS = ['open', 'high', 'low', 'close', 'volume', 'quoteVolume']
 RESAMPLE_DICT = {'open': 'first', 'high': 'max', 'low': 'min', 'close': 'last', 'volume': 'sum',
@@ -147,3 +149,20 @@ DATA_SPECS_BOND = {
         'end': '2021-10-11'
     }
 }
+
+val_start = pd.date_range('2007-01-01', '2021-09-01', freq='1MS')
+val_start = [str(d.date()) for d in val_start]
+
+test_start = pd.date_range('2007-02-01', '2021-10-01', freq='1MS')
+test_start = [str(d.date()) for d in test_start]
+test_end = pd.date_range('2007-02-01', '2021-11-01', freq='1M')
+test_end = [str(d.date()) for d in test_end]
+
+DATA_SPECS_MULTIASSET_TRADITIONAL = {}
+for i in range(len(val_start)):
+    DATA_SPECS_MULTIASSET_TRADITIONAL[i] = {
+        'start': '1989-02-01',
+        'val_start': val_start[i],
+        'test_start': test_start[i],
+        'end': test_end[i]
+    }

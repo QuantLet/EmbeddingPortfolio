@@ -1,5 +1,4 @@
 import pickle
-import scipy
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
@@ -7,6 +6,7 @@ import pandas as pd
 import numpy as np
 import riskparityportfolio as rp
 
+from scipy import stats as scipy_stats
 from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
 from sklearn.cluster import KMeans
@@ -25,22 +25,35 @@ from dl_portfolio.constant import CRYPTO_ASSETS
 from dl_portfolio.ae_data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.utils import load_result
-from dl_portfolio.constant import DATA_SPECS_BOND
+from dl_portfolio.constant import DATA_SPECS_BOND, DATA_SPECS_MULTIASSET_TRADITIONAL
 
 PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
               'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
 
 
-def get_target_vol_gmv_robust_perf(dataset: str):
+def get_target_vol_other_weights(portfolio: str):
     # Load pyrobustm results
-    if dataset == 'bond':
+    if portfolio == 'GMV_robust_bond':
+        dataset = 'bond'
         crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
-        GMV_robust_weights = pd.read_csv('GMV_robust_weights_bond.csv', index_col=0)
+        weights = pd.read_csv('GMV_robust_weights_bond.csv', index_col=0)
         data_specs = DATA_SPECS_BOND
-    else:
+    elif portfolio == 'GMV_robust_raffinot':
+        dataset = 'raffinot_bloomberg_comb_update_2021'
         crypto_assets = None
-        GMV_robust_weights = pd.read_csv('.csv', index_col=0)
-    GMV_robust_weights.index = pd.to_datetime(GMV_robust_weights.index)
+        data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
+        weights = pd.read_csv('./run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_GMV_robust.csv',
+                              index_col=0)
+    elif portfolio == 'MeanVar_raffinot':
+        dataset = 'raffinot_bloomberg_comb_update_2021'
+        crypto_assets = None
+        data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
+        weights = pd.read_csv('./run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_MeanVar_long.csv',
+                              index_col=0)
+    else:
+        raise NotImplementedError()
+
+    weights.index = pd.to_datetime(weights.index)
     # Load data
     data, assets = load_data(dataset=dataset,
                              assets=None,
@@ -49,23 +62,21 @@ def get_target_vol_gmv_robust_perf(dataset: str):
                              crypto_assets=crypto_assets)
 
     returns = data.pct_change(1).dropna()
-    port_perf = {}
-    port_perf['GMV_robust'] = {}
-    port_perf['GMV_robust'] = pd.DataFrame()
+
+    port_perf = pd.DataFrame()
 
     for cv in data_specs:
         test_start = data_specs[cv]['test_start']
         test_end = data_specs[cv]['end']
-        weights = {'GMV_robust': GMV_robust_weights.loc[data_specs[cv]['test_start']:].iloc[0]}
+        w = {'other': weights.loc[data_specs[cv]['test_start']:].iloc[0]}
         if cv == 0:
-            prev_weights = {'GMV_robust': np.ones_like(weights) for p in ['GMV_robust']}
+            prev_w = {'other': np.ones_like(w) for p in ['other']}
         train_returns = returns.loc[:test_start].iloc[-1000:-1]
         test_returns = returns.loc[test_start:test_end]
-        one_cv_perf = get_portfolio_perf(train_returns, test_returns, weights, portfolios=['GMV_robust'],
-                                         prev_weights=prev_weights)
+        one_cv_perf = get_portfolio_perf(train_returns, test_returns, w, portfolios=['other'], prev_weights=prev_w)
 
-        prev_weights = weights.copy()
-        port_perf['GMV_robust'] = pd.concat([port_perf['GMV_robust'], one_cv_perf['GMV_robust']])
+        prev_w = w.copy()
+        port_perf = pd.concat([port_perf, one_cv_perf['other']])
 
     return port_perf
 
@@ -180,7 +191,7 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
     strats = list(perf.keys())
     stats = pd.DataFrame(index=strats,
                          columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
-                                  'ES-5%', 'SR', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
+                                  'ES-5%', 'ASR', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
                          dtype=np.float32)
     assets = weights['hrp'].columns
     n_assets = weights['hrp'].shape[-1]
@@ -191,16 +202,17 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
 
         elif strat == 'equal_class':
             market_budget = kwargs.get('market_budget')
+            market_budget = market_budget.loc[assets, :]
             assert market_budget is not None
             weights['equal_class'] = pd.DataFrame(equal_class_weights(market_budget)).T
 
         stats.loc[strat] = [perf[strat].mean(),
                             annualized_volatility(perf[strat], period=period),
-                            scipy.stats.skew(perf[strat], axis=0),
-                            scipy.stats.kurtosis(perf[strat], axis=0) - 3,
+                            scipy_stats.skew(perf[strat], axis=0),
+                            scipy_stats.kurtosis(perf[strat], axis=0) - 3,
                             hist_VaR(perf[strat], level=0.05),
                             hist_ES(perf[strat], level=0.05),
-                            sharpe_ratio(perf[strat], period=period),
+                            # sharpe_ratio(perf[strat], period=period),
                             adjusted_sharpe_ratio(perf[strat], period=period),
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
@@ -214,6 +226,8 @@ def backtest_stats(perf: Dict, weights: Dict, period: int = 252, format: bool = 
         stats['ES-5%'] = stats['ES-5%'] * 100
         stats['MDD'] = stats['MDD'] * 100
         stats['CEQ'] = stats['CEQ'] * 100
+        stats['TTO'] = stats['TTO'] * 100
+    if kwargs.get("round", False):
         stats = np.round(stats, 2)
 
     return stats
@@ -279,8 +293,8 @@ def adjusted_sharpe_ratio(perf, period: int = 1):
     # Indeed annualized skew = skew / sqrt(period) and annualized kurtosis = kurtosis / period
 
     sr = sharpe_ratio(perf)
-    skew = scipy.stats.skew(perf, axis=0)
-    kurtosis = scipy.stats.kurtosis(perf, axis=0)
+    skew = scipy_stats.skew(perf, axis=0)
+    kurtosis = scipy_stats.kurtosis(perf, axis=0)
 
     return sr * (1 + (skew / 6) * sr - ((kurtosis - 3) / 24) * (sr ** 2)) * np.sqrt(period)
 
@@ -359,6 +373,7 @@ def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: floa
     elif portfolio == 'equal_class':
         market_budget = kwargs.get('market_budget')
         assert market_budget is not None
+        market_budget = market_budget.loc[assets,:]
         weights = equal_class_weights(market_budget)
 
     for cv in cv_results:
@@ -414,6 +429,7 @@ def get_portfolio_perf(train_returns: pd.DataFrame, returns: pd.DataFrame, weigh
         elif p == 'equal_class':
             market_budget = kwargs.get('market_budget')
             assert market_budget is not None
+            market_budget = market_budget.loc[returns.columns,:]
             w = equal_class_weights(market_budget)
             port_perf['equal_class'] = portfolio_return(returns, weights=w)
         else:
@@ -430,6 +446,7 @@ def get_portfolio_perf(train_returns: pd.DataFrame, returns: pd.DataFrame, weigh
             elif p == 'equal_class':
                 market_budget = kwargs.get('market_budget')
                 assert market_budget is not None
+                market_budget = market_budget.loc[returns.columns,:]
                 w = equal_class_weights(market_budget)
                 train_port_perf = portfolio_return(train_returns, weights=w)
                 cost = 0

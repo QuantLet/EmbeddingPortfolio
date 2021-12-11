@@ -94,13 +94,10 @@ callbacks = {
 #     }
 # }
 
-val_start = pd.date_range('2014-06-12', '2016-06-12', freq='1M')
+val_start = pd.date_range('2005-01-01', '2006-12-01', freq='1MS')
 val_start = [str(d.date()) for d in val_start]
-val_start = [d[:-2] + '13' for d in val_start]
-
-end_val = pd.date_range('2014-07-12', '2016-07-12', freq='1M')
+end_val = pd.date_range('2005-01-01', '2007-01-01', freq='1M')
 end_val = [str(d.date()) for d in end_val]
-end_val = [d[:-2] + '12' for d in end_val]
 
 data_specs = {}
 for i in range(len(val_start)):
