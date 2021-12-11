@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
 
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.nmf.semi_nmf import SemiNMF
@@ -53,6 +54,12 @@ if __name__ == "__main__":
 
     print(semi_nmf.evaluate(X_train))
     print(semi_nmf.evaluate(X_test))
+
+    semi_nmf.save("nmf_test.p")
+    semi_nmf2 = pickle.load(open("nmf_test.p", "rb"))
+    assert semi_nmf.evaluate(X_train) == semi_nmf2.evaluate(X_train)
+    assert semi_nmf.evaluate(X_test) == semi_nmf2.evaluate(X_test)
+    assert (semi_nmf.components == semi_nmf2.components).all()
 
     for i in range(X_train.shape[-1]):
         plt.plot(X_train[:, i])

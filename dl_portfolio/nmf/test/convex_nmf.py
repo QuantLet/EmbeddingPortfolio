@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import pickle
 
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
@@ -56,6 +57,12 @@ if __name__ == "__main__":
 
     print(convex_nmf.evaluate(X_train))
     print(convex_nmf.evaluate(X_test))
+
+    convex_nmf.save("nmf_test.p")
+    convex_nmf2 = pickle.load(open("nmf_test.p", "rb"))
+    assert convex_nmf.evaluate(X_train) == convex_nmf2.evaluate(X_train)
+    assert convex_nmf.evaluate(X_test) == convex_nmf2.evaluate(X_test)
+    assert (convex_nmf.components == convex_nmf2.components).all()
 
     for i in range(X_train.shape[-1]):
         plt.plot(X_train[:, i])

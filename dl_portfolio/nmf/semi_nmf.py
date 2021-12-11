@@ -1,6 +1,7 @@
 import numbers
 import numpy as np
 import time
+import pickle
 
 from typing import Optional
 from sklearn.base import BaseEstimator
@@ -120,6 +121,9 @@ class SemiNMF(BaseEstimator):
     def evaluate(self, X):
         F = self.transform(X)
         return reconstruction_error(X, F, self.components, loss=self.loss)
+
+    def save(self, path):
+        pickle.dump(self, open(path, "wb"))
 
     @staticmethod
     def _update_f(X, G):
