@@ -123,6 +123,8 @@ class SemiNMF(BaseEstimator):
         return reconstruction_error(X, F, self.components, loss=self.loss)
 
     def save(self, path):
+        assert self._is_fitted, "Fit the model before dumping it"
+        assert path.split('.')[-1] in ["p", "pkl"], f"Extension must be 'p' or 'pkl', not: {path.split('.')[-1]}"
         pickle.dump(self, open(path, "wb"))
 
     @staticmethod

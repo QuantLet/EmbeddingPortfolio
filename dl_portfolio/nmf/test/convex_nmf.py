@@ -58,8 +58,10 @@ if __name__ == "__main__":
     print(convex_nmf.evaluate(X_train))
     print(convex_nmf.evaluate(X_test))
 
-    convex_nmf.save("nmf_test.p")
-    convex_nmf2 = pickle.load(open("nmf_test.p", "rb"))
+    path = "nmf_test.p"
+    convex_nmf.save(path)
+    convex_nmf2 = pickle.load(open(path, "rb"))
+    assert convex_nmf2._is_fitted
     assert convex_nmf.evaluate(X_train) == convex_nmf2.evaluate(X_train)
     assert convex_nmf.evaluate(X_test) == convex_nmf2.evaluate(X_test)
     assert (convex_nmf.components == convex_nmf2.components).all()
