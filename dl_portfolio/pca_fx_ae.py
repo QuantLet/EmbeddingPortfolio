@@ -1,4 +1,4 @@
-from dl_portfolio.run import run
+from dl_portfolio.run import run_ae
 from dl_portfolio.logger import LOGGER
 from joblib import parallel_backend, Parallel, delayed
 
@@ -34,11 +34,11 @@ if __name__ == "__main__":
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
-                run(ae_config, seed=int(seed))
+                run_ae(ae_config, seed=int(seed))
         else:
             with parallel_backend("threading", n_jobs=args.n_jobs):
                 Parallel()(
-                    delayed(run)(ae_config, seed=int(seed)) for seed in args.seeds
+                    delayed(run_ae)(ae_config, seed=int(seed)) for seed in args.seeds
                 )
 
     else:
@@ -46,19 +46,19 @@ if __name__ == "__main__":
             for i in range(args.n):
                 LOGGER.info(f'Starting experiment {i+1} out of {args.n} experiments')
                 if args.seed:
-                    run(ae_config, seed=args.seed)
+                    run_ae(ae_config, seed=args.seed)
                 else:
-                    run(ae_config, seed=i)
+                    run_ae(ae_config, seed=i)
                 LOGGER.info(f'Experiment {i+1} finished')
                 LOGGER.inof(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
                 with parallel_backend("threading", n_jobs=args.n_jobs):
                     Parallel()(
-                        delayed(run)(ae_config, seed=args.seed) for i in range(args.n)
+                        delayed(run_ae)(ae_config, seed=args.seed) for i in range(args.n)
                     )
             else:
                 with parallel_backend("threading", n_jobs=args.n_jobs):
                     Parallel()(
-                        delayed(run)(ae_config, seed=seed) for seed in range(args.n)
+                        delayed(run_ae)(ae_config, seed=seed) for seed in range(args.n)
                     )

@@ -15,7 +15,7 @@ from typing import Optional
 import matplotlib.pyplot as plt
 
 
-def run(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
+def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
     """
 
     :param ae_config: config

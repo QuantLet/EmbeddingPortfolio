@@ -1,4 +1,4 @@
-from dl_portfolio.run import run
+from dl_portfolio.run import run_ae
 from dl_portfolio.logger import LOGGER
 from joblib import Parallel, delayed
 import os
@@ -11,7 +11,7 @@ import logging
 
 def worker(ae_config, params: Dict, log_dir: str, seed: Optional[int] = None):
     ae_config = config_setter(ae_config, params)
-    run(ae_config, log_dir=log_dir, seed=seed)
+    run_ae(ae_config, log_dir=log_dir, seed=seed)
 
 
 if __name__ == "__main__":
