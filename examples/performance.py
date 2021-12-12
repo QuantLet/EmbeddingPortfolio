@@ -109,6 +109,8 @@ if __name__ == "__main__":
     elif ae_config.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
         market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
+    elif ae_config.dataset == 'cac':
+        market_budget = pd.read_csv('data/market_budget_cac.csv', index_col=0)
     else:
         raise NotImplementedError()
 

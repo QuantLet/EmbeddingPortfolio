@@ -12,6 +12,8 @@ from dl_portfolio.ae_data import load_data
 from dl_portfolio.run import run_ae, run_kmeans, run_convex_nmf
 from dl_portfolio.logger import LOGGER
 
+BASE_DIR = 'tuning_log'
+
 
 def worker(config, params: Dict, log_dir: str, seed: Optional[int] = None):
     config = config_setter(run_type, config, params)
@@ -72,7 +74,6 @@ if __name__ == "__main__":
     param_grid = list(ParameterGrid(tuning))
     nb_params = len(param_grid)
 
-    BASE_DIR = 'log_tuning'
     if os.path.isdir(BASE_DIR):
         raise ValueError(f"{BASE_DIR} already exists, rename it or move it")
     else:

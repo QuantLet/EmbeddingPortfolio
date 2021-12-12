@@ -614,8 +614,15 @@ def get_cv_results(model_type, base_dir, test_set, n_folds, portfolios=None, mar
     assert test_set in ['val', 'test']
 
     ae_config = kwargs.get('ae_config')
-    data, assets = load_data(dataset=dataset, assets=ae_config.assets, freq=ae_config.freq, crix=ae_config.crix,
-                             crypto_assets=ae_config.crypto_assets)
+
+    if dataset == 'bond':
+        data, assets = load_data(dataset=dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
+    else:
+        data, assets = load_data(dataset=dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
+                                 freq=ae_config.freq)
+
+
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
