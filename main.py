@@ -7,8 +7,6 @@ from dl_portfolio.ae_data import load_data
 
 if __name__ == "__main__":
     import argparse
-    from dl_portfolio.config import ae_config
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--n",
                         default=1,
@@ -54,9 +52,11 @@ if __name__ == "__main__":
 
     if args.run == "ae":
         run = run_ae
+        from dl_portfolio.config import ae_config as config
     elif args.run == "kmeans":
         run = run_kmeans
     elif args.run == "convex_nmf":
+        from dl_portfolio.config import nmf_config as config
         run = run_convex_nmf
     else:
         raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'convex_nmf'")
@@ -64,20 +64,20 @@ if __name__ == "__main__":
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
 
-    if ae_config.dataset == 'bond':
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq, crix=ae_config.crix, crypto_assets=ae_config.crypto_assets)
+    if config.dataset == 'bond':
+        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
+                                 freq=config.freq, crix=config.crix, crypto_assets=config.crypto_assets)
     else:
-        data, assets = load_data(dataset=ae_config.dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
-                                 freq=ae_config.freq)
+        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
+                                 freq=config.freq)
 
     if args.seeds:
         if args.n_jobs == 1:
             for i, seed in enumerate(args.seeds):
-                run(ae_config, data, assets, seed=int(seed))
+                run(config, data, assets, seed=int(seed))
         else:
             Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                delayed(run)(ae_config, data, assets, seed=int(seed)) for seed in args.seeds
+                delayed(run)(config, data, assets, seed=int(seed)) for seed in args.seeds
             )
 
     else:
@@ -85,17 +85,17 @@ if __name__ == "__main__":
             for i in range(args.n):
                 LOGGER.info(f'Starting experiment {i + 1} out of {args.n} experiments')
                 if args.seed:
-                    run(ae_config, data, assets, seed=args.seed)
+                    run(config, data, assets, seed=args.seed)
                 else:
-                    run(ae_config, data, assets, seed=i)
+                    run(config, data, assets, seed=i)
                 LOGGER.info(f'Experiment {i + 1} finished')
                 LOGGER.info(f'{args.n - i - 1} experiments to go')
         else:
             if args.seed:
                 Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, data, assets, seed=args.seed) for i in range(args.n)
+                    delayed(run)(config, data, assets, seed=args.seed) for i in range(args.n)
                 )
             else:
                 Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-                    delayed(run)(ae_config, data, assets, seed=seed) for seed in range(args.n)
+                    delayed(run)(config, data, assets, seed=seed) for seed in range(args.n)
                 )

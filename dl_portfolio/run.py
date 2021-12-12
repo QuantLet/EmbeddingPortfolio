@@ -21,17 +21,17 @@ from dl_portfolio.constant import LOG_DIR
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
 
 
-def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
+def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None):
     """
 
-    :param ae_config: config
+    :param config: config
     :param log_dir: if given save the result in log_dir folder, if not given use LOG_DIR
     :param seed: if given use specific seed
     :return:
     """
     random_seed = np.random.randint(0, 100)
-    if ae_config.seed:
-        seed = ae_config.seed
+    if config.seed:
+        seed = config.seed
     if seed is None:
         seed = np.random.randint(0, 1000)
 
@@ -39,26 +39,26 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
     tf.random.set_seed(seed)
     LOGGER.debug(f"Set seed: {seed}")
 
-    if ae_config.save:
+    if config.save:
         if log_dir is None:
             log_dir = LOG_DIR
 
         iter = len(os.listdir(log_dir))
-        if ae_config.model_name is not None and ae_config.model_name != '':
-            subdir = f'm_{iter}_' + ae_config.model_name + f'_seed_{seed}'
+        if config.model_name is not None and config.model_name != '':
+            subdir = f'm_{iter}_' + config.model_name + f'_seed_{seed}'
         else:
             subdir = f'm_{iter}_'
         subdir = subdir + '_' + str(dt.datetime.timestamp(dt.datetime.now())).replace('.', '')
         save_dir = f"{log_dir}/{subdir}"
         os.makedirs(save_dir)
-        copyfile('./dl_portfolio/config/ae_config.py',
-                 os.path.join(save_dir, 'ae_config.py'))
+        copyfile('./dl_portfolio/config/config.py',
+                 os.path.join(save_dir, 'config.py'))
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
 
-    if ae_config.loss == 'weighted_mse':
-        file_name = f"./data/sample_weights_lq_{ae_config.label_param['lq']}_uq_{ae_config.label_param['uq']}_w_{ae_config.label_param['window']}.p"
+    if config.loss == 'weighted_mse':
+        file_name = f"./data/sample_weights_lq_{config.label_param['lq']}_uq_{config.label_param['uq']}_w_{config.label_param['window']}.p"
         if os.path.isfile(file_name):
             LOGGER.debug(f'Loading sample weights from {file_name}')
             df_sample_weights = pd.read_pickle(file_name)
@@ -66,9 +66,9 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
         else:
             LOGGER.debug('Computing sample weights ...')
             d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], dropnan=True)
-            t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **ae_config.label_param)
+            t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **config.label_param)
             d, _ = load_data(type=['crypto'], dropnan=False)
-            c_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **ae_config.label_param)
+            c_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **config.label_param)
             df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
             df_sample_weights = df_sample_weights.fillna(0.0)
             df_sample_weights = df_sample_weights[assets]
@@ -80,15 +80,15 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
                 file_name)
             LOGGER.debug('Done')
 
-    for cv in ae_config.data_specs:
+    for cv in config.data_specs:
         LOGGER.debug(f'Starting with cv: {cv}')
-        if ae_config.save:
+        if config.save:
             save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
         else:
             save_path = None
 
-        if ae_config.shuffle_columns:
+        if config.shuffle_columns:
             LOGGER.debug('Shuffle assets order')
             if cv == 0:
                 random_assets = assets.copy()
@@ -102,55 +102,55 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
                 np.random.seed(seed)
 
         LOGGER.debug(f'Assets order: {assets}')
-        if ae_config.loss == 'weighted_mse':
+        if config.loss == 'weighted_mse':
             # reorder columns
             df_sample_weights = df_sample_weights[assets]
 
         # Build model
         input_dim = len(assets)
         n_features = None
-        model, encoder, extra_features = build_model(ae_config.model_type,
+        model, encoder, extra_features = build_model(config.model_type,
                                                      input_dim,
-                                                     ae_config.encoding_dim,
+                                                     config.encoding_dim,
                                                      n_features=n_features,
                                                      extra_features_dim=1,
-                                                     activation=ae_config.activation,
-                                                     batch_normalization=ae_config.batch_normalization,
-                                                     kernel_initializer=ae_config.kernel_initializer,
-                                                     kernel_constraint=ae_config.kernel_constraint,
-                                                     kernel_regularizer=ae_config.kernel_regularizer,
-                                                     activity_regularizer=ae_config.activity_regularizer,
-                                                     batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
-                                                     loss=ae_config.loss,
-                                                     uncorrelated_features=ae_config.uncorrelated_features,
-                                                     weightage=ae_config.weightage)
+                                                     activation=config.activation,
+                                                     batch_normalization=config.batch_normalization,
+                                                     kernel_initializer=config.kernel_initializer,
+                                                     kernel_constraint=config.kernel_constraint,
+                                                     kernel_regularizer=config.kernel_regularizer,
+                                                     activity_regularizer=config.activity_regularizer,
+                                                     batch_size=config.batch_size if config.drop_remainder_obs else None,
+                                                     loss=config.loss,
+                                                     uncorrelated_features=config.uncorrelated_features,
+                                                     weightage=config.weightage)
         # LOGGER.info(model.summary())
 
         # Create dataset:
         shuffle = False
-        if ae_config.resample is not None:
-            if ae_config.resample.get('when', None) != 'each_epoch':
+        if config.resample is not None:
+            if config.resample.get('when', None) != 'each_epoch':
                 train_dataset, val_dataset = create_dataset(data, assets,
-                                                            ae_config.data_specs[cv],
-                                                            ae_config.model_type,
-                                                            batch_size=ae_config.batch_size,
-                                                            rescale=ae_config.rescale,
-                                                            features_config=ae_config.features_config,
-                                                            scaler_func=ae_config.scaler_func,
-                                                            resample=ae_config.resample,
-                                                            loss=ae_config.loss,
-                                                            drop_remainder_obs=ae_config.drop_remainder_obs,
-                                                            df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
+                                                            config.data_specs[cv],
+                                                            config.model_type,
+                                                            batch_size=config.batch_size,
+                                                            rescale=config.rescale,
+                                                            features_config=config.features_config,
+                                                            scaler_func=config.scaler_func,
+                                                            resample=config.resample,
+                                                            loss=config.loss,
+                                                            drop_remainder_obs=config.drop_remainder_obs,
+                                                            df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None
                                                             )
 
             else:
                 shuffle = True
 
         # Set extra loss parameters
-        if ae_config.loss_asset_weights is not None:
+        if config.loss_asset_weights is not None:
             loss_asset_weights = {a: 1. for a in assets}
-            for a in ae_config.loss_asset_weights:
-                loss_asset_weights[a] = ae_config.loss_asset_weights[a]
+            for a in config.loss_asset_weights:
+                loss_asset_weights[a] = config.loss_asset_weights[a]
             LOGGER.debug(f'Loss asset weights is: {loss_asset_weights}')
             loss_asset_weights = np.array(list(loss_asset_weights.values()))
             loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
@@ -160,70 +160,70 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
         if shuffle:
             model, history = fit(model,
                                  None,
-                                 ae_config.epochs,
-                                 ae_config.learning_rate,
-                                 loss=ae_config.loss,
+                                 config.epochs,
+                                 config.learning_rate,
+                                 loss=config.loss,
                                  loss_asset_weights=loss_asset_weights,
-                                 callbacks=ae_config.callbacks,
+                                 callbacks=config.callbacks,
                                  val_dataset=None,
                                  extra_features=n_features is not None,
-                                 save_path=f"{save_path}" if ae_config.save else None,
+                                 save_path=f"{save_path}" if config.save else None,
                                  shuffle=True,
                                  cv=cv,
                                  data=data,
                                  assets=assets,
-                                 ae_config=ae_config,
-                                 df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None)
+                                 config=config,
+                                 df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None)
         else:
             model, history = fit(model,
                                  train_dataset,
-                                 ae_config.epochs,
-                                 ae_config.learning_rate,
-                                 loss=ae_config.loss,
+                                 config.epochs,
+                                 config.learning_rate,
+                                 loss=config.loss,
                                  loss_asset_weights=loss_asset_weights,
-                                 callbacks=ae_config.callbacks,
+                                 callbacks=config.callbacks,
                                  val_dataset=val_dataset,
                                  extra_features=n_features is not None,
-                                 save_path=f"{save_path}" if ae_config.save else None,
+                                 save_path=f"{save_path}" if config.save else None,
                                  shuffle=False)
 
-        if ae_config.save:
+        if config.save:
             # tensorboard viz
-            if ae_config.model_type != 'ae_model2':
+            if config.model_type != 'ae_model2':
                 embedding_visualization(model, assets, log_dir=f"{save_path}/tensorboard/")
             LOGGER.debug(f"Loading weights from {save_path}/model.h5")
             model.load_weights(f"{save_path}/model.h5")
 
-        plot_history(history, save_path=save_path, show=ae_config.show_plot)
+        plot_history(history, save_path=save_path, show=config.show_plot)
 
         # Evaluate
         # model.evaluate(train_input, train_data)
         # model.evaluate(val_input, val_data)
 
         # Get results for later analysis
-        data_spec = ae_config.data_specs[cv]
+        data_spec = config.data_specs[cv]
         train_data, val_data, test_data, scaler, dates, features = get_features(data,
                                                                                 data_spec['start'],
                                                                                 data_spec['end'],
                                                                                 assets,
                                                                                 val_start=data_spec['val_start'],
                                                                                 test_start=data_spec.get('test_start'),
-                                                                                rescale=ae_config.rescale,
-                                                                                scaler=ae_config.scaler_func['name'],
-                                                                                resample=ae_config.resample,
-                                                                                features_config=ae_config.features_config,
-                                                                                **ae_config.scaler_func.get('params',
+                                                                                rescale=config.rescale,
+                                                                                scaler=config.scaler_func['name'],
+                                                                                resample=config.resample,
+                                                                                features_config=config.features_config,
+                                                                                **config.scaler_func.get('params',
                                                                                                             {}))
 
-        if ae_config.drop_remainder_obs:
+        if config.drop_remainder_obs:
             indices = list(range(train_data.shape[0]))
-            indices = drop_remainder(indices, ae_config.batch_size, last=False)
+            indices = drop_remainder(indices, config.batch_size, last=False)
             train_data = train_data[indices, :]
             features['train'] = features['train'][indices, :]
             dates['train'] = dates['train'][indices]
 
             indices = list(range(val_data.shape[0]))
-            indices = drop_remainder(indices, ae_config.batch_size, last=False)
+            indices = drop_remainder(indices, config.batch_size, last=False)
             val_data = val_data[indices, :]
             features['val'] = features['val'][indices, :]
             dates['val'] = dates['val'][indices]
@@ -238,18 +238,18 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
         LOGGER.debug(f'Train shape: {train_data.shape}')
         LOGGER.debug(f'Validation shape: {val_data.shape}')
 
-        # train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, ae_config.model_type, features=features)
+        # train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, config.model_type, features=features)
         if features:
-            train_input = build_model_input(train_data, ae_config.model_type, features=features['train'], assets=assets)
-            val_input = build_model_input(val_data, ae_config.model_type, features=features['val'])
+            train_input = build_model_input(train_data, config.model_type, features=features['train'], assets=assets)
+            val_input = build_model_input(val_data, config.model_type, features=features['val'])
             if test_data is not None:
-                test_input = build_model_input(test_data, ae_config.model_type, features=features['test'],
+                test_input = build_model_input(test_data, config.model_type, features=features['test'],
                                                assets=assets)
         else:
-            train_input = build_model_input(train_data, ae_config.model_type, features=None, assets=assets)
-            val_input = build_model_input(val_data, ae_config.model_type, features=None, assets=assets)
+            train_input = build_model_input(train_data, config.model_type, features=None, assets=assets)
+            val_input = build_model_input(val_data, config.model_type, features=None, assets=assets)
             if test_data is not None:
-                test_input = build_model_input(test_data, ae_config.model_type, features=None, assets=assets)
+                test_input = build_model_input(test_data, config.model_type, features=None, assets=assets)
 
         ## Get prediction
         if n_features:
@@ -268,7 +268,7 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
 
         ## Get encoder weights
-        if ae_config.model_type in ['ae_model2', 'nl_pca_ae_model']:
+        if config.model_type in ['ae_model2', 'nl_pca_ae_model']:
             encoder_layer1 = get_layer_by_name(name='encoder1', model=model)
             encoder_weights1 = encoder_layer1.get_weights()[0]
             encoder_layer2 = get_layer_by_name(name='encoder2', model=model)
@@ -335,7 +335,7 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
             test_data = scaler.inverse_transform(test_data)
             test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
 
-        if ae_config.shuffle_columns:
+        if config.shuffle_columns:
             LOGGER.debug('Reorder results with base asset order')
             val_prediction = val_prediction.loc[:, base_asset_order]
             train_data = train_data.loc[:, base_asset_order]
@@ -358,11 +358,11 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
             test_features.sort_index(inplace=True)
 
         # Plot heatmap
-        if ae_config.kernel_constraint is not None:
-            if type(ae_config.kernel_constraint).__name__ == 'NonNegAndUnitNorm':
+        if config.kernel_constraint is not None:
+            if type(config.kernel_constraint).__name__ == 'NonNegAndUnitNorm':
                 vmax = 1
                 vmin = 0.
-            elif type(ae_config.kernel_constraint).__name__ == 'UnitNorm':
+            elif type(config.kernel_constraint).__name__ == 'UnitNorm':
                 vmax = 1
                 vmin = -1
             else:
@@ -372,14 +372,14 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
             vmax = None
             vmin = None
 
-        if ae_config.show_plot:
-            heat_map(encoder_weights, show=ae_config.show_plot, vmax=vmax, vmin=vmin)
+        if config.show_plot:
+            heat_map(encoder_weights, show=config.show_plot, vmax=vmax, vmin=vmin)
 
         # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
         LOGGER.debug(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
 
-        if ae_config.show_plot:
+        if config.show_plot:
             if test_data is not None:
                 for c in test_data.columns:
                     plt.plot(test_data[c], label='true')
@@ -387,15 +387,15 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
                     plt.title(c)
                     plt.show()
 
-        if ae_config.save:
+        if config.save:
             # train_data.to_pickle(f"{save_path}/train_returns.p")
             # val_data.to_pickle(f"{save_path}/val_returns.p")
             # val_prediction.to_pickle(f"{save_path}/val_prediction.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
             # train_features.to_pickle(f"{save_path}/train_features.p")
             # val_features.to_pickle(f"{save_path}/val_features.p")
-            ae_config.scaler_func['attributes'] = scaler.__dict__
-            pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
+            config.scaler_func['attributes'] = scaler.__dict__
+            pickle.dump(config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
             # encoding_pca.to_pickle(f"{save_path}/encoding_pca.p")
             # pickle.dump(cluster_portfolio, open(f"{save_path}/cluster_portfolio.p", "wb"))
             # pickle.dump(pca_cluster_portfolio, open(f"{save_path}/pca_cluster_portfolio.p", "wb"))
@@ -406,38 +406,38 @@ def run_ae(ae_config, data, assets, log_dir: Optional[str] = None, seed: Optiona
                 # test_prediction.to_pickle(f"{save_path}/test_prediction.p")
                 # test_features.to_pickle(f"{save_path}/test_features.p")
 
-    # if ae_config.save:
-    #     heat_map_cluster(save_dir, show=True, save=ae_config.save, vmax=1., vmin=0.)
+    # if config.save:
+    #     heat_map_cluster(save_dir, show=True, save=config.save, vmax=1., vmin=0.)
 
 
-def run_kmeans(ae_config, data, assets, seed=None):
-    if ae_config.seed:
-        seed = ae_config.seed
+def run_kmeans(config, data, assets, seed=None):
+    if config.seed:
+        seed = config.seed
     if seed is None:
         seed = np.random.randint(0, 1000)
 
     np.random.seed(seed)
     LOGGER.info(f"Set seed: {seed}")
 
-    if ae_config.save:
+    if config.save:
         if not os.path.isdir('log_kmeans'):
             os.mkdir('log_kmeans')
         iter = len(os.listdir('log_kmeans'))
         save_dir = f"log_kmeans/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
         os.makedirs(save_dir)
-        copyfile('./dl_portfolio/config/ae_config.py',
-                 os.path.join(save_dir, 'ae_config.py'))
+        copyfile('./dl_portfolio/config/config.py',
+                 os.path.join(save_dir, 'config.py'))
 
-    for cv in ae_config.data_specs:
+    for cv in config.data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
-        if ae_config.save:
+        if config.save:
             save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
         else:
             save_path = None
 
         LOGGER.info(f'Assets order: {assets}')
-        data_spec = ae_config.data_specs[cv]
+        data_spec = config.data_specs[cv]
         train_data, val_data, test_data, scaler, dates, features = get_features(data,
                                                                                 data_spec['start'],
                                                                                 data_spec['end'],
@@ -450,47 +450,53 @@ def run_kmeans(ae_config, data, assets, seed=None):
                                                                                     'where': ['train'],
                                                                                     'block_length': 60
                                                                                 })
-        kmeans = KMeans(n_clusters=ae_config.encoding_dim, random_state=seed)
+        kmeans = KMeans(n_clusters=config.encoding_dim, random_state=seed)
         kmeans.fit(train_data.T)
         labels = pd.DataFrame(kmeans.labels_.reshape(1, -1), columns=assets).T
         labels.columns = ['label']
-        clusters = {i: list(labels[labels['label'] == i].index) for i in range(ae_config.encoding_dim)}
+        clusters = {i: list(labels[labels['label'] == i].index) for i in range(config.encoding_dim)}
 
-        if ae_config.save:
-            pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
+        if config.save:
+            pickle.dump(config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
             pickle.dump(kmeans, open(f"{save_path}/model.p", "wb"))
             pickle.dump(clusters, open(f"{save_path}/clusters.p", "wb"))
             labels.to_pickle(f"{save_path}/labels.p")
 
 
-def run_convex_nmf(ae_config, data, assets, seed=None, verbose=0):
-    if ae_config.seed:
-        seed = ae_config.seed
+def run_convex_nmf(config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None, verbose=0):
+    LOG_DIR = 'log_convex_nmf'
+
+    if config.seed:
+        seed = config.seed
     if seed is None:
         seed = np.random.randint(0, 1000)
 
     np.random.seed(seed)
     LOGGER.info(f"Set seed: {seed}")
 
-    if ae_config.save:
-        if not os.path.isdir('log_convex_nmf'):
-            os.mkdir('log_convex_nmf')
-        iter = len(os.listdir('log_convex_nmf'))
-        save_dir = f"log_convex_nmf/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+    if config.save:
+        if log_dir is None:
+            log_dir = LOG_DIR
+
+        if not os.path.isdir(log_dir):
+            os.mkdir(log_dir)
+
+        iter = len(os.listdir(log_dir))
+        save_dir = f"{log_dir}/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
         os.makedirs(save_dir)
-        copyfile('./dl_portfolio/config/ae_config.py',
-                 os.path.join(save_dir, 'ae_config.py'))
+        copyfile('./dl_portfolio/config/nmf_config.py',
+                 os.path.join(save_dir, 'nmf_config.py'))
     mse = {}
-    for cv in ae_config.data_specs:
+    for cv in config.data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
-        if ae_config.save:
+        if config.save:
             save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
         else:
             save_path = None
 
         LOGGER.info(f'Assets order: {assets}')
-        data_spec = ae_config.data_specs[cv]
+        data_spec = config.data_specs[cv]
         train_data, val_data, test_data, scaler, dates, features = get_features(data,
                                                                                 data_spec['start'],
                                                                                 data_spec['end'],
@@ -503,7 +509,7 @@ def run_convex_nmf(ae_config, data, assets, seed=None, verbose=0):
                                                                                     'where': ['train'],
                                                                                     'block_length': 60
                                                                                 })
-        nmf = ConvexNMF(n_components=ae_config.encoding_dim, random_state=seed, verbose=verbose)
+        nmf = ConvexNMF(n_components=config.encoding_dim, random_state=seed, verbose=verbose)
         nmf.fit(train_data)
         encoder_weights = pd.DataFrame(nmf.components, index=assets)
         mse[cv] = {
@@ -511,14 +517,16 @@ def run_convex_nmf(ae_config, data, assets, seed=None, verbose=0):
             'test': nmf.evaluate(val_data) if test_data is None else nmf.evaluate(test_data)
         }
 
-        if ae_config.save:
+        if config.save:
+            LOGGER.debug(f'Saving result at cv {cv} at {save_path} ...')
             nmf.save(f"{save_path}/model.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
-            ae_config.scaler_func['attributes'] = scaler.__dict__
-            pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
+            config.scaler_func['attributes'] = scaler.__dict__
+            pickle.dump(config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
+            LOGGER.debug('Done')
 
-        if ae_config.show_plot:
-            heat_map(encoder_weights, show=ae_config.show_plot)
+        if config.show_plot:
+            heat_map(encoder_weights, show=config.show_plot)
 
-    if ae_config.save:
+    if config.save:
         json.dump(mse, open(f"{save_dir}/evaluation.json", "w"))
