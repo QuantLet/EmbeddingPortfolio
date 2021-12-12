@@ -138,8 +138,13 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             mean_ = scaler['attributes']['mean_']
             std = scaler['attributes']['scale_']  # same as np.sqrt(scaler['attributes']['var_'])
             train_data = (train_data - mean_) / std
-            val_data = (val_data - mean_) / std
-            test_data = (test_data - mean_) / std
+            if val_data is not None:
+                val_data = (val_data - mean_) / std
+            if test_data is not None:
+                test_data = (test_data - mean_) / std
+
+
+
 
         else:
             raise NotImplementedError(scaler)
