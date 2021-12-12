@@ -517,5 +517,8 @@ def run_convex_nmf(ae_config, data, assets, seed=None, verbose=0):
             ae_config.scaler_func['attributes'] = scaler.__dict__
             pickle.dump(ae_config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
 
+        if ae_config.show_plot:
+            heat_map(encoder_weights, show=ae_config.show_plot)
+
     if ae_config.save:
         json.dump(mse, open(f"{save_dir}/evaluation.json", "w"))
