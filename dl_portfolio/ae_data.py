@@ -11,6 +11,34 @@ DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'raffinot
             'cac']
 
 
+def load_data(dataset='global', **kwargs):
+    assert dataset in DATASETS, dataset
+    if dataset == 'bond':
+        data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
+                                             crypto_assets=kwargs.get('crypto_assets', None))
+    elif dataset == 'cac':
+        data, assets = load_cac_data(fillnan=kwargs.get('fillnan', True), start_date=kwargs.get('start_date'))
+    elif dataset == 'global':
+        assets = kwargs.get('assets', None)
+        dropnan = kwargs.get('dropnan', False)
+        fillnan = kwargs.get('fillnan', True)
+        freq = kwargs.get('freq', '1H')
+        base = kwargs.get('base', 'SPXUSD')
+        data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
+    elif dataset == 'global_crypto':
+        data, assets = load_global_crypto_data()
+    elif dataset == 'raffinot_multi_asset':
+        data, assets = load_raffinot_multi_asset()
+    elif dataset == 'raffinot_bloomberg_comb_update_2021':
+        data, assets = load_bloomberg_comb_update_2021()
+    elif dataset == 'sp500':
+        data, assets = load_sp500_assets(kwargs.get('start_date', '1989-01-01'))
+    else:
+        raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
+
+    return data, assets
+
+
 def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
     hinw = np.array([date.weekday() * 24 + date.hour for date in dates], dtype=np.float32)
     hinw = np.round(np.sin(2 * np.pi * hinw / 168), 4)
@@ -108,14 +136,13 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
 
         elif isinstance(scaler, dict):
             mean_ = scaler['attributes']['mean_']
-            std = scaler['attributes']['scale_'] #  same as np.sqrt(scaler['attributes']['var_'])
+            std = scaler['attributes']['scale_']  # same as np.sqrt(scaler['attributes']['var_'])
             train_data = (train_data - mean_) / std
             val_data = (val_data - mean_) / std
             test_data = (test_data - mean_) / std
 
         else:
             raise NotImplementedError(scaler)
-
 
     if rescale is not None:
         train_data = train_data * rescale
@@ -282,34 +309,6 @@ def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'c
         if dropnan:
             data = data.dropna()
     data = data.loc[:, assets]
-
-    return data, assets
-
-
-def load_data(dataset='global', **kwargs):
-    assert dataset in DATASETS, dataset
-    if dataset == 'bond':
-        data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
-                                             crypto_assets=kwargs.get('crypto_assets', None))
-    elif dataset == 'cac':
-        data, assets = load_cac_data(fillnan=kwargs.get('fillnan', True), start_date=kwargs.get('start_date'))
-    elif dataset == 'global':
-        assets = kwargs.get('assets', None)
-        dropnan = kwargs.get('dropnan', False)
-        fillnan = kwargs.get('fillnan', True)
-        freq = kwargs.get('freq', '1H')
-        base = kwargs.get('base', 'SPXUSD')
-        data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
-    elif dataset == 'global_crypto':
-        data, assets = load_global_crypto_data()
-    elif dataset == 'raffinot_multi_asset':
-        data, assets = load_raffinot_multi_asset()
-    elif dataset == 'raffinot_bloomberg_comb_update_2021':
-        data, assets = load_bloomberg_comb_update_2021()
-    elif dataset == 'sp500':
-        data, assets = load_sp500_assets(kwargs.get('start_date', '1989-01-01'))
-    else:
-        raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
 
     return data, assets
 
