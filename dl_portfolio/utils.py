@@ -167,6 +167,7 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
     :return:
     """
     assert model_type in ["ae", "nmf"]
+    assert test_set in ["val", "test"]
 
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
     embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
@@ -197,7 +198,7 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
         raise NotImplementedError()
 
     data_spec = ae_config.data_specs[cv]
-    if test_set:
+    if test_set == 'test':
         _, _, test_data, _, dates, features = get_features(data,
                                                            data_spec['start'],
                                                            data_spec['end'],
@@ -205,7 +206,7 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
                                                            val_start=data_spec['val_start'],
                                                            test_start=data_spec.get('test_start'),
                                                            scaler=scaler)
-    else:
+    elif test_set == 'val':
         _, test_data, _, _, dates, features = get_features(data,
                                                            data_spec['start'],
                                                            data_spec['end'],
@@ -213,6 +214,9 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
                                                            val_start=data_spec['val_start'],
                                                            test_start=data_spec.get('test_start'),
                                                            scaler=scaler)
+    else:
+        raise NotImplementedError(test_set)
+
     # Prediction
     if model_type == "ae":
         pred = model.predict(test_data)
