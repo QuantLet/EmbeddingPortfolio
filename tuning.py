@@ -1,23 +1,25 @@
-from dl_portfolio.run import run_ae
-from dl_portfolio.logger import LOGGER
-from joblib import Parallel, delayed
 import os
-from dl_portfolio.utils import config_setter
 import json
-from sklearn.model_selection import ParameterGrid
-from typing import Dict, Optional
 import logging
 
+from joblib import Parallel, delayed
+from typing import Dict, Optional
 
-def worker(ae_config, params: Dict, log_dir: str, seed: Optional[int] = None):
-    ae_config = config_setter(ae_config, params)
-    run_ae(ae_config, log_dir=log_dir, seed=seed)
+from sklearn.model_selection import ParameterGrid
+
+from dl_portfolio.utils import config_setter
+from dl_portfolio.ae_data import load_data
+from dl_portfolio.run import run_ae, run_kmeans, run_convex_nmf
+from dl_portfolio.logger import LOGGER
+
+
+def worker(config, params: Dict, log_dir: str, seed: Optional[int] = None):
+    config = config_setter(run_type, config, params)
+    run(config, data, assets, log_dir=log_dir, seed=seed)
 
 
 if __name__ == "__main__":
     import argparse
-    from dl_portfolio.config import ae_config
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--n",
                         default=15,
@@ -27,6 +29,10 @@ if __name__ == "__main__":
                         default=2 * os.cpu_count() - 1,
                         type=int,
                         help="Number of parallel jobs")
+    parser.add_argument("--run",
+                        type=str,
+                        default='ae',
+                        help="Type of run: 'ae' or 'kmeans' or 'convex_nmf'")
     parser.add_argument("--backend",
                         type=str,
                         default="loky",
@@ -49,6 +55,19 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.basicConfig(level=args.loglevel)
     LOGGER.setLevel(args.loglevel)
+
+    run_type = args.run
+    if run_type == "ae":
+        from dl_portfolio.config import ae_config as config
+        run = run_ae
+    elif run_type == "kmeans":
+        run = run_kmeans
+    elif run_type == "convex_nmf":
+        from dl_portfolio.config import nmf_config as config
+        run = run_convex_nmf
+    else:
+        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'convex_nmf'")
+
     tuning = json.load(open('dl_portfolio/config/tuning_config.json', 'rb'))
     param_grid = list(ParameterGrid(tuning))
     nb_params = len(param_grid)
@@ -59,6 +78,13 @@ if __name__ == "__main__":
     else:
         os.mkdir(BASE_DIR)
 
+    if config.dataset == 'bond':
+        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
+                                 freq=config.freq, crix=config.crix, crypto_assets=config.crypto_assets)
+    else:
+        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
+                                 freq=config.freq)
+
     for i, params in enumerate(param_grid):
         LOGGER.warning(f"Params left to test: {nb_params - i}")
         LOGGER.warning(f"Testing params:\n{params}")
@@ -68,7 +94,7 @@ if __name__ == "__main__":
         json.dump(params, open(f"{log_dir}/params.json", "w"))
 
         Parallel(n_jobs=args.n_jobs, backend=args.backend)(
-            delayed(worker)(ae_config, params, log_dir, seed=seed) for seed in range(args.n)
+            delayed(worker)(config, params, log_dir, seed=seed) for seed in range(args.n)
         )
         # for seed in range(args.n):
-        #     worker(ae_config, params, log_dir, seed=seed)
+        #     worker(config, params, log_dir, seed=seed)

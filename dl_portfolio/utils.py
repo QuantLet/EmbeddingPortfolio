@@ -248,24 +248,29 @@ def get_best_model_from_dir(dir_):
     return file
 
 
-def config_setter(config, params: Dict):
-    for k in params:
-        if k == 'encoding_dim':
-            config.encoding_dim = params[k]
-        elif k == 'ortho_weightage':
-            config.ortho_weightage = params[k]
-            config.kernel_regularizer = WeightsOrthogonality(
-                config.encoding_dim,
-                weightage=config.ortho_weightage,
-                axis=0,
-                regularizer={
-                    'name': config.l_name,
-                    'params': {config.l_name: config.l}
-                }
-            )
-        elif k == 'weightage':
-            config.weightage = params[k]
-        else:
-            raise NotImplementedError()
+def config_setter(run, config, params: Dict):
+    if run == "ae":
+        for k in params:
+            if k == 'encoding_dim':
+                config.encoding_dim = params[k]
+            elif k == 'ortho_weightage':
+                config.ortho_weightage = params[k]
+                config.kernel_regularizer = WeightsOrthogonality(
+                    config.encoding_dim,
+                    weightage=config.ortho_weightage,
+                    axis=0,
+                    regularizer={
+                        'name': config.l_name,
+                        'params': {config.l_name: config.l}
+                    }
+                )
+            elif k == 'weightage':
+                config.weightage = params[k]
+            else:
+                raise NotImplementedError()
+    elif run == "convex_nmf":
+        for k in params:
+            if k == 'encoding_dim':
+                config.encoding_dim = params[k]
 
     return config
