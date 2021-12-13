@@ -276,7 +276,7 @@ def r_square(y_true, y_pred):
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
         loss: str = None, loss_asset_weights: Optional[tf.Tensor] = None, callbacks: Dict = None,
         val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None,
-        shuffle: bool = False, cv=None, data=None, assets=None, ae_config=None, df_sample_weights=None):
+        shuffle: bool = False, cv=None, data=None, assets=None, config=None, df_sample_weights=None):
     """
 
     :param model: keras model to train
@@ -376,16 +376,16 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
             LOGGER.debug(f'Shuffling data at epoch {epoch}')
             train_dataset, val_dataset = create_dataset(data,
                                                         assets,
-                                                        ae_config.data_specs[cv],
-                                                        ae_config.model_type,
-                                                        batch_size=ae_config.batch_size,
-                                                        rescale=ae_config.rescale,
-                                                        features_config=ae_config.features_config,
-                                                        scaler_func=ae_config.scaler_func,
-                                                        resample=ae_config.resample,
-                                                        loss=ae_config.loss,
-                                                        drop_remainder_obs=ae_config.drop_remainder_obs,
-                                                        df_sample_weights=df_sample_weights if ae_config.loss == 'weighted_mse' else None
+                                                        config.data_specs[cv],
+                                                        config.model_type,
+                                                        batch_size=config.batch_size,
+                                                        rescale=config.rescale,
+                                                        features_config=config.features_config,
+                                                        scaler_func=config.scaler_func,
+                                                        resample=config.resample,
+                                                        loss=config.loss,
+                                                        drop_remainder_obs=config.drop_remainder_obs,
+                                                        df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None
                                                         )
 
         # Iterate over the batches of the dataset.

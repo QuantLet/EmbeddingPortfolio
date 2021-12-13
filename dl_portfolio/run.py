@@ -124,6 +124,79 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                      loss=config.loss,
                                                      uncorrelated_features=config.uncorrelated_features,
                                                      weightage=config.weightage)
+        if config.nmf_model is not None:
+            train_data, _, _, _, _, _ = get_features(data,
+                                                     config.data_specs[cv]['start'],
+                                                     config.data_specs[cv]['end'],
+                                                     assets,
+                                                     val_start=config.data_specs[cv]['val_start'],
+                                                     test_start=config.data_specs[cv].get(
+                                                         'test_start'),
+                                                     rescale=config.rescale,
+                                                     scaler=config.scaler_func['name'],
+                                                     resample=config.resample,
+                                                     features_config=config.features_config,
+                                                     **config.scaler_func.get('params',
+                                                                              {}))
+
+            LOGGER.info(f"Initilize weights with NMF model from {config.nmf_model}/{cv}")
+            assert config.model_type in ["ae_model"]
+            if config.model_type == "ae_model":
+                nmf_model = pickle.load(open(f'{config.nmf_model}/{cv}/model.p', 'rb'))
+                # Set encoder weights
+                weights = nmf_model.encoding.copy()
+                # Add small constant to avoid 0 weights at beginning of training
+                weights += 0.2
+                # Make it unit norm
+                weights = weights ** 2
+                weights /= np.sum(weights, axis=0)
+                weights = weights.astype(np.float32)
+                bias = model.layers[1].get_weights()[1]
+                model.layers[1].set_weights([weights, bias])
+
+                # Set decoder weights
+                weights = nmf_model.components.copy()
+                # Add small constant to avoid 0 weights at beginning of training
+                weights += 0.2
+                # Make it unit norm
+                weights = weights ** 2
+                weights /= np.sum(weights, axis=0)
+                weights = weights.T
+                weights = weights.astype(np.float32)
+                ## set bias
+                F = nmf_model.transform(train_data)
+                bias = (np.mean(train_data) - np.mean(F.dot(nmf_model.components.T), 0))
+                model.layers[-1].set_weights([weights, bias])
+            elif config.model_type == "pca_ae_model":
+                nmf_model = pickle.load(open(f'{config.nmf_model}/{cv}/model.p', 'rb'))
+
+                # Set encoder weights
+                weights = nmf_model.components.copy()
+                # Add small constant to avoid 0 weights at beginning of training
+                weights += 0.2
+                # Make it unit norm
+                weights = weights ** 2
+                weights /= np.sum(weights, axis=0)
+                weights = weights.astype(np.float32)
+                bias = model.layers[1].get_weights()[1]
+                model.layers[1].set_weights([weights, bias])
+
+                # Set decoder weights
+                layer_weights = model.layers[-1].get_weights()
+                weights = nmf_model.components.copy()
+                # Add small constant to avoid 0 weights at beginning of training
+                weights += 0.2
+                # Make it unit norm
+                weights = weights ** 2
+                weights /= np.sum(weights, axis=0)
+                weights = weights.astype(np.float32)
+                # set bias
+                F = nmf_model.transform(train_data)
+                bias = (np.mean(train_data) - np.mean(F.dot(nmf_model.components.T), 0))
+                layer_weights[0] = bias
+                layer_weights[1] = weights
+                model.layers[-1].set_weights(layer_weights)
+
         # LOGGER.info(model.summary())
 
         # Create dataset:
@@ -213,7 +286,7 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                                                 resample=config.resample,
                                                                                 features_config=config.features_config,
                                                                                 **config.scaler_func.get('params',
-                                                                                                            {}))
+                                                                                                         {}))
 
         if config.drop_remainder_obs:
             indices = list(range(train_data.shape[0]))
@@ -268,6 +341,7 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         val_prediction = pd.DataFrame(val_prediction, columns=assets, index=dates['val'])
 
         ## Get encoder weights
+        decoder_weights = None
         if config.model_type in ['ae_model2', 'nl_pca_ae_model']:
             encoder_layer1 = get_layer_by_name(name='encoder1', model=model)
             encoder_weights1 = encoder_layer1.get_weights()[0]
@@ -280,11 +354,21 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             heat_map(pd.DataFrame(encoder_weights1), show=True, vmin=0., vmax=1.)
             heat_map(pd.DataFrame(encoder_weights2), show=True, vmin=0., vmax=1.)
             heat_map(encoder_weights, show=True)
-        else:
+        elif config.model_type == 'pca_ae_model':
             encoder_layer = get_layer_by_name(name='encoder', model=model)
             encoder_weights = encoder_layer.get_weights()
             # decoder_weights = model.layers[2].get_weights()
             encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
+        elif config.model_type == 'ae_model':
+            encoder_layer = get_layer_by_name(name='encoder', model=model)
+            decoder_layer = get_layer_by_name(name='decoder', model=model)
+            encoder_weights = encoder_layer.get_weights()
+            decoder_weights = decoder_layer.get_weights()
+            # decoder_weights = model.layers[2].get_weights()
+            encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
+            decoder_weights = pd.DataFrame(decoder_weights[0].T, index=assets)
+            LOGGER.debug(f"Decoder weights:\n{decoder_weights}")
+
         LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
 
         # train_cluster_portfolio = encoder.predict(train_data)
@@ -344,6 +428,8 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                 test_data = test_data.loc[:, base_asset_order]
                 test_prediction = test_prediction.loc[:, base_asset_order]
             encoder_weights = encoder_weights.loc[base_asset_order, :]
+            if decoder_weights is not None:
+                decoder_weights = decoder_weights.loc[base_asset_order, :]
 
         # Sort index in case of random sampling
         train_data.sort_index(inplace=True)
@@ -374,10 +460,14 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
 
         if config.show_plot:
             heat_map(encoder_weights, show=config.show_plot, vmax=vmax, vmin=vmin)
+            if decoder_weights is not None:
+                heat_map(decoder_weights, show=config.show_plot, vmax=vmax, vmin=vmin)
 
-        # LOGGER.debug(f"Encoder feature correlation:\n{np.corrcoef(val_cluster_portfolio.T)}")
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
         LOGGER.debug(f"Orthogonality constraint:\n{np.dot(encoder_weights.T, encoder_weights)}")
+        if decoder_weights is not None:
+            LOGGER.debug(f"Unit norm constraint (decoder):\n{(decoder_weights ** 2).sum(0)}")
+            LOGGER.debug(f"Orthogonality constraint (decoder):\n{np.dot(decoder_weights.T, encoder_weights)}")
 
         if config.show_plot:
             if test_data is not None:
@@ -392,6 +482,8 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             # val_data.to_pickle(f"{save_path}/val_returns.p")
             # val_prediction.to_pickle(f"{save_path}/val_prediction.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
+            if decoder_weights is not None:
+                decoder_weights.to_pickle(f"{save_path}/decoder_weights.p")
             # train_features.to_pickle(f"{save_path}/train_features.p")
             # val_features.to_pickle(f"{save_path}/val_features.p")
             config.scaler_func['attributes'] = scaler.__dict__

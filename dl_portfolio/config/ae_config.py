@@ -10,8 +10,9 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset = 'bond'
-show_plot = False
-save = True
+show_plot = True
+save = False
+nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
 
 resample = {
     'method': 'nbb',
@@ -30,7 +31,7 @@ encoding_dim = 4
 uncorrelated_features = True
 weightage = 1e-2
 ortho_weightage = 1e-2
-l_name = 'l2'
+l_name = 'l1'
 l = 1e-3
 activation = 'relu'
 features_config = None
@@ -46,7 +47,7 @@ scaler_func = {
     'name': 'StandardScaler'
 }
 # features_config=None
-model_type = 'pca_ae_model'
+model_type = 'ae_model'
 
 learning_rate = 1e-3
 epochs = 1000
@@ -98,15 +99,8 @@ callbacks = {
 # data_specs = {
 #     0: {
 #         'start': '2016-06-30',
-#         'val_start': '2019-11-13',
-#         'test_start': '2019-12-12',
-#         'end': '2020-01-11'
-#     },
-#     1: {
-#         'start': '2016-06-30',
-#         'val_start': '2019-12-13',
-#         'test_start': '2020-01-12',
-#         'end': '2020-02-11'
+#         'val_start': '2018-12-11',
+#         'end': '2019-01-11'
 #     }
 # }
 
