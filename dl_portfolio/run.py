@@ -51,8 +51,8 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         subdir = subdir + '_' + str(dt.datetime.timestamp(dt.datetime.now())).replace('.', '')
         save_dir = f"{log_dir}/{subdir}"
         os.makedirs(save_dir)
-        copyfile('./dl_portfolio/config/config.py',
-                 os.path.join(save_dir, 'config.py'))
+        copyfile('./dl_portfolio/config/ae_config.py',
+                 os.path.join(save_dir, 'ae_config.py'))
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
@@ -517,8 +517,8 @@ def run_kmeans(config, data, assets, seed=None):
         iter = len(os.listdir('log_kmeans'))
         save_dir = f"log_kmeans/m_{iter}_seed_{seed}_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
         os.makedirs(save_dir)
-        copyfile('./dl_portfolio/config/config.py',
-                 os.path.join(save_dir, 'config.py'))
+        copyfile('./dl_portfolio/config/ae_config.py',
+                 os.path.join(save_dir, 'ae_config.py'))
 
     for cv in config.data_specs:
         LOGGER.info(f'Starting with cv: {cv}')
