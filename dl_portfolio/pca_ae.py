@@ -289,6 +289,14 @@ def ae_model(input_dim: int,
             weightage=kernel_regularizer.weightage,
             axis=0)
         dkernel_regularizer.regularizer = dkernel_regularizer.regularizer
+        # kernel_regularizer = WeightsOrthogonality(
+        #     encoding_dim,
+        #     weightage=kernel_regularizer.weightage,
+        #     axis=0,
+        #     regularizer={'name': "l2", 'params': {"l2": 1e-3}}
+        # )
+    if type(kernel_constraint).__name__ == "NonNegAndUnitNorm":
+        dkernel_constraint = NonNegAndUnitNorm(max_value=1., axis=1)
 
     with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
         asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
@@ -305,8 +313,7 @@ def ae_model(input_dim: int,
                                               activation='linear',
                                               kernel_initializer=kernel_initializer,
                                               kernel_regularizer=dkernel_regularizer,
-                                              # activity_regularizer=activity_regularizer,
-                                              # kernel_constraint=kernel_constraint,
+                                              kernel_constraint=dkernel_constraint,
                                               use_bias=True,
                                               name='decoder',
                                               dtype=tf.float32)
