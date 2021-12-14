@@ -1,4 +1,4 @@
-from dl_portfolio.run import run_ae, run_kmeans, run_convex_nmf
+from dl_portfolio.run import run_ae, run_kmeans, run_nmf
 from dl_portfolio.logger import LOGGER
 from joblib import Parallel, delayed
 import os, logging
@@ -27,7 +27,7 @@ if __name__ == "__main__":
     parser.add_argument("--run",
                         type=str,
                         default='ae',
-                        help="Type of run: 'ae' or 'kmeans' or 'convex_nmf'")
+                        help="Type of run: 'ae' or 'kmeans' or 'nmf'")
     parser.add_argument("--backend",
                         type=str,
                         default="loky",
@@ -55,11 +55,11 @@ if __name__ == "__main__":
         from dl_portfolio.config import ae_config as config
     elif args.run == "kmeans":
         run = run_kmeans
-    elif args.run == "convex_nmf":
+    elif args.run == "nmf":
         from dl_portfolio.config import nmf_config as config
-        run = run_convex_nmf
+        run = run_nmf
     else:
-        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'convex_nmf'")
+        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
 
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)

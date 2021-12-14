@@ -555,8 +555,13 @@ def run_kmeans(config, data, assets, seed=None):
             labels.to_pickle(f"{save_path}/labels.p")
 
 
-def run_convex_nmf(config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None, verbose=0):
-    LOG_DIR = 'log_convex_nmf'
+def run_nmf(config, data, assets, log_dir: Optional[str] = None, seed: Optional[int] = None, verbose=0):
+    if config.model_type == "convex_nmf":
+        LOG_DIR = 'log_convex_nmf'
+    elif config.model_type == "semi_nmf":
+        LOG_DIR = 'log_semi_nmf'
+    else:
+        raise NotImplementedError(config.model_type)
 
     if config.seed:
         seed = config.seed
@@ -601,7 +606,15 @@ def run_convex_nmf(config, data, assets, log_dir: Optional[str] = None, seed: Op
                                                                                     'where': ['train'],
                                                                                     'block_length': 60
                                                                                 })
-        nmf = ConvexNMF(n_components=config.encoding_dim, random_state=seed, verbose=verbose)
+        if config.model_type == "convex_nmf":
+            LOGGER.debug("Initiate convex NMF model")
+            nmf = ConvexNMF(n_components=config.encoding_dim, random_state=seed, verbose=verbose)
+        elif config.model_type == "semi_nmf":
+            LOGGER.debug("Initiate semi NMF model")
+            nmf = ConvexNMF(n_components=config.encoding_dim, random_state=seed, verbose=verbose)
+        else:
+            raise NotImplementedError(config.model_type)
+
         nmf.fit(train_data)
         encoder_weights = pd.DataFrame(nmf.components, index=assets)
         mse[cv] = {
