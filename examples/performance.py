@@ -19,16 +19,16 @@ from dl_portfolio.logger import LOGGER
 # PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
-PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-STRAT = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+# AE bond
+# PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+# STRAT = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
-PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'ae_rp', 'ae_rp_c', 'aeaa']
-STRAT = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa']
+# AE raffinot
+PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
-
-# PORTFOLIOS = ['markowitz']
-# STRAT = ['markowitz']
-
+# PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'ae_rp', 'ae_rp_c', 'aeaa']
+# STRAT = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa']
 
 if __name__ == "__main__":
     import argparse, json
@@ -200,14 +200,16 @@ if __name__ == "__main__":
                   show=args.show, legend=True)
         if 'hrp' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
-                  show=args.show, legend=True)
-            plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'], save_path=f"{save_dir}/performance_hrp_aeerc_cluster.png",
-                  show=args.show, legend=True)
+                      show=args.show, legend=True)
+            plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'],
+                      save_path=f"{save_dir}/performance_hrp_aeerc_cluster.png",
+                      show=args.show, legend=True)
         if 'hcaa' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['hcaa', 'aeerc'], save_path=f"{save_dir}/performance_hcaa_aeerc.png",
                       show=args.show, legend=True)
-            plot_perf(ann_perf, strategies=['hcaa', 'ae_rp_c'], save_path=f"{save_dir}/performance_hcaa_aeerc_cluster.png",
-                  show=args.show, legend=True)
+            plot_perf(ann_perf, strategies=['hcaa', 'ae_rp_c'],
+                      save_path=f"{save_dir}/performance_hcaa_aeerc_cluster.png",
+                      show=args.show, legend=True)
         if 'markowitz' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'],
                       save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
@@ -218,7 +220,8 @@ if __name__ == "__main__":
         if 'markowitz' in PORTFOLIOS:
             bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
         if 'hcaa' in PORTFOLIOS:
-            bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show, legend=True)
+            bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show,
+                             legend=True)
         if 'hrp' in PORTFOLIOS:
             bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=True)
         bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show, legend=True)
@@ -296,7 +299,6 @@ if __name__ == "__main__":
     # x = plt.xticks(rotation=45)
     # if args.save:
     #     plt.savefig(f"{save_dir}/weights_hcaa_aeerc.png", bbox_inches='tight', transparent=True)
-
 
     # Get statistics
     stats = backtest_stats(ann_perf, port_weights, period=252, format=True, market_budget=market_budget)

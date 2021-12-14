@@ -561,8 +561,9 @@ def one_cv(model_type, data, assets, base_dir, cv, test_set, portfolios, market_
     ae_config = kwargs.get('ae_config')
     res = {}
 
-    model, scaler, dates, test_data, test_features, pred, embedding = load_result(model_type, test_set, data, assets,
-                                                                                  base_dir, cv, ae_config)
+    model, scaler, dates, test_data, test_features, pred, embedding, decoding = load_result(ae_config, test_set, data,
+                                                                                            assets,
+                                                                                            base_dir, cv)
 
     std = np.sqrt(scaler['attributes']['var_'])
     data = data.pct_change(1).dropna()
@@ -621,7 +622,6 @@ def get_cv_results(model_type, base_dir, test_set, n_folds, portfolios=None, mar
     else:
         data, assets = load_data(dataset=dataset, assets=ae_config.assets, dropnan=ae_config.dropnan,
                                  freq=ae_config.freq)
-
 
     if n_jobs:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:

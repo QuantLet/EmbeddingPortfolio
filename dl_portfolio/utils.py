@@ -14,20 +14,46 @@ from dl_portfolio.regularizers import WeightsOrthogonality
 from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge
 from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
 
-from sklearn.linear_model import LinearRegression
+from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = './dl_portfolio/log'
 
 
+def build_linear_model(ae_config, reg_type: str, **kwargs):
+    if reg_type == 'nn_ridge':
+        if ae_config.l_name == 'l2':
+            alpha = kwargs.get('alpha', ae_config.l)
+            kwargs['alpha'] = alpha
+        else:
+            alpha = kwargs.get('alpha')
+            assert alpha is not None
+        model = NonnegativeRidge(**kwargs)
+    elif reg_type == 'nn_ls_custom':
+        model = NonnegativeLinear()
+    elif reg_type == 'nn_ls':
+        model = LinearRegression(positive=True, fit_intercept=False, **kwargs)
+    elif reg_type == 'nn_lasso':
+        if ae_config.l_name == 'l1':
+            alpha = kwargs.get('alpha', ae_config.l)
+            kwargs['alpha'] = alpha
+        else:
+            alpha = kwargs.get('alpha')
+            assert alpha is not None
+        model = Lasso(positive=True, fit_intercept=False, **kwargs)
+    else:
+        raise NotImplementedError(reg_type)
+
+    return model
+
+
 def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str,
                     ae_config, reg_type: str = 'nn_ridge', **kwargs):
-    model, scaler, dates, test_data, test_features, prediction, embedding = load_result("ae",
-                                                                                        test_set,
-                                                                                        data,
-                                                                                        assets,
-                                                                                        base_dir,
-                                                                                        cv,
-                                                                                        ae_config)
+    model, scaler, dates, test_data, test_features, prediction, embedding, decoding = load_result(ae_config,
+                                                                                                  test_set,
+                                                                                                  data,
+                                                                                                  assets,
+                                                                                                  base_dir,
+                                                                                                  cv)
     prediction -= scaler['attributes']['mean_']
     prediction /= np.sqrt(scaler['attributes']['var_'])
     mse_or = np.mean((test_data - prediction) ** 2, 0)
@@ -46,21 +72,7 @@ def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str
     # lin_embedding = pd.DataFrame(encoder.layers[1].weights[0].numpy(), index=embed.index)
 
     # # Fit non-negative linear least square to the factor
-    if reg_type == 'nn_ridge':
-        if ae_config.l_name == 'l2':
-            alpha = kwargs.get('alpha', ae_config.l)
-            kwargs['alpha'] = alpha
-        else:
-            alpha = kwargs.get('alpha')
-            assert alpha is not None
-        reg_nnls = NonnegativeRidge(**kwargs)
-    elif reg_type == 'nn_ls_custom':
-        reg_nnls = NonnegativeLinear()
-    elif reg_type == 'nn_ls':
-        reg_nnls = LinearRegression(positive=True, fit_intercept=False, **kwargs)
-    else:
-        raise NotImplementedError(reg_type)
-
+    reg_nnls = build_linear_model(ae_config, reg_type, **kwargs)
     x = test_data.copy()
     mean_ = np.mean(x, 0)
     # Center the data as we do not fit intercept
@@ -72,9 +84,17 @@ def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str
     factors_nnls = pd.DataFrame(factors_nnls, index=prediction.index)
 
     # Get reconstruction error based on nnls embedding
-    weights = reg_nnls.coef_.copy()
-    # Compute bias (reconstruction intercept)
-    bias = mean_ - np.dot(np.mean(factors_nnls, 0), weights)
+    if ae_config.model_type == "pca_ae_model":
+        # For PCA AE model encoder and decoder share weights
+        weights = reg_nnls.coef_.copy()
+        # Compute bias (reconstruction intercept)
+        bias = mean_ - np.dot(np.mean(factors_nnls, 0), weights)
+    elif ae_config.model_type == "ae_model":
+        weights = model.get_layer('decoder').get_weights()[0]
+        bias = model.get_layer('decoder').get_weights()[1]
+    else:
+        raise NotImplementedError(ae_config.model_type)
+
     # Reconstruction
     pred_nnls_model = np.dot(factors_nnls, weights) + bias
     mse_nnls_model = np.mean((test_data - pred_nnls_model) ** 2, 0)
@@ -85,7 +105,7 @@ def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str
     test_data = pd.DataFrame(test_data, columns=prediction.columns, index=prediction.index)
     reg_coef = pd.DataFrame(weights.T, index=embedding.index)
 
-    return test_data, embedding, reg_coef, relu_activation, factors_nnls, prediction, pred_nnls_model, mse_or, mse_nnls_model
+    return test_data, embedding, decoding, reg_coef, relu_activation, factors_nnls, prediction, pred_nnls_model, mse_or, mse_nnls_model
 
 
 def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config,
@@ -108,6 +128,7 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     factors_nnls = pd.DataFrame()
     relu_activation = pd.DataFrame()
     embedding = {}
+    decoding = {}
     reg_coef = {}
     mse = {
         'original': [],
@@ -118,7 +139,7 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     # cv = 0
     for cv in ae_config.data_specs:
         LOGGER.info(f'CV: {cv}')
-        test_data_i, embedding_i, reg_coef_i, relu_activation_i, factors_nnls_i, pred, pred_nnls_model_i, mse_or, mse_nnls_model = fit_nnls_one_cv(
+        test_data_i, embedding_i, decoding_i, reg_coef_i, relu_activation_i, factors_nnls_i, pred, pred_nnls_model_i, mse_or, mse_nnls_model = fit_nnls_one_cv(
             cv,
             test_set,
             data,
@@ -129,6 +150,7 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
             **kwargs)
 
         embedding[cv] = embedding_i
+        decoding[cv] = decoding_i
         reg_coef[cv] = reg_coef_i
         relu_activation = pd.concat([relu_activation, relu_activation_i])
         factors_nnls = pd.concat([factors_nnls, factors_nnls_i])
@@ -147,14 +169,14 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
         'relu_activation': relu_activation,
         'mse': mse,
         'embedding': embedding,
+        'decoding': decoding,
         'reg_coef': reg_coef
     }
 
     return results
 
 
-def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str,
-                ae_config):
+def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str):
     """
 
     :param model_type: 'ae' or 'nmf'
@@ -166,38 +188,47 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
     :param ae_config:
     :return:
     """
-    assert model_type in ["ae", "nmf"]
+    model_type = config.model_type
+    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf"]
     assert test_set in ["val", "test"]
 
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
-    embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
     input_dim = len(assets)
 
-    if model_type == "ae":
-        model, encoder, extra_features = build_model(ae_config.model_type,
+    if "ae" in model_type:
+        embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
+        if model_type == "pca_ae_model":
+            decoding = embedding.copy()
+        elif model_type == "ae_model":
+            decoding = pd.read_pickle(f'{base_dir}/{cv}/decoder_weights.p')
+        else:
+            pass
+        model, encoder, extra_features = build_model(config.model_type,
                                                      input_dim,
-                                                     ae_config.encoding_dim,
+                                                     config.encoding_dim,
                                                      n_features=None,
                                                      extra_features_dim=1,
-                                                     activation=ae_config.activation,
-                                                     batch_normalization=ae_config.batch_normalization,
-                                                     kernel_initializer=ae_config.kernel_initializer,
-                                                     kernel_constraint=ae_config.kernel_constraint,
-                                                     kernel_regularizer=ae_config.kernel_regularizer,
-                                                     activity_regularizer=ae_config.activity_regularizer,
-                                                     batch_size=ae_config.batch_size if ae_config.drop_remainder_obs else None,
-                                                     loss=ae_config.loss,
-                                                     uncorrelated_features=ae_config.uncorrelated_features,
-                                                     weightage=ae_config.weightage)
+                                                     activation=config.activation,
+                                                     batch_normalization=config.batch_normalization,
+                                                     kernel_initializer=config.kernel_initializer,
+                                                     kernel_constraint=config.kernel_constraint,
+                                                     kernel_regularizer=config.kernel_regularizer,
+                                                     activity_regularizer=config.activity_regularizer,
+                                                     batch_size=config.batch_size if config.drop_remainder_obs else None,
+                                                     loss=config.loss,
+                                                     uncorrelated_features=config.uncorrelated_features,
+                                                     weightage=config.weightage)
         model.load_weights(f'{base_dir}/{cv}/model.h5')
         layer_name = list(filter(lambda x: 'uncorrelated_features_layer' in x, [l.name for l in model.layers]))[0]
         encoder = tf.keras.Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
-    elif model_type == "nmf":
+    elif model_type == "convex_nmf":
         model = pickle.load(open(f'{base_dir}/{cv}/model.p', "rb"))
+        embedding = model.encoding.copy()
+        decoding = model.components.copy()
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(model_type)
 
-    data_spec = ae_config.data_specs[cv]
+    data_spec = config.data_specs[cv]
     if test_set == 'test':
         _, _, test_data, _, dates, features = get_features(data,
                                                            data_spec['start'],
@@ -218,21 +249,21 @@ def load_result(model_type: str, test_set: str, data: pd.DataFrame, assets: List
         raise NotImplementedError(test_set)
 
     # Prediction
-    if model_type == "ae":
+    if "ae" in model_type:
         pred = model.predict(test_data)
         test_features = encoder.predict(test_data)
-    elif model_type == "nmf":
+    elif model_type == "convex_nmf":
         test_features = model.transform(test_data)
         pred = model.inverse_transform(test_features)
     else:
-        raise NotImplementedError()
+        raise NotImplementedError(model_type)
 
     pred *= np.sqrt(scaler['attributes']['var_'])
     pred += scaler['attributes']['mean_']
     pred = pd.DataFrame(pred, columns=assets, index=dates[test_set])
     test_features = pd.DataFrame(test_features, index=dates[test_set])
 
-    return model, scaler, dates, test_data, test_features, pred, embedding
+    return model, scaler, dates, test_data, test_features, pred, embedding, decoding
 
 
 def create_log_dir(model_name, model_type):
