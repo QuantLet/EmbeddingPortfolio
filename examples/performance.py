@@ -95,10 +95,18 @@ if __name__ == "__main__":
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
     sys.path.append(paths[0])
-    import ae_config
+
+    if args.model_type == "ae":
+        import ae_config as config
+        assert "ae" in config.model_type
+    elif args.model_type == "nmf":
+        import nmf_config as config
+        assert "nmf" in config.model_type
+    else:
+        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
 
     # Load Market budget
-    if ae_config.dataset == 'bond':
+    if config.dataset == 'bond':
         market_budget = pd.read_csv('data/market_budget_bond.csv', index_col=0)
         cryptos = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([['crypto', 1]] * len(cryptos)),
@@ -106,10 +114,10 @@ if __name__ == "__main__":
                                                                columns=market_budget.columns)])
         # market_budget = market_budget.drop('CRIX')
         market_budget['rc'] = market_budget['rc'].astype(int)
-    elif ae_config.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
+    elif config.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
         market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
-    elif ae_config.dataset == 'cac':
+    elif config.dataset == 'cac':
         market_budget = pd.read_csv('data/market_budget_cac.csv', index_col=0)
     else:
         raise NotImplementedError()
@@ -130,12 +138,12 @@ if __name__ == "__main__":
                                        path,
                                        args.test_set,
                                        n_folds,
-                                       dataset=ae_config.dataset,
+                                       dataset=config.dataset,
                                        portfolios=portfolios,
                                        market_budget=market_budget,
                                        window=args.window,
                                        n_jobs=args.n_jobs,
-                                       ae_config=ae_config)
+                                       ae_config=config)
 
     # Get average weights for AE portfolio across runs
     port_weights = get_dl_average_weights(cv_results)

@@ -189,7 +189,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     :return:
     """
     model_type = config.model_type
-    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf"]
+    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
     assert test_set in ["val", "test"]
 
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
@@ -224,7 +224,14 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     elif model_type == "convex_nmf":
         model = pickle.load(open(f'{base_dir}/{cv}/model.p', "rb"))
         embedding = model.encoding.copy()
+        embedding = pd.DataFrame(embedding, index=assets)
         decoding = model.components.copy()
+        decoding = pd.DataFrame(decoding, index=assets)
+    elif model_type == "semi_nmf":
+        model = pickle.load(open(f'{base_dir}/{cv}/model.p', "rb"))
+        decoding = model.components.copy()
+        decoding = pd.DataFrame(decoding, index=assets)
+        embedding = decoding.copy()
     else:
         raise NotImplementedError(model_type)
 
@@ -252,7 +259,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     if "ae" in model_type:
         pred = model.predict(test_data)
         test_features = encoder.predict(test_data)
-    elif model_type == "convex_nmf":
+    elif "nmf" in model_type:
         test_features = model.transform(test_data)
         pred = model.inverse_transform(test_features)
     else:
