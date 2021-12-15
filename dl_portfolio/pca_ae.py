@@ -282,6 +282,9 @@ def ae_model(input_dim: int,
     uncorrelated_features = kwargs.get('uncorrelated_features', True)
     batch_size = kwargs.get('batch_size', None)
     weightage = kwargs.get('weightage', 1.)
+    batch_normalization = kwargs.get('batch_normalization', False)
+    dropout = kwargs.get('dropout', None)
+
 
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
         dkernel_regularizer = WeightsOrthogonality(
@@ -319,6 +322,14 @@ def ae_model(input_dim: int,
                                               dtype=tf.float32)
         encoding = encoder_layer(asset_input)
 
+        if dropout is not None:
+            dropout_layer = tf.keras.layers.Dropout(dropout)
+            encoding = dropout_layer(encoding)
+
+        if batch_normalization:
+            batch_norm_layer = tf.keras.layers.BatchNormalization()
+            encoding = batch_norm_layer(encoding)
+
         if uncorrelated_features:
             activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
                                                                    weightage=weightage)
@@ -342,8 +353,6 @@ def ae_model(input_dim: int,
             output = decoder_layer(encoding)
             autoencoder = tf.keras.models.Model(asset_input, output)
             extra_features = None
-
-        encoder = tf.keras.models.Model(asset_input, encoding)
 
         return autoencoder, encoder, extra_features
 

@@ -10,8 +10,8 @@ from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_META
 # VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset = 'bond'
-show_plot = True
-save = False
+show_plot = False
+save = True
 nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
 
 resample = {
@@ -28,6 +28,7 @@ crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 seed = None  # np.random.randint(0, 100)
 assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
 encoding_dim = 4
+batch_normalization = True
 uncorrelated_features = True
 weightage = 1e-2
 ortho_weightage = 1e-2
@@ -66,7 +67,6 @@ label_param = None
 rescale = None
 
 # Constraints and regularizer
-batch_normalization = True
 activity_regularizer = None
 kernel_initializer = tf.keras.initializers.HeNormal(seed=seed)
 # kernel_initializer = NonNegAndUnitNormInit(initializer='he_normal', seed=seed)
