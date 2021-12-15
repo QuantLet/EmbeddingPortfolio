@@ -176,6 +176,36 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     return results
 
 
+def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str):
+    test_data = pd.DataFrame()
+    prediction = pd.DataFrame()
+    features = pd.DataFrame()
+    residuals = pd.DataFrame()
+    embedding = {}
+    decoding = {}
+
+    for cv in config.data_specs:
+        embedding[cv] = {}
+        model, scaler, dates, t_data, f, pred, embed, decod = load_result(config,
+                                                                          test_set,
+                                                                          data,
+                                                                          assets,
+                                                                          base_dir,
+                                                                          cv)
+        t_data = pd.DataFrame(t_data, columns=pred.columns, index=pred.index)
+        t_data *= scaler["attributes"]["scale_"]
+        t_data += scaler["attributes"]["mean_"]
+
+        test_data = pd.concat([test_data, t_data])
+        prediction = pd.concat([prediction, pred])
+        features = pd.concat([features, f])
+        residuals = pd.concat([residuals, t_data - pred])
+        embedding[cv] = embed
+        decoding[cv] = decod
+
+    return test_data, prediction, features, residuals, embedding, decoding
+
+
 def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str):
     """
 
@@ -237,21 +267,21 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
 
     data_spec = config.data_specs[cv]
     if test_set == 'test':
-        _, _, test_data, _, dates, features = get_features(data,
-                                                           data_spec['start'],
-                                                           data_spec['end'],
-                                                           assets,
-                                                           val_start=data_spec['val_start'],
-                                                           test_start=data_spec.get('test_start'),
-                                                           scaler=scaler)
+        _, _, test_data, _, _, _ = get_features(data,
+                                                data_spec['start'],
+                                                data_spec['end'],
+                                                assets,
+                                                val_start=data_spec['val_start'],
+                                                test_start=data_spec.get('test_start'),
+                                                scaler=scaler)
     elif test_set == 'val':
-        _, test_data, _, _, dates, features = get_features(data,
-                                                           data_spec['start'],
-                                                           data_spec['end'],
-                                                           assets,
-                                                           val_start=data_spec['val_start'],
-                                                           test_start=data_spec.get('test_start'),
-                                                           scaler=scaler)
+        _, test_data, _, _, _, _ = get_features(data,
+                                                data_spec['start'],
+                                                data_spec['end'],
+                                                assets,
+                                                val_start=data_spec['val_start'],
+                                                test_start=data_spec.get('test_start'),
+                                                scaler=scaler)
     else:
         raise NotImplementedError(test_set)
 
