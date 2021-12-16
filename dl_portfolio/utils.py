@@ -267,7 +267,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
 
     data_spec = config.data_specs[cv]
     if test_set == 'test':
-        _, _, test_data, _, _, _ = get_features(data,
+        _, _, test_data, _,  dates, _ = get_features(data,
                                                 data_spec['start'],
                                                 data_spec['end'],
                                                 assets,
@@ -275,7 +275,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
                                                 test_start=data_spec.get('test_start'),
                                                 scaler=scaler)
     elif test_set == 'val':
-        _, test_data, _, _, _, _ = get_features(data,
+        _, test_data, _, _, dates, _ = get_features(data,
                                                 data_spec['start'],
                                                 data_spec['end'],
                                                 assets,
