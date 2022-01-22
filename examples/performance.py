@@ -59,6 +59,9 @@ if __name__ == "__main__":
     parser.add_argument("--save",
                         action='store_true',
                         help="Save results")
+    parser.add_argument("--legend",
+                        action='store_true',
+                        help="Add legend to plots")
     parser.add_argument("-v",
                         "--verbose",
                         help="Be verbose",
@@ -91,7 +94,7 @@ if __name__ == "__main__":
 
     # Load paths
     models = os.listdir(args.base_dir)
-    paths = [f"{args.base_dir}/{d}" for d in models if d[0] != '.']
+    paths = [f"{args.base_dir}/{d}" for d in models if os.path.isdir(f"{args.base_dir}/{d}") and d[0] != "."]
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
     sys.path.append(paths[0])
@@ -202,26 +205,26 @@ if __name__ == "__main__":
         pickle.dump(port_weights, open(f"{save_dir}/portfolios_weights.p", "wb"))
         plot_perf(ann_perf, strategies=STRAT,
                   save_path=f"{save_dir}/performance_all.png",
-                  show=args.show, legend=True)
+                  show=args.show, legend=args.legend)
         plot_perf(ann_perf, strategies=[p for p in STRAT if p not in ['aerp', 'aeerc']],
                   save_path=f"{save_dir}/performance_ae_rp_c_vs_all.png",
-                  show=args.show, legend=True)
+                  show=args.show, legend=args.legend)
         if 'hrp' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['hrp', 'aerp'], save_path=f"{save_dir}/performance_hrp_aerp.png",
-                      show=args.show, legend=True)
+                      show=args.show, legend=args.legend)
             plot_perf(ann_perf, strategies=['hrp', 'ae_rp_c'],
                       save_path=f"{save_dir}/performance_hrp_aeerc_cluster.png",
-                      show=args.show, legend=True)
+                      show=args.show, legend=args.legend)
         if 'hcaa' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['hcaa', 'aeerc'], save_path=f"{save_dir}/performance_hcaa_aeerc.png",
-                      show=args.show, legend=True)
+                      show=args.show, legend=args.legend)
             plot_perf(ann_perf, strategies=['hcaa', 'ae_rp_c'],
                       save_path=f"{save_dir}/performance_hcaa_aeerc_cluster.png",
-                      show=args.show, legend=True)
+                      show=args.show, legend=args.legend)
         if 'markowitz' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['markowitz', 'ae_rp_c'],
                       save_path=f"{save_dir}/performance_markowitz_aeerc_cluster.png",
-                      show=args.show, legend=True)
+                      show=args.show, legend=args.legend)
         if 'shrink_markowitz' in PORTFOLIOS:
             bar_plot_weights(port_weights['shrink_markowitz'], save_path=f"{save_dir}/weights_shrink_markowitz.png",
                              show=args.show)
@@ -229,22 +232,22 @@ if __name__ == "__main__":
             bar_plot_weights(port_weights['markowitz'], save_path=f"{save_dir}/weights_markowitz.png", show=args.show)
         if 'hcaa' in PORTFOLIOS:
             bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show,
-                             legend=True)
+                             legend=args.legend)
         if 'hrp' in PORTFOLIOS:
-            bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=True)
-        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show, legend=True)
-        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show, legend=True)
+            bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=args.legend)
+        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show, legend=args.legend)
+        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show, legend=args.legend)
         bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show,
-                         legend=True)
-        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show, legend=True)
+                         legend=args.legend)
+        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show, legend=args.legend)
     else:
-        plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=True)
+        plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=args.legend)
         if 'hrp' in PORTFOLIOS:
-            plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=True)
+            plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=args.legend)
             bar_plot_weights(port_weights['hrp'], show=args.show)
         bar_plot_weights(port_weights['aerp'], show=args.show)
         if 'hcaa' in PORTFOLIOS:
-            plot_perf(ann_perf, strategies=['hcaa', 'aeerc'], show=args.show, legend=True)
+            plot_perf(ann_perf, strategies=['hcaa', 'aeerc'], show=args.show, legend=args.legend)
             bar_plot_weights(port_weights['hcaa'], show=args.show)
         bar_plot_weights(port_weights['aeerc'], show=args.show)
         bar_plot_weights(port_weights['ae_rp_c'], show=args.show)
