@@ -17,6 +17,7 @@ from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
 from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = './dl_portfolio/log'
+BASE_FACTOR_ORDER = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
 
 
 def build_linear_model(ae_config, reg_type: str, **kwargs):
@@ -176,34 +177,50 @@ def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base
     return results
 
 
-def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str):
+def reorder_columns(data, new_order):
+    return data.iloc[:, new_order]
+
+
+def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str,
+                        reorder_features: bool = True):
     test_data = pd.DataFrame()
     prediction = pd.DataFrame()
     features = pd.DataFrame()
+    relu_activation = pd.DataFrame()
     residuals = pd.DataFrame()
     embedding = {}
     decoding = {}
 
     for cv in config.data_specs:
         embedding[cv] = {}
-        model, scaler, dates, t_data, f, pred, embed, decod = load_result(config,
-                                                                          test_set,
-                                                                          data,
-                                                                          assets,
-                                                                          base_dir,
-                                                                          cv)
+        model, scaler, dates, t_data, f, pred, embed, decod, relu_act = load_result(config,
+                                                                                    test_set,
+                                                                                    data,
+                                                                                    assets,
+                                                                                    base_dir,
+                                                                                    cv)
         t_data = pd.DataFrame(t_data, columns=pred.columns, index=pred.index)
         t_data *= scaler["attributes"]["scale_"]
         t_data += scaler["attributes"]["mean_"]
 
         test_data = pd.concat([test_data, t_data])
         prediction = pd.concat([prediction, pred])
+
+        if reorder_features:
+            f = reorder_columns(f, [embed.loc[c].idxmax() for c in BASE_FACTOR_ORDER])
+            f.columns = BASE_FACTOR_ORDER
+            if relu_act is not None:
+                relu_act = reorder_columns(relu_act, [embed.loc[c].idxmax() for c in BASE_FACTOR_ORDER])
+                relu_act.columns = BASE_FACTOR_ORDER
+
         features = pd.concat([features, f])
+        if relu_act is not None:
+            relu_activation = pd.concat([relu_activation, relu_act])
         residuals = pd.concat([residuals, t_data - pred])
         embedding[cv] = embed
         decoding[cv] = decod
 
-    return test_data, prediction, features, residuals, embedding, decoding
+    return test_data, prediction, features, residuals, embedding, decoding, relu_activation
 
 
 def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str):
@@ -220,7 +237,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     """
     model_type = config.model_type
     assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
-    assert test_set in ["val", "test"]
+    assert test_set in ["train", "val", "test"]
 
     scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
     input_dim = len(assets)
@@ -267,21 +284,40 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
 
     data_spec = config.data_specs[cv]
     if test_set == 'test':
-        _, _, test_data, _,  dates, _ = get_features(data,
-                                                data_spec['start'],
-                                                data_spec['end'],
-                                                assets,
-                                                val_start=data_spec['val_start'],
-                                                test_start=data_spec.get('test_start'),
-                                                scaler=scaler)
+        _, _, test_data, _, dates, _ = get_features(data,
+                                                    data_spec['start'],
+                                                    data_spec['end'],
+                                                    assets,
+                                                    val_start=data_spec['val_start'],
+                                                    test_start=data_spec.get('test_start'),
+                                                    scaler=scaler)
     elif test_set == 'val':
         _, test_data, _, _, dates, _ = get_features(data,
-                                                data_spec['start'],
-                                                data_spec['end'],
-                                                assets,
-                                                val_start=data_spec['val_start'],
-                                                test_start=data_spec.get('test_start'),
-                                                scaler=scaler)
+                                                    data_spec['start'],
+                                                    data_spec['end'],
+                                                    assets,
+                                                    val_start=data_spec['val_start'],
+                                                    test_start=data_spec.get('test_start'),
+                                                    scaler=scaler)
+    elif test_set == 'train':
+        # For first cv: predict on train data then for the others used previous validation data for prediction
+        if cv == 0:
+            test_data, _, _, _, dates, _ = get_features(data,
+                                                        data_spec['start'],
+                                                        data_spec['end'],
+                                                        assets,
+                                                        val_start=data_spec['val_start'],
+                                                        test_start=data_spec.get('test_start'),
+                                                        scaler=scaler)
+        else:
+            data_spec = config.data_specs[cv - 1]
+            _, test_data, _, _, dates, _ = get_features(data,
+                                                        data_spec['start'],
+                                                        data_spec['end'],
+                                                        assets,
+                                                        val_start=data_spec['val_start'],
+                                                        test_start=data_spec.get('test_start'),
+                                                        scaler=scaler)
     else:
         raise NotImplementedError(test_set)
 
@@ -289,6 +325,8 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     if "ae" in model_type:
         pred = model.predict(test_data)
         test_features = encoder.predict(test_data)
+        relu_activation_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
+        relu_activation = relu_activation_layer.predict(test_data)
     elif "nmf" in model_type:
         test_features = model.transform(test_data)
         pred = model.inverse_transform(test_features)
@@ -297,10 +335,18 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
 
     pred *= np.sqrt(scaler['attributes']['var_'])
     pred += scaler['attributes']['mean_']
-    pred = pd.DataFrame(pred, columns=assets, index=dates[test_set])
-    test_features = pd.DataFrame(test_features, index=dates[test_set])
+    if test_set == "train" and cv > 0:
+        index = dates["val"]
+    else:
+        index = dates[test_set]
+    pred = pd.DataFrame(pred, columns=assets, index=index)
+    test_features = pd.DataFrame(test_features, index=index)
+    if "ae" in model_type:
+        relu_activation = pd.DataFrame(relu_activation, index=index)
+    else:
+        relu_activation = None
 
-    return model, scaler, dates, test_data, test_features, pred, embedding, decoding
+    return model, scaler, dates, test_data, test_features, pred, embedding, decoding, relu_activation
 
 
 def create_log_dir(model_name, model_type):
