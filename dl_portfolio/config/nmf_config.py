@@ -1,4 +1,4 @@
-model_type = "nmf"
+model_type = "convex_nmf"
 save = True
 show_plot = False
 seed = None  # np.random.randint(0, 1000)
