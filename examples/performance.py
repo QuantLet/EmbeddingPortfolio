@@ -101,9 +101,11 @@ if __name__ == "__main__":
 
     if args.model_type == "ae":
         import ae_config as config
+
         assert "ae" in config.model_type
     elif args.model_type == "nmf":
         import nmf_config as config
+
         assert "nmf" in config.model_type
     else:
         raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
@@ -137,8 +139,7 @@ if __name__ == "__main__":
             portfolios = PORTFOLIOS
         else:
             portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['ae_ivp', 'ae_rp', 'ae_rp_c']
-        cv_results[i] = get_cv_results(args.model_type,
-                                       path,
+        cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,
                                        dataset=config.dataset,
@@ -169,7 +170,9 @@ if __name__ == "__main__":
                      }
         } for cv in cv_returns
     }
-    port_perf = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True, market_budget=market_budget)
+    port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True,
+                                            fee=50e-4,
+                                            market_budget=market_budget)
 
     K = cv_results[i][0]['embedding'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
@@ -202,6 +205,7 @@ if __name__ == "__main__":
     if args.save:
         LOGGER.info('Saving performance... ')
         ann_perf.to_csv(f"{save_dir}/portfolios_returns.csv")
+        leverage.to_csv(f"{save_dir}/leverage.csv")
         pickle.dump(port_weights, open(f"{save_dir}/portfolios_weights.p", "wb"))
         plot_perf(ann_perf, strategies=STRAT,
                   save_path=f"{save_dir}/performance_all.png",
@@ -234,12 +238,16 @@ if __name__ == "__main__":
             bar_plot_weights(port_weights['hcaa'], save_path=f"{save_dir}/weights_hcaa.png", show=args.show,
                              legend=args.legend)
         if 'hrp' in PORTFOLIOS:
-            bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show, legend=args.legend)
-        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show, legend=args.legend)
-        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show, legend=args.legend)
+            bar_plot_weights(port_weights['hrp'], save_path=f"{save_dir}/weights_hrp.png", show=args.show,
+                             legend=args.legend)
+        bar_plot_weights(port_weights['aerp'], save_path=f"{save_dir}/weights_aerp.png", show=args.show,
+                         legend=args.legend)
+        bar_plot_weights(port_weights['aeerc'], save_path=f"{save_dir}/weights_aeerc.png", show=args.show,
+                         legend=args.legend)
         bar_plot_weights(port_weights['ae_rp_c'], save_path=f"{save_dir}/weights_aeerc_cluster.png", show=args.show,
                          legend=args.legend)
-        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show, legend=args.legend)
+        bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show,
+                         legend=args.legend)
     else:
         plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=args.legend)
         if 'hrp' in PORTFOLIOS:
