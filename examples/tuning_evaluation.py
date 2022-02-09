@@ -20,7 +20,6 @@ def worker(params):
         cv_labels[cv] = {}
         for i, model_path in enumerate(model_paths):
             loadings = pd.read_pickle(f'{model_path}/{cv}/encoder_weights.p')
-            print(loadings.shape)
             c, cv_labels[cv][i] = get_cluster_labels(loadings)
 
         metric["rand"][cv] = rand_score_permutation(cv_labels[cv])
