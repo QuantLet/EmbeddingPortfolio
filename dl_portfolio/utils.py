@@ -17,7 +17,8 @@ from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
 from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = './dl_portfolio/log'
-BASE_FACTOR_ORDER = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
+BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
+BASE_FACTOR_ORDER_RAFFINOT = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
 
 
 def build_linear_model(ae_config, reg_type: str, **kwargs):
@@ -207,11 +208,15 @@ def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[
         prediction = pd.concat([prediction, pred])
 
         if reorder_features:
-            f = reorder_columns(f, [embed.loc[c].idxmax() for c in BASE_FACTOR_ORDER])
-            f.columns = BASE_FACTOR_ORDER
+            if config.dataset == "bond":
+                base_order = BASE_FACTOR_ORDER_BOND
+            else:
+                raise NotImplementedError()
+            f = reorder_columns(f, [embed.loc[c].idxmax() for c in base_order])
+            f.columns = base_order
             if relu_act is not None:
-                relu_act = reorder_columns(relu_act, [embed.loc[c].idxmax() for c in BASE_FACTOR_ORDER])
-                relu_act.columns = BASE_FACTOR_ORDER
+                relu_act = reorder_columns(relu_act, [embed.loc[c].idxmax() for c in base_order])
+                relu_act.columns = base_order
 
         features = pd.concat([features, f])
         if relu_act is not None:
