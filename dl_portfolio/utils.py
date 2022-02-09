@@ -391,9 +391,11 @@ def config_setter(run, config, params: Dict):
                 config.weightage = params[k]
             else:
                 raise NotImplementedError()
-    elif run == "convex_nmf":
+    elif run == "nmf":
         for k in params:
             if k == 'encoding_dim':
                 config.encoding_dim = params[k]
+    else:
+        raise NotImplementedError(run)
 
     return config
