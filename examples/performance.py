@@ -171,7 +171,6 @@ if __name__ == "__main__":
         } for cv in cv_returns
     }
     port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True,
-                                            fee=50e-4,
                                             market_budget=market_budget)
 
     K = cv_results[i][0]['embedding'].shape[-1]
