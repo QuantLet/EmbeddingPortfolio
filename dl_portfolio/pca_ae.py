@@ -285,7 +285,6 @@ def ae_model(input_dim: int,
     batch_normalization = kwargs.get('batch_normalization', False)
     dropout = kwargs.get('dropout', None)
 
-
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
         dkernel_regularizer = WeightsOrthogonality(
             input_dim,
@@ -306,7 +305,6 @@ def ae_model(input_dim: int,
         encoder_layer = tf.keras.layers.Dense(encoding_dim,
                                               activation=activation,
                                               kernel_initializer=kernel_initializer,
-                                              kernel_regularizer=kernel_regularizer,
                                               activity_regularizer=activity_regularizer,
                                               kernel_constraint=kernel_constraint,
                                               use_bias=True,
