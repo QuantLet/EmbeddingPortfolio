@@ -29,6 +29,7 @@ from dl_portfolio.ae_data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import DATA_SPECS_BOND, DATA_SPECS_MULTIASSET_TRADITIONAL
+from dl_portfolio.probabilistic_sr import probabilistic_sharpe_ratio, min_track_record_length
 
 PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
               'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
@@ -77,8 +78,8 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 252, format:
                             hist_VaR(perf[strat], level=0.05),
                             hist_ES(perf[strat], level=0.05),
                             sharpe_ratio(perf[strat], period=period),
-                            probabilistic_sharpe_ratio(perf[strat], benchmark_SR=0, period=period),
-                            minTRL(perf[strat], benchmark_SR=0),
+                            probabilistic_sharpe_ratio(perf[strat], sr_benchmark=0),
+                            min_track_record_length(perf[strat], sr_benchmark=0),
                             get_mdd(np.cumprod(perf[strat] + 1)),
                             calmar_ratio(np.cumprod(perf[strat] + 1)),
                             ceq(perf[strat], period=period),
@@ -320,28 +321,6 @@ def adjusted_sharpe_ratio(perf, period: int = 1):
     kurtosis = scipy_stats.kurtosis(perf, axis=0)
 
     return sr * (1 + (skew / 6) * sr - ((kurtosis - 3) / 24) * (sr ** 2))  # * np.sqrt(period)
-
-
-def probabilistic_sharpe_ratio(perf, benchmark_SR=0, period: int = 1):
-    # check (Bailey, Prado 1012) https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1821643
-
-    sr = sharpe_ratio(perf)
-    skew = scipy_stats.skew(perf, axis=0)
-    kurtosis = scipy_stats.kurtosis(perf, axis=0)
-
-    return scipy_stats.norm.pdf(
-        (sr - benchmark_SR) * np.sqrt(period - 1) / np.sqrt(1 - skew * sr + (kurtosis - 1) / 4 * (sr ** 2)))
-
-
-def minTRL(perf, benchmark_SR=0, alpha=0.05):
-    # check (Bailey, Prado 1012) https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1821643
-
-    sr = sharpe_ratio(perf)
-    skew = scipy_stats.skew(perf, axis=0)
-    kurtosis = scipy_stats.kurtosis(perf, axis=0)
-
-    return int(
-        1 + (1 - skew * sr + (kurtosis - 1) / 4 * (sr ** 2)) * (scipy_stats.norm.pdf(alpha) / (sr - benchmark_SR) ** 2))
 
 
 def sharpe_ratio(perf, period: int = 1):
