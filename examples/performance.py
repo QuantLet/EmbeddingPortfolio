@@ -183,7 +183,6 @@ if __name__ == "__main__":
     #     if p not in ['equal', 'equal_class']:
     #         port_weights[p] = get_ts_weights(cv_results, port=p)
     port_weights = get_ts_weights(port_weights)
-    print(port_weights)
     # Get average perf across runs
     ann_perf = pd.DataFrame()
     for p in PORTFOLIOS:
