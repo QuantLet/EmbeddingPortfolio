@@ -1,10 +1,10 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 
-library("rjson")
+# library("rjson")
 source("utils.R")
 
-TEST = FALSE
+TEST = TRUE
 set_threshold=TRUE
 dir_ = "prediction_w4months_q1%_q5%_q2%_q10%"
 
@@ -14,8 +14,6 @@ save_dir = "./saved_models_Haindorf2020_results/"
 
 # Respect order !!
 qs = c(0.01, 0.025, 0.05, 0.1)
-lower_cols = c("log_lower_0.01",  "log_lower_0.025", "log_lower_0.05","log_lower_0.1")
-
 window_size = 4 * MONTH # Fit model on 4 months history
 q_fit = 0.05  # fit to 10% of worst outcomes
 
