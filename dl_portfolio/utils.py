@@ -6,6 +6,7 @@ from typing import Dict, List
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+from tensorflow.keras import activations
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.ae_data import get_features
@@ -18,7 +19,7 @@ from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = './dl_portfolio/log'
 BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
-BASE_FACTOR_ORDER_RAFFINOT = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
+BASE_FACTOR_ORDER_RAFFINOT = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
 
 
 def build_linear_model(ae_config, reg_type: str, **kwargs):
@@ -183,7 +184,7 @@ def reorder_columns(data, new_order):
 
 
 def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str,
-                        reorder_features: bool = True):
+                        reorder_features: bool = True, first_cv=None):
     test_data = pd.DataFrame()
     prediction = pd.DataFrame()
     features = pd.DataFrame()
@@ -192,31 +193,25 @@ def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[
     embedding = {}
     decoding = {}
 
-    for cv in config.data_specs:
+    cvs = list(config.data_specs.keys())
+    if first_cv:
+        cvs = [cv for cv in cvs if cv >= first_cv]
+
+    for cv in cvs:
         embedding[cv] = {}
         model, scaler, dates, t_data, f, pred, embed, decod, relu_act = load_result(config,
                                                                                     test_set,
                                                                                     data,
                                                                                     assets,
                                                                                     base_dir,
-                                                                                    cv)
+                                                                                    cv,
+                                                                                    reorder_features)
         t_data = pd.DataFrame(t_data, columns=pred.columns, index=pred.index)
         t_data *= scaler["attributes"]["scale_"]
         t_data += scaler["attributes"]["mean_"]
 
         test_data = pd.concat([test_data, t_data])
         prediction = pd.concat([prediction, pred])
-
-        if reorder_features:
-            if config.dataset == "bond":
-                base_order = BASE_FACTOR_ORDER_BOND
-            else:
-                raise NotImplementedError()
-            f = reorder_columns(f, [embed.loc[c].idxmax() for c in base_order])
-            f.columns = base_order
-            if relu_act is not None:
-                relu_act = reorder_columns(relu_act, [embed.loc[c].idxmax() for c in base_order])
-                relu_act.columns = base_order
 
         features = pd.concat([features, f])
         if relu_act is not None:
@@ -228,7 +223,120 @@ def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[
     return test_data, prediction, features, residuals, embedding, decoding, relu_activation
 
 
-def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str):
+def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str,
+                       reorder_features=True):
+    """
+
+    :param model_type: 'ae' or 'nmf'
+    :param test_set:
+    :param data:
+    :param assets:
+    :param base_dir:
+    :param cv:
+    :param ae_config:
+    :return:
+    """
+    model_type = config.model_type
+    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
+    assert test_set in ["train", "val", "test"]
+
+    scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    input_dim = len(assets)
+
+    model, encoder, extra_features = build_model(config.model_type,
+                                                 input_dim,
+                                                 config.encoding_dim,
+                                                 n_features=None,
+                                                 extra_features_dim=1,
+                                                 activation=config.activation,
+                                                 batch_normalization=config.batch_normalization,
+                                                 kernel_initializer=config.kernel_initializer,
+                                                 kernel_constraint=config.kernel_constraint,
+                                                 kernel_regularizer=config.kernel_regularizer,
+                                                 activity_regularizer=config.activity_regularizer,
+                                                 batch_size=config.batch_size if config.drop_remainder_obs else None,
+                                                 loss=config.loss,
+                                                 uncorrelated_features=config.uncorrelated_features,
+                                                 weightage=config.weightage)
+    model.load_weights(f'{base_dir}/{cv}/model.h5')
+    layer_name = list(filter(lambda x: 'uncorrelated_features_layer' in x, [l.name for l in model.layers]))[0]
+    encoder = tf.keras.Model(inputs=model.input, outputs=model.get_layer(layer_name).output)
+    dense_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
+    dense_layer.layers[-1].activation = activations.linear
+
+    assert dense_layer.layers[-1].activation == activations.linear
+    assert encoder.layers[1].activation == activations.linear
+
+    data_spec = config.data_specs[cv]
+    if test_set == 'test':
+        _, _, test_data, _, dates, _ = get_features(data,
+                                                    data_spec['start'],
+                                                    data_spec['end'],
+                                                    assets,
+                                                    val_start=data_spec['val_start'],
+                                                    test_start=data_spec.get('test_start'),
+                                                    scaler=scaler)
+    elif test_set == 'val':
+        _, test_data, _, _, dates, _ = get_features(data,
+                                                    data_spec['start'],
+                                                    data_spec['end'],
+                                                    assets,
+                                                    val_start=data_spec['val_start'],
+                                                    test_start=data_spec.get('test_start'),
+                                                    scaler=scaler)
+    elif test_set == 'train':
+        # For first cv: predict on train data then for the others used previous validation data for prediction
+        if cv == 0:
+            test_data, _, _, _, dates, _ = get_features(data,
+                                                        data_spec['start'],
+                                                        data_spec['end'],
+                                                        assets,
+                                                        val_start=data_spec['val_start'],
+                                                        test_start=data_spec.get('test_start'),
+                                                        scaler=scaler)
+        else:
+            data_spec = config.data_specs[cv - 1]
+            _, test_data, _, _, dates, _ = get_features(data,
+                                                        data_spec['start'],
+                                                        data_spec['end'],
+                                                        assets,
+                                                        val_start=data_spec['val_start'],
+                                                        test_start=data_spec.get('test_start'),
+                                                        scaler=scaler)
+    else:
+        raise NotImplementedError(test_set)
+
+    # Prediction
+    test_features = encoder.predict(test_data)
+    lin_activation = dense_layer.predict(test_data)
+
+    if test_set == "train" and cv > 0:
+        index = dates["val"]
+    else:
+        index = dates[test_set]
+
+    test_features = pd.DataFrame(test_features, index=index)
+    lin_activation = pd.DataFrame(lin_activation, index=index)
+
+    if reorder_features:
+        embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
+        if config.dataset == "bond":
+            base_order = BASE_FACTOR_ORDER_BOND
+        elif config.dataset == "raffinot_bloomberg_comb_update_2021":
+            base_order = BASE_FACTOR_ORDER_RAFFINOT
+        else:
+            raise NotImplementedError()
+        new_order = [embedding.loc[c].idxmax() for c in base_order]
+        test_features = reorder_columns(test_features, new_order)
+        test_features.columns = base_order
+        lin_activation = reorder_columns(lin_activation, new_order)
+        lin_activation.columns = base_order
+
+    return model, test_features, lin_activation
+
+
+def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, cv: str,
+                reorder_features=True):
     """
 
     :param model_type: 'ae' or 'nmf'
@@ -350,6 +458,24 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
         relu_activation = pd.DataFrame(relu_activation, index=index)
     else:
         relu_activation = None
+
+    if reorder_features:
+        if config.dataset == "bond":
+            base_order = BASE_FACTOR_ORDER_BOND
+        elif config.dataset == "raffinot_bloomberg_comb_update_2021":
+            base_order = BASE_FACTOR_ORDER_RAFFINOT
+        else:
+            raise NotImplementedError()
+        new_order = [embedding.loc[c].idxmax() for c in base_order]
+        test_features = reorder_columns(test_features, new_order)
+        test_features.columns = base_order
+        embed = reorder_columns(embedding, new_order)
+        embed.columns = base_order
+        decoding = reorder_columns(decoding, new_order)
+        decoding.columns = base_order
+        if relu_activation is not None:
+            relu_activation = reorder_columns(relu_activation, new_order)
+            relu_activation.columns = base_order
 
     return model, scaler, dates, test_data, test_features, pred, embedding, decoding, relu_activation
 
