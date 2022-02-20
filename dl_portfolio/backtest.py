@@ -551,7 +551,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     ae_config = kwargs.get('ae_config')
     res = {}
 
-    model, scaler, dates, test_data, test_features, pred, embedding, decoding, _ = load_result(ae_config, test_set,
+    model, scaler, dates, test_data, test_features, pred, _, decoding, _ = load_result(ae_config, test_set,
                                                                                                data,
                                                                                                assets,
                                                                                                base_dir, cv)
@@ -569,19 +569,13 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
 
     residuals = returns - pred
     scaled_residuals = residuals * std
-    scaled_embedding = np.dot(np.diag(std, k=0), embedding)
 
-    res['embedding'] = embedding
+    res['loading'] = decoding
     res['scaler'] = scaler
-    res['scaled_embedding'] = scaled_embedding
-    # res['train_features'] = train_features
     res['test_features'] = test_features
     res['test_pred'] = pred
-    # res['Sf'] = train_features.cov()
     res['Su'] = scaled_residuals.cov()
-    # res['H'] = pd.DataFrame(np.dot(scaled_embedding, np.dot(res['Sf'], scaled_embedding.T)) + res['Su'],
-    #                         index=embedding.index, columns=embedding.index)
-    res['w'] = embedding
+    res['w'] = decoding
     res['train_returns'] = train_returns
     res['returns'] = returns
     if compute_weights:
@@ -589,7 +583,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
         res['port'] = portfolio_weights(train_returns,
                                         # shrink_cov=res['H'],
                                         budget=market_budget.loc[assets],
-                                        embedding=embedding,
+                                        embedding=decoding,
                                         portfolio=portfolios,
                                         **kwargs
                                         )

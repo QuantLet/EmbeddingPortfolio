@@ -173,7 +173,7 @@ if __name__ == "__main__":
     port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True,
                                             market_budget=market_budget)
 
-    K = cv_results[i][0]['embedding'].shape[-1]
+    K = cv_results[i][0]['loading'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
     ASSETS = list(cv_results[i][0]['returns'].columns)
 
@@ -360,8 +360,8 @@ if __name__ == "__main__":
     else:
         pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
 
-    # Embedding analysis
-    # Embedding over cv folds
+    # loading analysis
+    # loading over cv folds
     p = 0
     n_cv = len(cv_results[p])
     n_cols = 6
@@ -372,11 +372,11 @@ if __name__ == "__main__":
     row = -1
     col = 0
     for cv in cv_results[p]:
-        embedding = cv_results[p][cv]['embedding'].copy()
+        loading = cv_results[p][cv]['loading'].copy()
         if cv % n_cols == 0:
             col = 0
             row += 1
-        sns.heatmap(embedding,
+        sns.heatmap(loading,
                     ax=axs[row, col],
                     vmin=0,
                     vmax=1,
@@ -388,7 +388,7 @@ if __name__ == "__main__":
 
     fig.tight_layout(rect=[0, 0, .9, 1])
     if args.save:
-        plt.savefig(f"{save_dir}/cv_embedding_weights.png", bbox_inches='tight', transparent=True)
+        plt.savefig(f"{save_dir}/cv_loading_weights.png", bbox_inches='tight', transparent=True)
     if args.show:
         plt.show()
     plt.close()
@@ -457,7 +457,7 @@ if __name__ == "__main__":
     for cv in range(n_folds):
         cv_labels[cv] = {}
         for i in cv_results:
-            c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['embedding'])
+            c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['loading'])
 
     # Compute Rand index
     EVALUATION['cluster']['rand_index'] = {}
