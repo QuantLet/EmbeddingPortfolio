@@ -48,18 +48,30 @@ fit_model = function(data, cond.dist, p=NULL, q=NULL, formula=NULL){
     formula = substitute(~ arma(a,b) + garch(p,q),
                          list(a=arima.order[1], b=arima.order[3], p=p, q=q))
   }
-  garch.model = fGarch::garchFit(
-    formula = formula,
-    data = data,
-    cond.dist = cond.dist,
-    trace = FALSE
-  )
-  aic = garch.model@fit$ics[1]
-  return (list(model=garch.model, aic=aic))
+  garch.model = tryCatch(
+    {
+      garch.model  = fGarch::garchFit(
+      formula = formula,
+      data = data,
+      cond.dist = cond.dist,
+      # algorithm = "lbfgsb",
+      trace = FALSE)
+    return (list(model=garch.model, aic=garch.model@fit$ics[1]))
+    },
+    error=function(e) {
+      message(e)
+      return (list(model=NULL, aic=Inf))
+    },
+    silent = FALSE)
+  
+  return (garch.model)
 }
 
 
-model_selection = function(data, model.params, fit_model) {
+model_selection = function(data, model.params, fit_model, parallel=TRUE) {
+  # Normalize data to have variance 1
+  data.sd = sd(data)
+  data = data / data.sd
   tuning.grid = expand.grid(
     cond.dist = model.params$cond.dist,
     garch.order.p = model.params$garch.order.p,
@@ -67,29 +79,44 @@ model_selection = function(data, model.params, fit_model) {
     stringsAsFactors = FALSE
   )
   
-  # Get number of cores
-  n.cores <- parallel::detectCores() - 1
-  #create the cluster
-  my.cluster <- parallel::makeCluster(
-    n.cores
-  )
-  #register it to be used by %dopar%
-  doParallel::registerDoParallel(cl = my.cluster)
-  # doParallel::clusterCall(cl = my.cluster, function() source("utils.R"))
-  #check if it is registered (optional)
-  stopifnot(foreach::getDoParRegistered())
-  # How many workers are availalbes ?
-  print(paste(foreach::getDoParWorkers()," workers available"))
-  
-  result <- foreach(
-    cond.dist = tuning.grid$cond.dist,
-    garch.order.p = tuning.grid$garch.order.p,
-    garch.order.q = tuning.grid$garch.order.q,
-    .packages = c("forecast", "fGarch")
-  ) %dopar% {
-    fit_model(data, cond.dist, p=garch.order.p, q=garch.order.q)
+  if (parallel){
+    # Get number of cores
+    n.cores <- parallel::detectCores() - 1
+    #create the cluster
+    my.cluster <- parallel::makeCluster(
+      n.cores
+    )
+    #register it to be used by %dopar%
+    doParallel::registerDoParallel(cl = my.cluster)
+    # doParallel::clusterCall(cl = my.cluster, function() source("utils.R"))
+    #check if it is registered (optional)
+    stopifnot(foreach::getDoParRegistered())
+    # How many workers are availalbes ?
+    # print(paste(foreach::getDoParWorkers()," workers available"))
+    
+    result <- foreach(
+      cond.dist = tuning.grid$cond.dist,
+      garch.order.p = tuning.grid$garch.order.p,
+      garch.order.q = tuning.grid$garch.order.q,
+      .packages = c("forecast", "fGarch")
+    ) %dopar% {
+      
+      tryCatch(
+        fit_model(data, cond.dist, p=garch.order.p, q=garch.order.q),
+        error = function(e) list(model=NULL, aic=Inf),
+        silent = FALSE)
+    }
+    parallel::stopCluster(cl = my.cluster)
+  } else {
+    result = list()
+    for (i in 1:nrow(tuning.grid)){
+      cond.dist = tuning.grid[i,"cond.dist"]
+      garch.order.p = tuning.grid[i,"garch.order.p"]
+      garch.order.q = tuning.grid[i,"garch.order.q"]
+      r = fit_model(data, cond.dist, p=garch.order.p, q=garch.order.q)
+      result = append(result, list(r)) 
+    }
   }
-  parallel::stopCluster(cl = my.cluster)
   
   AIC = c()
   for (i in 1:length(result)){
@@ -98,40 +125,100 @@ model_selection = function(data, model.params, fit_model) {
   best_model = result[[which.min(AIC)]]$model
   aic = result[[which.min(AIC)]]$aic
   
-  return (list(model=best_model, aic=aic))
+  return (list(model=best_model, aic=aic))  
 }
 
-predict_proba = function(train_data, val_data, window_size, model, fit_model, next_proba){
+predict_proba = function(train_data, val_data, window_size, model, 
+                         fit_model, next_proba, parallel=TRUE){
+  
   formula = model@formula
   cond.dist = model@fit$params$cond.dist
-  # Get number of cores
-  n.cores <- parallel::detectCores() - 1
-  #create the cluster
-  my.cluster <- parallel::makeCluster(
-    n.cores
-  )
-  #register it to be used by %dopar%
-  doParallel::registerDoParallel(cl = my.cluster)
-  # doParallel::clusterCall(cl = my.cluster, function() source("utils.R"))
-  #check if it is registered (optional)
-  stopifnot(foreach::getDoParRegistered())
-  # How many workers are availalbes ?
-  print(paste(foreach::getDoParWorkers()," workers available"))
-  probas <- foreach(
-    i = 1:nrow(val_data),
-    .combine = 'c',
-    .packages = c("forecast", "fGarch")
-  ) %dopar% {
-    if (i == 1){
-      proba = next_proba(model)
-    } else {
-      temp = rbind(train_data, val_data[1:(i-1),])
-      temp = tail(temp, window_size)
-      model = fit_model(temp, cond.dist, formula=formula)
-      model = model$model
-      proba = next_proba(model)
+  
+  if (parallel) {
+    # Get number of cores
+    n.cores <- parallel::detectCores() - 1
+    #create the cluster
+    my.cluster <- parallel::makeCluster(
+      n.cores
+    )
+    #register it to be used by %dopar%
+    doParallel::registerDoParallel(cl = my.cluster)
+    # doParallel::clusterCall(cl = my.cluster, function() source("utils.R"))
+    #check if it is registered (optional)
+    stopifnot(foreach::getDoParRegistered())
+    # How many workers are availalbes ?
+    # print(paste(foreach::getDoParWorkers()," workers available"))
+    probas <- foreach(
+      i = 1:nrow(val_data),
+      .combine = 'c',
+      .packages = c("forecast", "fGarch")
+    ) %dopar% {
+      if (i == 1){
+        proba = tryCatch(
+          next_proba(model),
+          error = function(e) NaN,
+          silent = FALSE
+          )
+        
+      } else {
+        temp = rbind(train_data, val_data[1:(i-1),])
+        temp = tail(temp, window_size)
+        # Normalize data to have unit variance
+        temp = temp / sd(temp)
+        model = tryCatch(
+          fit_model(temp, cond.dist, formula=formula),
+          error = function(e) list(model=NULL, aic=Inf),
+          silent = FALSE)
+        model = model$model
+        if (!is.null(model)){
+          proba = tryCatch(
+            next_proba(model),
+            error = function(e) NaN,
+            silent = FALSE
+          )
+        } else {
+          proba = NaN
+        }
+      }
+      proba
     }
-    proba
+    parallel::stopCluster(cl = my.cluster)
+  } else {
+    probas = c()
+    for (i in 1:nrow(val_data)){
+      if (i == 1){
+        if (!is.null(model)){
+          proba = tryCatch(
+            next_proba(model),
+            error = function(e) NaN,
+            silent = FALSE
+          )
+        } else {
+          proba = NaN
+        }
+      } else {
+        temp = rbind(train_data, val_data[1:(i-1),])
+        temp = tail(temp, window_size)
+        # Normalize data to have unit variance
+        temp = temp / sd(temp)
+        # model = tryCatch(
+        #   fit_model(temp, cond.dist, formula=formula),
+        #   error = function(e) list(model=NULL, aic=Inf),
+        #   silent = FALSE)
+        model = fit_model(temp, cond.dist, formula=formula)
+        model = model$model
+        if (!is.null(model)){
+          proba = tryCatch(
+            next_proba(model),
+            error = function(e) NaN,
+            silent = FALSE
+            )
+          } else {
+          proba = NaN
+        }
+      }
+      probas = c(probas, proba)
+    }
   }
   probas = xts(probas, order.by=index(val_data))
   colnames(probas) = "proba"
