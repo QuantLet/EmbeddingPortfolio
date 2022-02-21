@@ -8,13 +8,13 @@ library(rjson)
 config_path = "./config/dataset1.json"
 save = TRUE
 save_dir = "output"
+debug = FALSE
 
 
 # ------------------------ Script ------------------------
 
 config = fromJSON(file = config_path)
 run = config$run
-debug = config$debug
 if (run == "train") {
   data_path = config$datapath$train
 }
@@ -160,7 +160,7 @@ for (cv in 4:length(config$data_specs)) {
   print("Train probas")
   print(tail(train_activation_probas))
   print("Test probas")
-  print(head(activation_probas))
+  print(tail(activation_probas))
   counter = counter + 1
   last_train_date = index(data$train)[nrow(data$train)]
   

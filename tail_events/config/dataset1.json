@@ -1,6 +1,5 @@
 {
   "run": "test",
-  "debug": false,
   "window_size": 250,
   "model.params": {
     "cond.dist": [
