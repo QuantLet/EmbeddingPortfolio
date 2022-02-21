@@ -13,6 +13,9 @@ COMMODITIES = ['WTIUSD', 'BCOUSD']
 
 LOG_DIR = 'log_AE'
 
+PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
+              'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
+
 # Cv dates
 
 DATA_SPECS_BOND = {
