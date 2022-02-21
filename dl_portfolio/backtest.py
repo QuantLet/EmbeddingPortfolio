@@ -415,8 +415,8 @@ def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: floa
 
 
 def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFrame, weights: Dict, portfolios: List,
-                               prev_weights: Optional[Dict] = None, fee: float = 2e-4, annualized: bool = True,
-                               **kwargs):
+                               train_weights: Optional[Dict] = None, prev_weights: Optional[Dict] = None,
+                               fee: float = 2e-4, volatility_target: Optional[float] = 0.05, **kwargs):
     """
 
     :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']
@@ -427,7 +427,6 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
     :return:
     """
     N = returns.shape[-1]
-
     port_perfs = {}
     leverages = {}
     for portfolio in portfolios:
@@ -446,7 +445,7 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                 LOGGER.info(f'Warning: No weight for {portfolio} portfolio... Setting to NaN')
                 port_perf = returns * np.nan
         # Volatility target weights
-        if annualized:
+        if volatility_target:
             if portfolio == 'equal':
                 train_port_perf = portfolio_return(train_returns, weights=1 / N)
                 cost = 0
@@ -458,15 +457,33 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                 train_port_perf = portfolio_return(train_returns, weights=w)
                 cost = 0
             else:
-                train_port_perf = portfolio_return(train_returns, weights=weights[portfolio])
-                cost = fee * np.sum(np.abs(prev_weights[portfolio] - weights[portfolio]))
+                if train_weights is None:
+                    train_port_perf = portfolio_return(train_returns, weights=weights[portfolio])
+                else:
+                    train_port_perf = portfolio_return(train_returns, weights=train_weights[portfolio])
+
+                if weights[portfolio].shape[0] > 1:
+                    assert isinstance(weights[portfolio], pd.DataFrame)
+                    assert isinstance(prev_weights[portfolio], pd.DataFrame)
+                    cost = pd.concat([prev_weights[portfolio].iloc[-1:, :], weights[portfolio]])
+                    cost = fee * np.abs(cost.diff().dropna()).sum(1)
+                    cost = pd.Series(cost, index=returns.index)
+                else:
+                    cost = fee * np.sum(np.abs(prev_weights[portfolio] - weights[portfolio]))
 
             # Check Jaeger et al 2021
             base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
             leverage = 0.05 / base_vol
             cost = cost * leverage
             port_perf = leverage * port_perf
-            port_perf.iloc[0] = port_perf.iloc[0] - cost
+            if portfolio not in ["equal", "equal_class"]:
+                if weights[portfolio].shape[0] > 1:
+                    assert isinstance(cost, pd.Series)
+                    port_perf -= cost
+                else:
+                    assert isinstance(cost, float)
+                    port_perf.iloc[0] = port_perf.iloc[0] - cost
+
         port_perfs[portfolio] = port_perf
         leverages[portfolio] = leverage
 
@@ -476,7 +493,7 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
                                           'ae_rp'],
-                      annualized: bool = True,
+                      volatility_target: Optional[float] = 0.05,
                       fee: float = 2e-4,
                       **kwargs) -> Union[Dict, pd.DataFrame]:
     """
@@ -514,9 +531,9 @@ def cv_portfolio_perf(cv_results: Dict,
                                                                   cv_results[cv]['returns'],
                                                                   weights,
                                                                   portfolios,
-                                                                  prev_weights,
+                                                                  prev_weights=prev_weights,
                                                                   fee=fee,
-                                                                  annualized=annualized,
+                                                                  volatility_target=volatility_target,
                                                                   **kwargs)
         for p in portfolios:
             port_perf[p]['total'] = pd.concat([port_perf[p]['total'], one_cv_perf[p]])
