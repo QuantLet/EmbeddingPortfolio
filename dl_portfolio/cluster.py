@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 from sklearn import metrics
@@ -6,6 +7,25 @@ from typing import Dict, List
 from scipy.spatial.distance import squareform
 from fastcluster import linkage
 
+
+def get_cluster_assignment(base_dir, cluster_names):
+    models = os.listdir(base_dir)
+    paths = [f"{base_dir}/{d}" for d in models if os.path.isdir(f"{base_dir}/{d}") and d[0] != "."]
+    n_folds = os.listdir(paths[0])
+    n_folds = sum([d.isdigit() for d in n_folds])
+
+    cluster_assignment = {}
+    cv_labels = {}
+    for cv in range(n_folds):
+        cv_labels[cv] = {}
+        for i, path in enumerate(paths):
+            embedding = pd.read_pickle(f'{path}/{cv}/encoder_weights.p')
+            c, cv_labels[cv][i] = get_cluster_labels(embedding)
+
+        cons_mat = consensus_matrix(cv_labels[cv], reorder=True, method="single")
+        cluster_assignment[cv] = assign_cluster_from_consmat(cons_mat, cluster_names, t=0)
+
+    return cluster_assignment
 
 def assign_cluster_from_consmat(cons_mat: pd.DataFrame, cluster_names: List[str], t: float):
     """
