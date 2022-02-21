@@ -73,11 +73,15 @@ for (cv in 1:length(config$data_specs)) {
   }
   # load dataset
   data_spec = config$data_specs[[cv]]
-  if (run == "train"){
+  if (run == "train") {
+    test_start = data_spec$val_start
+    end = data_spec$end
+  }
+  if (run == "val") {
     test_start = data_spec$val_start
     end = data_spec$test_start
   }
-  if (run == "test"){
+  if (run == "test") {
     test_start = data_spec$test_start
     end = data_spec$end
   }
@@ -88,7 +92,7 @@ for (cv in 1:length(config$data_specs)) {
                      config$window_size)
   print(paste0("Last train: ", index(tail(data$train, 1))[1]))
   print(paste0("First test: ", index(data$test)[1]))
-  
+
   factors = colnames(data$train)
   # Initialize tables
   if (counter == 1) {
@@ -115,25 +119,25 @@ for (cv in 1:length(config$data_specs)) {
     saveRDS(best_model$model, file = model_path)
 
     # Get proba on train set
-    
-    if (!is.null(best_model$model)){
+
+    if (!is.null(best_model$model)) {
       dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
       n.fitted = length(best_model$model@fitted)
       train_probas = unname(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func))
       nans = nrow(train_data) - length(train_probas)
-      if (nans > 0){
+      if (nans > 0) {
         train_probas = c(rep(NaN, nans), train_probas) # c(rep(NaN, nans), as.vector(train_probas[,1]))
       }
       probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
                              fit_model, next_proba, parallel = !debug)
-      
+
     } else {
       train_probas = rep(NaN, length(index(train_data)))
       probas = rep(NaN, length(index(test_data)))
     }
-    train_probas = xts(train_probas,  order.by = index(train_data))
+    train_probas = xts(train_probas, order.by = index(train_data))
     colnames(train_probas) = factor.name
-    probas = xts(probas,  order.by = index(test_data))
+    probas = xts(probas, order.by = index(test_data))
     colnames(probas) = factor.name
 
     cv_train_activation_probas[factor.name] = train_probas
@@ -147,14 +151,14 @@ for (cv in 1:length(config$data_specs)) {
   write.zoo(cv_activation_probas,
             file = file.path(cv_save_dir, "activation_probas.csv"),
             sep = ",")
-  
-  if (nrow(train_activation_probas) > 0){
+
+  if (nrow(train_activation_probas) > 0) {
     cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
   }
-  
+
   train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
   train_activation_probas = as.xts(train_activation_probas)
-  activation_probas =  rbind(activation_probas, cv_activation_probas)
+  activation_probas = rbind(activation_probas, cv_activation_probas)
   activation_probas = as.xts(activation_probas)
 
   print("Train probas")
@@ -163,7 +167,7 @@ for (cv in 1:length(config$data_specs)) {
   print(tail(activation_probas))
   counter = counter + 1
   last_train_date = index(data$train)[nrow(data$train)]
-  
+
 }
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
