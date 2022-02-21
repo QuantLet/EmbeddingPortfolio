@@ -238,6 +238,9 @@ def ae_riskparity_weights(returns, embedding, loading, market_budget, risk_parit
     :return:
     """
     assert risk_parity in ['budget', 'cluster']
+    # Rename columns in case of previous renaming
+    loading.columns = list(range(len(loading.columns)))
+    embedding.columns = list(range(len(embedding.columns)))
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     clusters, _ = get_cluster_labels(embedding)
@@ -307,6 +310,8 @@ def kmaa_weights(returns: pd.DataFrame, n_clusters: int) -> pd.Series:
 def aeaa_weights(returns: Union[np.ndarray, pd.DataFrame], embedding: Union[np.ndarray, pd.DataFrame]) -> pd.Series:
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
+    # Rename columns in case of previous renaming
+    embedding.columns = list(range(len(embedding.columns)))
     clusters, _ = get_cluster_labels(embedding)
     clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
     n_clusters = embedding.shape[-1]
@@ -341,6 +346,8 @@ def equal_class_weights(market_budget: pd.DataFrame):
 def ae_ivp_weights(returns, embedding):
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
+    # Rename columns in case of previous renaming
+    embedding.columns = list(range(len(embedding.columns)))
     clusters, _ = get_cluster_labels(embedding)
     clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
 
