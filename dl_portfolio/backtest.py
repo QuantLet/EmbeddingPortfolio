@@ -628,3 +628,18 @@ def get_cv_results(base_dir, test_set, n_folds, portfolios=None, market_budget=N
                                        compute_weights=compute_weights, window=window, **kwargs)
 
     return cv_results
+
+
+def get_mdd(performance: [pd.Series, np.ndarray]):
+    assert len(performance.shape) == 1
+    dd = performance / performance.cummax() - 1.0
+    mdd = dd.cummin()
+    mdd = abs(min(mdd))
+    return mdd
+
+
+def calmar_ratio(performance: [pd.Series, np.ndarray]):
+    assert len(performance.shape) == 1
+    annual_return = performance[-1] / performance[0] - 1
+    mdd = get_mdd(performance)
+    return annual_return / mdd

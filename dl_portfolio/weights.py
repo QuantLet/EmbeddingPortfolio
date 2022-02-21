@@ -7,7 +7,6 @@ import cvxpy as cp
 from typing import Union
 from sklearn.cluster import KMeans
 
-from pypfopt.hierarchical_portfolio import HRPOpt
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
 from portfoliolab.clustering.hrp import HierarchicalRiskParity
@@ -127,37 +126,6 @@ def get_inner_cluster_weights(cov, loading, clusters, market_budget=None):
     return weights
 
 
-def cluster_portfolio(returns, features_cov, embedding, no_leverage=True):
-    n_clusters = features_cov.shape[0]
-    cluster_weights = ivp_weights(features_cov)
-    if no_leverage:
-        asset_weights = (embedding / embedding.sum())
-    else:
-        asset_weights = embedding.copy()
-
-    port_returns = pd.Series(np.zeros(len(returns)), index=returns.index)
-    for i in range(n_clusters):
-        cluster_ret = ((cluster_weights[i] * asset_weights.iloc[:, i]) * returns).sum(1)
-        port_returns = port_returns + cluster_ret.values
-
-    return port_returns, cluster_weights, asset_weights
-
-
-def get_mdd(performance: [pd.Series, np.ndarray]):
-    assert len(performance.shape) == 1
-    dd = performance / performance.cummax() - 1.0
-    mdd = dd.cummin()
-    mdd = abs(min(mdd))
-    return mdd
-
-
-def calmar_ratio(performance: [pd.Series, np.ndarray]):
-    assert len(performance.shape) == 1
-    annual_return = performance[-1] / performance[0] - 1
-    mdd = get_mdd(performance)
-    return annual_return / mdd
-
-
 def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov: bool = False,
                       risk_free_rate: float = 0.) -> pd.Series:
     if fix_cov:
@@ -204,13 +172,6 @@ def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov
     if weights is None:
         raise _exc
 
-    return weights
-
-
-def hrp_weights_old(S: pd.DataFrame) -> pd.Series:
-    hrp = HRPOpt(cov_matrix=S)
-    weights = hrp.optimize()
-    weights = pd.Series(weights, index=S.index)
     return weights
 
 
