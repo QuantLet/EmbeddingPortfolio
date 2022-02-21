@@ -86,7 +86,7 @@ if __name__ == "__main__":
         if not os.path.isdir(save_dir):
             os.makedirs(save_dir)
         LOGGER.info(f"Saving result to {save_dir}")
-        os.makedirs(f"{save_dir}/cv_plots/")
+        # os.makedirs(f"{save_dir}/cv_plots/")
 
         meta['save_dir'] = save_dir
         json.dump(meta, open(f"{save_dir}/meta.json", "w"))
@@ -476,19 +476,20 @@ if __name__ == "__main__":
 
     # Plot heatmap
     trii = np.triu_indices(n_runs, k=1)
-    for cv in cv_rand:
-        mean = np.mean(cv_rand[cv][trii])
-        std = np.std(cv_rand[cv][trii])
-        triu = np.triu(cv_rand[cv], k=1)
-        sns.heatmap(triu, vmin=0, vmax=1)
-        plt.title(f"{CV_DATES[cv]}\nMean: {mean.round(2)}, Std: {std.round(2)}")
-        if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight', transparent=True)
-        if args.show:
-            plt.show()
-        plt.close()
-
     EVALUATION['cluster']['rand_index']['cv'] = [np.mean(cv_rand[cv][trii]) for cv in cv_rand]
+
+    # for cv in cv_rand:
+    #     mean = np.mean(cv_rand[cv][trii])
+    #     std = np.std(cv_rand[cv][trii])
+    #     triu = np.triu(cv_rand[cv], k=1)
+    #     sns.heatmap(triu, vmin=0, vmax=1)
+    #     plt.title(f"{CV_DATES[cv]}\nMean: {mean.round(2)}, Std: {std.round(2)}")
+    #     if args.save:
+    #         plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight', transparent=True)
+    #     if args.show:
+    #         plt.show()
+    #     plt.close()
+
 
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
@@ -526,13 +527,13 @@ if __name__ == "__main__":
             cons_mat = cons_mat.loc[order0, :]
             cons_mat = cons_mat.loc[:, order0]
 
-        plt.figure(figsize=(10, 10))
-        sns.heatmap(cons_mat, square=True)
-        if args.save:
-            plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight', transparent=True)
-        if args.show:
-            plt.show()
-        plt.close()
+        # plt.figure(figsize=(10, 10))
+        # sns.heatmap(cons_mat, square=True)
+        # if args.save:
+        #     plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight', transparent=True)
+        # if args.show:
+        #     plt.show()
+        # plt.close()
 
         avg_cons_mat += cons_mat
     pickle.dump(cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb"))

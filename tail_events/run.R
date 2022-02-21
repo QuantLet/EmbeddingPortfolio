@@ -43,12 +43,8 @@ if (save) {
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
-  time <- Sys.time()
-  save_path = gsub(' ', '', gsub('-', '', gsub(':', '', time)))
-  train_save_path = paste0(save_path, "_train_activation_probas.csv")
-  train_save_path = file.path(save_dir, train_save_path)
-  save_path = paste0(save_path, "_activation_probas.csv")
-  save_path = file.path(save_dir, save_path)
+  train_save_path = file.path(save_dir, "train_activation_probas.csv")
+  save_path = file.path(save_dir, "activation_probas.csv")
 } else {
   save_path = NULL
 }
@@ -67,7 +63,7 @@ t1 = Sys.time()
 counter = 1
 for (cv in 1:length(config$data_specs)) {
   print(cv)
-  cv_save_dir = file.path(save_dir, cv)
+  cv_save_dir = file.path(save_dir, (cv - 1))
   if (!dir.exists(cv_save_dir)) {
     dir.create(cv_save_dir)
   }
@@ -172,7 +168,7 @@ for (cv in 1:length(config$data_specs)) {
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
 
-write.zoo(train_activation_probas, file = train_save_path, sep = ",")
-write.zoo(activation_probas, file = save_path, sep = ",")
-
-
+if (save) {
+  write.zoo(train_activation_probas, file = train_save_path, sep = ",")
+  write.zoo(activation_probas, file = save_path, sep = ",")
+}

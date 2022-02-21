@@ -19,6 +19,8 @@ def assign_cluster_from_consmat(cons_mat: pd.DataFrame, cluster_names: List[str]
     assigned = cons_mat.loc[cluster_names].sum() > t
     cluster_assignment = pd.Series(index=cons_mat.index, dtype="object")
     cluster_assignment.loc[assigned] = cons_mat.loc[cluster_names, assigned].idxmax()
+    # reorder index
+    cluster_assignment = cluster_assignment.loc[cons_mat.index]
     return cluster_assignment
 
 
