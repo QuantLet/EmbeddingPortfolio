@@ -2,28 +2,29 @@ import numpy as np
 import pandas as pd
 
 
-def hedged_portfolio_weights(train_returns, train_probas, probas, cluster, assets,
-                             strats=['ae_rp', 'ae_rp_c', 'aeaa']):
+def hedged_portfolio_weights(train_returns, train_probas, probas, cluster, assets, original_weights):
     cluster_names = np.unique(cluster.dropna()).tolist()
-    all_weights = {}
-    for strat in strats:
-        weights = pd.DataFrame()
-        for cluster_name in cluster_names:
-            train_w = pd.DataFrame(np.repeat(weights[strat].loc[assets].values.reshape(-1, 1).T,
-                                             len(train_probas.index),
-                                             axis=0),
-                                   columns=assets,
-                                   index=train_probas.index)
-            test_w = pd.DataFrame(np.repeat(weights[strat].loc[assets].values.reshape(-1, 1).T,
-                                            len(probas.index),
-                                            axis=0),
-                                  columns=assets,
-                                  index=probas.index)
-            optimal_t = get_best_threshold(train_returns, train_w, train_probas, cluster, cluster_name)
-            temp_w_c = get_hedged_weight_cluster(test_w, probas, cluster, cluster_name, optimal_t)
-            weights = pd.concat([weights, temp_w_c], 1)
-        all_weights[strat] = weights
-    return all_weights
+    unnassigned = cluster.index[cluster.isna()]
+    weights = pd.DataFrame()
+    for cluster_name in cluster_names:
+        train_w = pd.DataFrame(np.repeat(original_weights.loc[assets].values.reshape(-1, 1).T,
+                                         len(train_probas.index),
+                                         axis=0),
+                               columns=assets,
+                               index=train_probas.index)
+        test_w = pd.DataFrame(np.repeat(original_weights.loc[assets].values.reshape(-1, 1).T,
+                                        len(probas.index),
+                                        axis=0),
+                              columns=assets,
+                              index=probas.index)
+        optimal_t = get_best_threshold(train_returns, train_w, train_probas, cluster, cluster_name)
+        temp_w_c = get_hedged_weight_cluster(test_w, probas, cluster, cluster_name, optimal_t)
+        weights = pd.concat([weights, temp_w_c], 1)
+
+    weights[unnassigned] = 0.
+    weights = weights[assets]
+
+    return weights
 
 
 def get_signal_cluster(probas, cluster, cluster_name, threshold):
