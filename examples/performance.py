@@ -51,7 +51,7 @@ if __name__ == "__main__":
                         type=int,
                         help="Number of parallel jobs")
     parser.add_argument("--window",
-                        default=252,
+                        default=250,
                         type=int,
                         help="Window size for portfolio optimisation")
     parser.add_argument("--show",
@@ -326,7 +326,7 @@ if __name__ == "__main__":
     #     plt.savefig(f"{save_dir}/weights_hcaa_aeerc.png", bbox_inches='tight', transparent=True)
 
     # Get statistics
-    stats = backtest_stats(ann_perf, port_weights, period=252, format=True, market_budget=market_budget)
+    stats = backtest_stats(ann_perf, port_weights, period=250, format=True, market_budget=market_budget)
     if args.save:
         stats.to_csv(f"{save_dir}/backtest_stats.csv")
     print(stats.to_string())
