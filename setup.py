@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='dl_portfolio',
-    version='1.2.1',
+    version='1.2.2',
     url='https://github.com/BrunoSpilak/dl-portfolio.git',
     author='Bruno Spilak',
     author_email='bruno.spilak@gmail.com',
