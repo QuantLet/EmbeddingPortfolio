@@ -89,13 +89,24 @@ garch.model
 
 # Get standardized residuals
 model.fitted = xts(garch.model@fitted, order.by=index(fdata))
+model.sigma = xts(garch.model@sigma.t, order.by=index(fdata))
 model.residuals = xts(fGarch::residuals(garch.model, standardize = FALSE), order.by=index(fdata))
 model.coef = coef(garch.model)
+
+
+par(mfrow = c(1, 1))
+plot(fdata - model.fitted, type="l")
+lines(model.residuals)
+
+Z_hat = 
+plot(Z_hat)
+
 
 par(mfrow = c(1, 1))
 plot(X, type="l",col="green")
 lines(model.fitted, col="red")
 lines(model.residuals, col="blue")
+lines(X-model.fitted, col="brown")
 
 # Predict next value
 conf = 0.95
