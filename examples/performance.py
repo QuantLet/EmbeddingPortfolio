@@ -15,6 +15,7 @@ from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
+from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
 
 # PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
@@ -124,6 +125,13 @@ if __name__ == "__main__":
         market_budget['rc'] = market_budget['rc'].astype(int)
     elif config.dataset == 'cac':
         market_budget = pd.read_csv('data/market_budget_cac.csv', index_col=0)
+    else:
+        raise NotImplementedError()
+
+    if config.dataset == "bond":
+        CLUSTER_NAMES = BASE_FACTOR_ORDER_BOND
+    elif config.dataset == "raffinot_bloomberg_comb_update_2021":
+        CLUSTER_NAMES = BASE_FACTOR_ORDER_RAFFINOT
     else:
         raise NotImplementedError()
 
@@ -457,7 +465,7 @@ if __name__ == "__main__":
     for cv in range(n_folds):
         cv_labels[cv] = {}
         for i in cv_results:
-            c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['loading'])
+            c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['embedding'])
 
     # Compute Rand index
     EVALUATION['cluster']['rand_index'] = {}
@@ -505,9 +513,11 @@ if __name__ == "__main__":
     # Consensus matrix
     assets = cv_labels[cv][0]['label'].index
     avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
+    cluster_assignment = {}
     for cv in cv_labels:
-
         cons_mat = consensus_matrix(cv_labels[cv], reorder=True, method="single")
+        cluster_assignment[cv] = cons_mat.loc[CLUSTER_NAMES].idxmax()
+
         if cv == 0:
             order0 = cons_mat.index
             avg_cons_mat = avg_cons_mat.loc[order0, :]
@@ -525,6 +535,7 @@ if __name__ == "__main__":
         plt.close()
 
         avg_cons_mat += cons_mat
+    pickle.dump(cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb"))
 
     avg_cons_mat = avg_cons_mat / len(cv_labels)
     plt.figure(figsize=(10, 10))

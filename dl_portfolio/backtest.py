@@ -1,36 +1,18 @@
-import math
-import pickle
-
 import matplotlib.pyplot as plt
-import tensorflow as tf
 import pandas as pd
 import numpy as np
-import scipy
-
-import riskparityportfolio as rp
 
 from scipy import stats as scipy_stats
 from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
-from sklearn.cluster import KMeans
-
-from pypfopt.hierarchical_portfolio import HRPOpt
-from pypfopt.efficient_frontier import EfficientFrontier
-from pypfopt import risk_models
-import cvxpy as cp
-from portfoliolab.clustering.hrp import HierarchicalRiskParity
-from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.ae_data import load_data
-from dl_portfolio.constant import CRYPTO_ASSETS
-from dl_portfolio.ae_data import get_features
-from dl_portfolio.pca_ae import build_model
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import DATA_SPECS_BOND, DATA_SPECS_MULTIASSET_TRADITIONAL
 from dl_portfolio.probabilistic_sr import probabilistic_sharpe_ratio, min_track_record_length
-from dl_portfolio.weights import portfolio_weights
+from dl_portfolio.weights import portfolio_weights, equal_class_weights
 from dl_portfolio.constant import PORTFOLIOS
 
 
@@ -550,7 +532,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     ae_config = kwargs.get('ae_config')
     res = {}
 
-    model, scaler, dates, test_data, test_features, pred, _, decoding, _ = load_result(ae_config, test_set,
+    model, scaler, dates, test_data, test_features, pred, embedding, decoding, _ = load_result(ae_config, test_set,
                                                                                        data,
                                                                                        assets,
                                                                                        base_dir, cv)
@@ -569,6 +551,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     residuals = returns - pred
     scaled_residuals = residuals * std
 
+    res['embedding'] = embedding
     res['loading'] = decoding
     res['scaler'] = scaler
     res['test_features'] = test_features
@@ -582,8 +565,8 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
         res['port'] = portfolio_weights(train_returns,
                                         # shrink_cov=res['H'],
                                         budget=market_budget.loc[assets],
-                                        decoding=decoding,
-                                        embedding=decoding,
+                                        embedding=embedding,
+                                        loading=decoding,
                                         portfolio=portfolios,
                                         **kwargs
                                         )
