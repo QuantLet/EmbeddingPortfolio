@@ -1,0 +1,26 @@
+R version 4.0.2 (2020-06-22)
+Platform: x86_64-apple-darwin17.0 (64-bit)
+Running under: OS X  12.2.1
+
+Matrix products: default
+LAPACK: /Library/Frameworks/R.framework/Versions/4.0/Resources/lib/libRlapack.dylib
+
+locale:
+[1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+
+attached base packages:
+[1] parallel  stats     graphics  grDevices utils     datasets  methods   base
+
+other attached packages:
+ [1] rjson_0.2.21        doParallel_1.0.17   iterators_1.0.13    foreach_1.5.1       forecast_8.16
+ [6] xts_0.12.1          zoo_1.8-9           fGarch_3042.83.2    fBasics_3042.89.1   timeSeries_3062.100
+[11] timeDate_3043.102
+
+loaded via a namespace (and not attached):
+ [1] Rcpp_1.0.7       urca_1.3-0       pillar_1.6.4     compiler_4.0.2   tseries_0.10-49  tools_4.0.2
+ [7] nlme_3.1-148     lifecycle_1.0.1  tibble_3.1.6     gtable_0.3.0     lattice_0.20-41  pkgconfig_2.0.3
+[13] rlang_0.4.12     curl_4.3.2       dplyr_1.0.7      generics_0.1.1   vctrs_0.3.8      lmtest_0.9-39
+[19] grid_4.0.2       nnet_7.3-14      tidyselect_1.1.1 glue_1.6.0       R6_2.5.1         fansi_1.0.2
+[25] spatial_7.3-12   TTR_0.24.2       ggplot2_3.3.5    purrr_0.3.4      magrittr_2.0.1   codetools_0.2-16
+[31] scales_1.1.1     ellipsis_0.3.2   quantmod_0.4.18  colorspace_2.0-2 fracdiff_1.5-1   quadprog_1.5-8
+[37] utf8_1.2.2       munsell_0.5.0    crayon_1.4.2

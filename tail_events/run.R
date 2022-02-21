@@ -1,30 +1,17 @@
 rm(list = ls(all = TRUE))
 graphics.off()
-
-# install and load packages
-# libraries = c("fGarch", "FinTS", "forecast", "xts")
-# lapply(libraries, function(x) if (!(x %in% installed.packages())) {
-#   install.packages(x)
-# })
-# lapply(libraries, library, quietly = TRUE, character.only = TRUE)
-
-
 source("utils.R")
-# library(fGarch)
-# library(xts)
+library(rjson)
 
-libraries = c("rjson") # , "forecast", "parallel", "doParallel"
-lapply(libraries, function(x) if (!(x %in% installed.packages())) {
-  install.packages(x)
-})
-lapply(libraries, library, quietly = TRUE, character.only = TRUE)
-
+# ------------------------ Input ------------------------
 # Input
 config_path = "./config/dataset1.json"
 save = TRUE
 save_dir = "output"
-#-------------------------------------------------
-# Script
+
+
+# ------------------------ Script ------------------------
+
 config = fromJSON(file = config_path)
 run = config$run
 if (run == "train") {

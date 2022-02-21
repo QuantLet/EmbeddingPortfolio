@@ -7,7 +7,7 @@ library(doParallel)
 # library(POT)
 # library(ismev)
 # library(MLmetrics)
-source("definition.R")
+# source("definition.R")
 #library(fExtremes)
 
 get_cv_data = function(path, start_date, test_start, end_date, window_size = NULL) {
