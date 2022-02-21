@@ -14,12 +14,11 @@ from dl_portfolio.pca_ae import build_model, create_decoder
 from dl_portfolio.regularizers import WeightsOrthogonality
 from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge
 from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
+from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
 
 from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = './dl_portfolio/log'
-BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
-BASE_FACTOR_ORDER_RAFFINOT = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
 
 
 def build_linear_model(ae_config, reg_type: str, **kwargs):
@@ -469,8 +468,8 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
         new_order = [embedding.loc[c].idxmax() for c in base_order]
         test_features = reorder_columns(test_features, new_order)
         test_features.columns = base_order
-        embed = reorder_columns(embedding, new_order)
-        embed.columns = base_order
+        embedding = reorder_columns(embedding, new_order)
+        embedding.columns = base_order
         decoding = reorder_columns(decoding, new_order)
         decoding.columns = base_order
         if relu_activation is not None:

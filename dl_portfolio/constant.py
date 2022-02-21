@@ -16,6 +16,9 @@ LOG_DIR = 'log_AE'
 PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc',
               'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
 
+BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
+BASE_FACTOR_ORDER_RAFFINOT = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
+
 # Cv dates
 
 DATA_SPECS_BOND = {
