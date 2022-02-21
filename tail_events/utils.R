@@ -10,17 +10,17 @@ library(doParallel)
 source("definition.R")
 #library(fExtremes)
 
-get_cv_data = function(path, start_date, val_start, end_date, window_size = NULL) {
+get_cv_data = function(path, start_date, test_start, end_date, window_size = NULL) {
   # load dataset
   data = load_data(path = path, start_date = start_date, end_date = end_date)
-  train_data = data[index(data) < val_start]
+  train_data = data[index(data) < test_start]
   if (!is.null(window_size)) {
     start_date = index(train_data)[nrow(train_data) - config$window_size + 1]
     train_data = train_data[start_date <= index(train_data),]
   }
-  val_data = data[val_start <= index(data)]
+  test_data = data[test_start <= index(data)]
 
-  return(list(train = train_data, val = val_data))
+  return(list(train = train_data, test = test_data))
 }
 
 load_data = function(path, end_date = NULL, start_date = NULL, window_size = NULL) {

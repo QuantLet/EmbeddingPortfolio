@@ -40,8 +40,12 @@ if (save) {
   cwd = getwd()
   save_dir = file.path(cwd, save_dir)
   save_dir = file.path(save_dir, dataset)
+  time <- Sys.time()
   save_dir = file.path(save_dir, run)
-
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir)
+  }
+  save_dir = file.path(save_dir, gsub(' ', '', gsub('-', '', gsub(':', '', time))))
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
@@ -55,11 +59,11 @@ if (save) {
   save_path = NULL
 }
 
-predict_proba_wrapper = function(train_data, val_data, config, fit_model, next_proba) {
+predict_proba_wrapper = function(train_data, test_data, config, fit_model, next_proba) {
   # Find best model on train set
   best_model = model_selection(train_data, config$model.params, fit_model)
 
-  probas = predict_proba(train_data, val_data, config$window_size, best_model$model,
+  probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
                          fit_model, next_proba)
 
   return(probas)
@@ -69,13 +73,28 @@ t1 = Sys.time()
 counter = 1
 for (cv in 1:length(config$data_specs)) {
   print(cv)
+  cv_save_dir = file.path(save_dir, cv)
+  if (!dir.exists(cv_save_dir)) {
+    dir.create(cv_save_dir)
+  }
   # load dataset
   data_spec = config$data_specs[[cv]]
+  if (run == "train"){
+    test_start = data_spec$val_start
+    end = data_spec$test_start
+  }
+  if (run == "test"){
+    test_start = data_spec$test_start
+    end = data_spec$end
+  }
   data = get_cv_data(data_path,
                      data_spec$start,
-                     data_spec$val_start,
-                     data_spec$end,
+                     test_start,
+                     end,
                      config$window_size)
+  print(paste0("Last train: ", index(tail(data$train, 1))[1]))
+  print(paste0("First test: ", index(data$test)[1]))
+  
   factors = colnames(data$train)
   # Initialize tables
   if (counter == 1) {
@@ -86,47 +105,76 @@ for (cv in 1:length(config$data_specs)) {
                                                           nrow = nrow(data$train))),
                                         factors)
   cv_activation_probas = setNames(data.frame(matrix(ncol = length(factors),
-                                                    nrow = nrow(data$val))),
+                                                    nrow = nrow(data$test))),
                                   factors)
-
   for (ind in 1:length(factors)) {
+    # if (ind > 1){
+    #   break
+    # }
     factor.name = factors[ind]
     print(factor.name)
     train_data = data$train[, ind]
-    val_data = data$val[, ind]
+    test_data = data$test[, ind]
 
-    # probas = tryCatch(
-    #   predict_proba_wrapper(train_data, val_data, config, fit_model, next_proba),
-    #   error = function(e) data.frame(rep(NA, nrow(val_data))), 
-    #   silent = FALSE)
     best_model = model_selection(train_data, config$model.params, fit_model)
+    model_path = file.path(cv_save_dir, paste0(factors[ind], "model.rds"))
+    saveRDS(best_model$model, file = model_path)
 
     # Get proba on train set
-    dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
-    train_probas = xts(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func),
-                       order.by = index(train_data))
-    probas = predict_proba(train_data, val_data, config$window_size, best_model$model,
-                           fit_model, next_proba)
+    if (!is.null(best_model$model)){
+      dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
+      train_probas = xts(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func),
+                         order.by = index(train_data))
+      probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
+                             fit_model, next_proba)
+    } else {
+      train_probas = xts(matrix(NaN, nrow=nrow(train_data), ncol=ncol(train_data)), 
+                         order.by = index(train_data))
+      probas = xts(matrix(NaN, nrow=nrow(test_data), ncol=ncol(test_data)), 
+                         order.by = index(test_data))
+      
+    }
     colnames(probas) = factor.name
     colnames(train_probas) = factor.name
     cv_train_activation_probas[factor.name] = train_probas
     cv_activation_probas[factor.name] = probas
   }
   cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
-  cv_activation_probas = xts(cv_activation_probas, order.by = index(val_data))
+  cv_activation_probas = xts(cv_activation_probas, order.by = index(test_data))
+  write.zoo(cv_train_activation_probas, 
+            file = file.path(cv_save_dir, "train_activation_probas.csv"), 
+            sep = ",")
+  write.zoo(cv_activation_probas,
+            file = file.path(cv_save_dir, "activation_probas.csv"), 
+            sep = ",")
+  
+  if (nrow(train_activation_probas) > 0){
+    cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
+  }
   train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
-  activation_probas = rbind(activation_probas, cv_activation_probas)
+  train_activation_probas = as.xts(train_activation_probas)
+  activation_probas =  rbind(activation_probas, cv_activation_probas)
+  activation_probas = as.xts(activation_probas)
+  
+  
   print("Train probas")
   print(tail(train_activation_probas))
   print("Test probas")
   print(tail(activation_probas))
   counter = counter + 1
+  last_train_date = index(data$train)[nrow(data$train)]
+  
 }
-train_activation_probas = as.xts(train_activation_probas)
-activation_probas = as.xts(activation_probas)
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
 
 write.zoo(train_activation_probas, file = train_save_path, sep = ",")
 write.zoo(activation_probas, file = save_path, sep = ",")
+
+# cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
+# train_activation_probas = as.xts(train_activation_probas)
+# 
+# last_ind = index(train_activation_probas)[(nrow(train_activation_probas) - 10)]
+# cv_train_activation_probas[index(cv_train_activation_probas) > last_ind,]
+
 
