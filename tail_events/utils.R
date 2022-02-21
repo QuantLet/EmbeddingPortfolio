@@ -24,9 +24,9 @@ get_cv_data = function(path, start_date, test_start, end_date, window_size = NUL
 }
 
 load_data = function(path, end_date = NULL, start_date = NULL, window_size = NULL) {
-  data <- read.zoo(path, index.column = 1, dec = ".", sep = ",",
-                   format = "%Y-%m-%d", read = read.csv)
-  data <- as.xts(data)
+  data = read.zoo(path, index.column = 1, dec = ".", sep = ",",
+                  format = "%Y-%m-%d", read = read.csv)
+  data = as.xts(data)
   if (!is.null(end_date)) {
     data = data[index(data) <= end_date,]
   }
@@ -43,13 +43,13 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL) {
   n = nrow(data)
   # Select mean model
   if (is.null(formula)) {
-    ARIMAfit <- forecast::auto.arima(data, method="CSS-ML", start.p = 1, start.q = 1, seasonal=FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+    ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
     arima.order = unname(forecast::arimaorder(ARIMAfit))
     n_nans = 0
     if (arima.order[2] > 0) {
-      data = diff(data, lag=1, differences=arima.order[2], na.pad = FALSE)
+      data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
       n_nans = n - nrow(data)
-      ARIMAfit <- forecast::auto.arima(data, method="CSS-ML", start.p = 1, start.q = 1, seasonal=FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
       arima.order = unname(forecast::arimaorder(ARIMAfit))
     }
     stopifnot(arima.order[2] == 0)
@@ -57,20 +57,20 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL) {
                          list(a = arima.order[1], b = arima.order[3], p = p, q = q))
   }
   garch.model = tryCatch(
+  {
+    garch.model = fGarch::garchFit(
+      formula = formula,
+      data = data,
+      cond.dist = cond.dist,
+      # algorithm = "lbfgsb",
+      trace = FALSE)
+    return(list(model = garch.model, aic = garch.model@fit$ics[1]))
+  },
+    error = function(e)
     {
-      garch.model = fGarch::garchFit(
-        formula = formula,
-        data = data,
-        cond.dist = cond.dist,
-        # algorithm = "lbfgsb",
-        trace = FALSE)
-      return(list(model = garch.model, aic = garch.model@fit$ics[1]))
+      message(e)
+      return(list(model = NULL, aic = Inf))
     },
-    error = function(e) 
-      {
-        message(e)
-        return(list(model = NULL, aic = Inf))
-      },
     silent = FALSE)
 }
 
@@ -88,9 +88,9 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
 
   if (parallel) {
     # Get number of cores
-    n.cores <- parallel::detectCores() - 1
+    n.cores = parallel::detectCores() - 1
     #create the cluster
-    my.cluster <- parallel::makeCluster(
+    my.cluster = parallel::makeCluster(
       n.cores
     )
     #register it to be used by %dopar%
@@ -101,7 +101,7 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
     # How many workers are availalbes ?
     # print(paste(foreach::getDoParWorkers()," workers available"))
 
-    result <- foreach(
+    result = foreach(
       cond.dist = tuning.grid$cond.dist,
       garch.order.p = tuning.grid$garch.order.p,
       garch.order.q = tuning.grid$garch.order.q,
@@ -143,9 +143,9 @@ predict_proba = function(train_data, test_data, window_size, model,
 
   if (parallel) {
     # Get number of cores
-    n.cores <- parallel::detectCores() - 1
+    n.cores = parallel::detectCores() - 1
     #create the cluster
-    my.cluster <- parallel::makeCluster(
+    my.cluster = parallel::makeCluster(
       n.cores
     )
     #register it to be used by %dopar%
@@ -155,7 +155,7 @@ predict_proba = function(train_data, test_data, window_size, model,
     stopifnot(foreach::getDoParRegistered())
     # How many workers are availalbes ?
     # print(paste(foreach::getDoParWorkers()," workers available"))
-    probas <- foreach(
+    probas = foreach(
       i = 1:nrow(test_data),
       .combine = 'c',
       .packages = c("forecast", "fGarch")
@@ -232,31 +232,31 @@ next_proba = function(object, conf = 0.95) {
   # https://rdrr.io/cran/fGarch/src/R/methods-predict.R
 
   if (cond.dist == "norm") {
-    crit_valu <- qnorm(1 - (1 - conf) / 2)
-    crit_vald <- qnorm((1 - conf) / 2)
+    crit_valu = qnorm(1 - (1 - conf) / 2)
+    crit_vald = qnorm((1 - conf) / 2)
   }
   if (cond.dist == "snorm") {
-    crit_valu <- qsnorm(1 - (1 - conf) / 2, xi = coef(object)["skew"])
-    crit_vald <- qsnorm((1 - conf) / 2, xi = coef(object)["skew"])
+    crit_valu = qsnorm(1 - (1 - conf) / 2, xi = coef(object)["skew"])
+    crit_vald = qsnorm((1 - conf) / 2, xi = coef(object)["skew"])
   }
   if (cond.dist == "std") {
-    crit_valu <- fGarch::qstd(1 - (1 - conf) / 2, nu = coef(object)["shape"])
-    crit_vald <- fGarch::qstd((1 - conf) / 2, nu = coef(object)["shape"])
+    crit_valu = fGarch::qstd(1 - (1 - conf) / 2, nu = coef(object)["shape"])
+    crit_vald = fGarch::qstd((1 - conf) / 2, nu = coef(object)["shape"])
   }
   if (cond.dist == "sstd") {
-    crit_valu <- fGarch::qsstd(1 - (1 - conf) / 2, nu = coef(object)["shape"],
-                               xi = coef(object)["skew"])
-    crit_vald <- fGarch::qsstd((1 - conf) / 2, nu = coef(object)["shape"],
-                               xi = coef(object)["skew"])
+    crit_valu = fGarch::qsstd(1 - (1 - conf) / 2, nu = coef(object)["shape"],
+                              xi = coef(object)["skew"])
+    crit_vald = fGarch::qsstd((1 - conf) / 2, nu = coef(object)["shape"],
+                              xi = coef(object)["skew"])
   }
   if (cond.dist == "QMLE") {
-    e <- sort(object@residuals / object@sigma.t)
-    crit_valu <- e[round(t * (1 - (1 - conf) / 2))]
-    crit_vald <- e[round(t * (1 - conf) / 2)]
+    e = sort(object@residuals / object@sigma.t)
+    crit_valu = e[round(t * (1 - (1 - conf) / 2))]
+    crit_vald = e[round(t * (1 - conf) / 2)]
   }
 
-  int_l <- meanForecast + crit_vald * meanError
-  int_u <- meanForecast + crit_valu * meanError
+  int_l = meanForecast + crit_vald * meanError
+  int_u = meanForecast + crit_valu * meanError
 
   # Calculate proba
   Z_hat = -meanForecast / sdForecast
