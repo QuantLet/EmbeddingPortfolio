@@ -7,7 +7,7 @@ from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.cluster import get_cluster_labels
+from dl_portfolio.hedge import hedged_portfolio_weights
 from dl_portfolio.ae_data import load_data
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import DATA_SPECS_BOND, DATA_SPECS_MULTIASSET_TRADITIONAL
@@ -16,7 +16,7 @@ from dl_portfolio.weights import portfolio_weights, equal_class_weights
 from dl_portfolio.constant import PORTFOLIOS
 
 
-def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 252, format: bool = True, **kwargs):
+def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format: bool = True, **kwargs):
     """
 
     :param perf:
@@ -481,7 +481,14 @@ def cv_portfolio_perf(cv_results: Dict,
                       **kwargs) -> Union[Dict, pd.DataFrame]:
     """
 
-    :param cv_results:
+    :param cv_results: Dictionnary with keys:
+     - first key is cv fold
+     - for each cv:
+        - "port" for portfolio weights with each strategy as key: [cv]["port"]["hrp"], [cv]["port"]["rp"], etc.
+        - "train_returns"
+        - "returns"
+
+
     :param portfolios:
     :param annualized:
     :param fee: 2 bps = 0.02 %
@@ -533,9 +540,9 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
     res = {}
 
     model, scaler, dates, test_data, test_features, pred, embedding, decoding, _ = load_result(ae_config, test_set,
-                                                                                       data,
-                                                                                       assets,
-                                                                                       base_dir, cv)
+                                                                                               data,
+                                                                                               assets,
+                                                                                               base_dir, cv)
 
     std = np.sqrt(scaler['attributes']['var_'])
     data = data.pct_change(1).dropna()
