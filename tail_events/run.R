@@ -14,6 +14,7 @@ save_dir = "output"
 
 config = fromJSON(file = config_path)
 run = config$run
+debug = config$debug
 if (run == "train") {
   data_path = config$datapath$train
 }
@@ -64,7 +65,7 @@ predict_proba_wrapper = function(train_data, test_data, config, fit_model, next_
 
 t1 = Sys.time()
 counter = 1
-for (cv in 1:length(config$data_specs)) {
+for (cv in 4:length(config$data_specs)) {
   print(cv)
   cv_save_dir = file.path(save_dir, cv)
   if (!dir.exists(cv_save_dir)) {
@@ -109,51 +110,57 @@ for (cv in 1:length(config$data_specs)) {
     train_data = data$train[, ind]
     test_data = data$test[, ind]
 
-    best_model = model_selection(train_data, config$model.params, fit_model)
+    best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug)
     model_path = file.path(cv_save_dir, paste0(factors[ind], "model.rds"))
     saveRDS(best_model$model, file = model_path)
 
     # Get proba on train set
+    
     if (!is.null(best_model$model)){
       dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
-      train_probas = xts(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func),
-                         order.by = index(train_data))
+      n.fitted = length(best_model$model@fitted)
+      train_probas = unname(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func))
+      nans = nrow(train_data) - length(train_probas)
+      if (nans > 0){
+        train_probas = c(rep(NaN, nans), train_probas) # c(rep(NaN, nans), as.vector(train_probas[,1]))
+      }
       probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
-                             fit_model, next_proba)
-    } else {
-      train_probas = xts(matrix(NaN, nrow=nrow(train_data), ncol=ncol(train_data)), 
-                         order.by = index(train_data))
-      probas = xts(matrix(NaN, nrow=nrow(test_data), ncol=ncol(test_data)), 
-                         order.by = index(test_data))
+                             fit_model, next_proba, parallel = !debug)
       
+    } else {
+      train_probas = rep(NaN, length(index(train_data)))
+      probas = rep(NaN, length(index(test_data)))
     }
-    colnames(probas) = factor.name
+    train_probas = xts(train_probas,  order.by = index(train_data))
     colnames(train_probas) = factor.name
+    probas = xts(probas,  order.by = index(test_data))
+    colnames(probas) = factor.name
+
     cv_train_activation_probas[factor.name] = train_probas
     cv_activation_probas[factor.name] = probas
   }
   cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
   cv_activation_probas = xts(cv_activation_probas, order.by = index(test_data))
-  write.zoo(cv_train_activation_probas, 
-            file = file.path(cv_save_dir, "train_activation_probas.csv"), 
+  write.zoo(cv_train_activation_probas,
+            file = file.path(cv_save_dir, "train_activation_probas.csv"),
             sep = ",")
   write.zoo(cv_activation_probas,
-            file = file.path(cv_save_dir, "activation_probas.csv"), 
+            file = file.path(cv_save_dir, "activation_probas.csv"),
             sep = ",")
   
   if (nrow(train_activation_probas) > 0){
     cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
   }
+  
   train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
   train_activation_probas = as.xts(train_activation_probas)
   activation_probas =  rbind(activation_probas, cv_activation_probas)
   activation_probas = as.xts(activation_probas)
-  
-  
+
   print("Train probas")
   print(tail(train_activation_probas))
   print("Test probas")
-  print(tail(activation_probas))
+  print(head(activation_probas))
   counter = counter + 1
   last_train_date = index(data$train)[nrow(data$train)]
   
@@ -163,11 +170,5 @@ print(paste("Total time:", t2 - t1))
 
 write.zoo(train_activation_probas, file = train_save_path, sep = ",")
 write.zoo(activation_probas, file = save_path, sep = ",")
-
-# cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
-# train_activation_probas = as.xts(train_activation_probas)
-# 
-# last_ind = index(train_activation_probas)[(nrow(train_activation_probas) - 10)]
-# cv_train_activation_probas[index(cv_train_activation_probas) > last_ind,]
 
 

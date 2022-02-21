@@ -40,31 +40,38 @@ load_data = function(path, end_date = NULL, start_date = NULL, window_size = NUL
 }
 
 fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL) {
+  n = nrow(data)
   # Select mean model
   if (is.null(formula)) {
-    ARIMAfit <- forecast::auto.arima(data)
+    ARIMAfit <- forecast::auto.arima(data, method="CSS-ML", start.p = 1, start.q = 1, seasonal=FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
     arima.order = unname(forecast::arimaorder(ARIMAfit))
+    n_nans = 0
+    if (arima.order[2] > 0) {
+      data = diff(data, lag=1, differences=arima.order[2], na.pad = FALSE)
+      n_nans = n - nrow(data)
+      ARIMAfit <- forecast::auto.arima(data, method="CSS-ML", start.p = 1, start.q = 1, seasonal=FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+      arima.order = unname(forecast::arimaorder(ARIMAfit))
+    }
     stopifnot(arima.order[2] == 0)
     formula = substitute(~arma(a, b) + garch(p, q),
                          list(a = arima.order[1], b = arima.order[3], p = p, q = q))
   }
   garch.model = tryCatch(
-  {
-    garch.model = fGarch::garchFit(
-      formula = formula,
-      data = data,
-      cond.dist = cond.dist,
-      # algorithm = "lbfgsb",
-      trace = FALSE)
-    return(list(model = garch.model, aic = garch.model@fit$ics[1]))
-  },
-    error = function(e) {
-      message(e)
-      return(list(model = NULL, aic = Inf))
+    {
+      garch.model = fGarch::garchFit(
+        formula = formula,
+        data = data,
+        cond.dist = cond.dist,
+        # algorithm = "lbfgsb",
+        trace = FALSE)
+      return(list(model = garch.model, aic = garch.model@fit$ics[1]))
     },
+    error = function(e) 
+      {
+        message(e)
+        return(list(model = NULL, aic = Inf))
+      },
     silent = FALSE)
-
-  return(garch.model)
 }
 
 
@@ -128,7 +135,7 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
   return(list(model = best_model, aic = aic))
 }
 
-predict_proba = function(train_data, val_data, window_size, model,
+predict_proba = function(train_data, test_data, window_size, model,
                          fit_model, next_proba, parallel = TRUE) {
 
   formula = model@formula
@@ -149,7 +156,7 @@ predict_proba = function(train_data, val_data, window_size, model,
     # How many workers are availalbes ?
     # print(paste(foreach::getDoParWorkers()," workers available"))
     probas <- foreach(
-      i = 1:nrow(val_data),
+      i = 1:nrow(test_data),
       .combine = 'c',
       .packages = c("forecast", "fGarch")
     ) %dopar% {
@@ -161,7 +168,7 @@ predict_proba = function(train_data, val_data, window_size, model,
         )
 
       } else {
-        temp = rbind(train_data, val_data[1:(i - 1),])
+        temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
         temp = temp / sd(temp)
@@ -185,34 +192,22 @@ predict_proba = function(train_data, val_data, window_size, model,
     parallel::stopCluster(cl = my.cluster)
   } else {
     probas = c()
-    for (i in 1:nrow(val_data)) {
+    for (i in 1:nrow(test_data)) {
       if (i == 1) {
         if (!is.null(model)) {
-          proba = tryCatch(
-            next_proba(model),
-            error = function(e) NaN,
-            silent = FALSE
-          )
+          proba = next_proba(model)
         } else {
           proba = NaN
         }
       } else {
-        temp = rbind(train_data, val_data[1:(i - 1),])
+        temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
         temp = temp / sd(temp)
-        # model = tryCatch(
-        #   fit_model(temp, cond.dist, formula=formula),
-        #   error = function(e) list(model=NULL, aic=Inf),
-        #   silent = FALSE)
         model = fit_model(temp, cond.dist, formula = formula)
         model = model$model
         if (!is.null(model)) {
-          proba = tryCatch(
-            next_proba(model),
-            error = function(e) NaN,
-            silent = FALSE
-          )
+          proba = next_proba(model)
         } else {
           proba = NaN
         }
@@ -220,14 +215,14 @@ predict_proba = function(train_data, val_data, window_size, model,
       probas = c(probas, proba)
     }
   }
-  probas = xts(probas, order.by = index(val_data))
-  colnames(probas) = "proba"
+  # probas = xts(probas, order.by = index(test_data))
+  # colnames(probas) = "proba"
 
   return(probas)
 }
 
 next_proba = function(object, conf = 0.95) {
-  cond.dist = model@fit$params$cond.dist
+  cond.dist = object@fit$params$cond.dist
   # Predict next value
   model.forecast = fGarch::predict(object = object, n.ahead = 1, conf = conf)
   meanForecast = model.forecast$meanForecast # conditional mean from mean model
