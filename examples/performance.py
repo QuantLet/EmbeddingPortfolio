@@ -12,7 +12,8 @@ from sklearn import metrics, preprocessing
 
 from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
     get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights
-from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, assign_cluster_from_consmat
+from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, \
+    assign_cluster_from_consmat
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
@@ -178,7 +179,7 @@ if __name__ == "__main__":
                      }
         } for cv in cv_returns
     }
-    port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, annualized=True,
+    port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, volatility_target=0.05,
                                             market_budget=market_budget)
 
     K = cv_results[i][0]['loading'].shape[-1]
@@ -490,7 +491,6 @@ if __name__ == "__main__":
     #         plt.show()
     #     plt.close()
 
-
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
     trii = np.triu_indices(n_runs, k=1)
@@ -536,7 +536,6 @@ if __name__ == "__main__":
         # plt.close()
 
         avg_cons_mat += cons_mat
-    pickle.dump(cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb"))
 
     avg_cons_mat = avg_cons_mat / len(cv_labels)
     plt.figure(figsize=(10, 10))
@@ -549,4 +548,5 @@ if __name__ == "__main__":
 
     # Save final result
     if args.save:
+        pickle.dump(cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb"))
         json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
