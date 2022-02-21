@@ -26,12 +26,18 @@ if (save) {
   dataset = strsplit(dataset, ".json")[[1]]
   cwd = getwd()
   save_dir = file.path(cwd, save_dir)
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir)
+  }
   save_dir = file.path(save_dir, dataset)
-  time <- Sys.time()
+  if (!dir.exists(save_dir)) {
+    dir.create(save_dir)
+  }
   save_dir = file.path(save_dir, run)
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
+  time <- Sys.time()
   save_dir = file.path(save_dir, gsub(' ', '', gsub('-', '', gsub(':', '', time))))
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
