@@ -65,7 +65,7 @@ predict_proba_wrapper = function(train_data, test_data, config, fit_model, next_
 
 t1 = Sys.time()
 counter = 1
-for (cv in 4:length(config$data_specs)) {
+for (cv in 1:length(config$data_specs)) {
   print(cv)
   cv_save_dir = file.path(save_dir, cv)
   if (!dir.exists(cv_save_dir)) {
