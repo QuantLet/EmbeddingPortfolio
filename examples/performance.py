@@ -12,7 +12,7 @@ from sklearn import metrics, preprocessing
 
 from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
     get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights
-from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation
+from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, assign_cluster_from_consmat
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
@@ -516,7 +516,7 @@ if __name__ == "__main__":
     cluster_assignment = {}
     for cv in cv_labels:
         cons_mat = consensus_matrix(cv_labels[cv], reorder=True, method="single")
-        cluster_assignment[cv] = cons_mat.loc[CLUSTER_NAMES].idxmax()
+        cluster_assignment[cv] = assign_cluster_from_consmat(cons_mat, CLUSTER_NAMES, t=0)
 
         if cv == 0:
             order0 = cons_mat.index

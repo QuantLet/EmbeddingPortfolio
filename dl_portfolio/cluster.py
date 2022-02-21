@@ -2,9 +2,24 @@ import pandas as pd
 import numpy as np
 from sklearn import metrics
 from sklearn.cluster import KMeans
-from typing import Dict
-from scipy.spatial.distance import pdist, squareform
+from typing import Dict, List
+from scipy.spatial.distance import squareform
 from fastcluster import linkage
+
+
+def assign_cluster_from_consmat(cons_mat: pd.DataFrame, cluster_names: List[str], t: float):
+    """
+    First check if asset fall in one (or more) of the clusters for a certain proportion of runs (t)
+    Then, select cluster which includes the asset the most
+    :param cons_mat: pd.DataFrame
+    :param cluster_names: list
+    :param t: float
+    :return:
+    """
+    assigned = cons_mat.loc[cluster_names].sum() > t
+    cluster_assignment = pd.Series(index=cons_mat.index, dtype="object")
+    cluster_assignment.loc[assigned] = cons_mat.loc[cluster_names, assigned].idxmax()
+    return cluster_assignment
 
 
 def get_cluster_labels(embedding: pd.DataFrame, threshold: float = 0.1):
