@@ -10,6 +10,7 @@ from dl_portfolio.ae_data import load_data
 from dl_portfolio.hedge import hedged_portfolio_weights_wrapper
 from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
+from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
 if __name__ == "__main__":
     import argparse
@@ -19,6 +20,10 @@ if __name__ == "__main__":
                         default=None,
                         type=str,
                         help="Dataset name: dataset1 or dataset2")
+    parser.add_argument("--method",
+                        default="hedged_strat_cum_excess_return_cluster",
+                        type=str,
+                        help="Method to compute optimal threshold")
     parser.add_argument("--n_jobs",
                         default=os.cpu_count() - 1,
                         type=int,
@@ -30,6 +35,8 @@ if __name__ == "__main__":
                         action='store_true',
                         help="Show performance")
     args = parser.parse_args()
+    assert args.method in AVAILABLE_METHODS, args.method
+
     # ------------------------------------------------ input ------------------------------------------------
     # dataset1
     dataset = args.dataset
@@ -55,9 +62,11 @@ if __name__ == "__main__":
         # Define paths
         ae_base_dir = "final_models/ae/dataset/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
         garch_base_dir = "./activationProba/output/dataset2/test/20220222100230_ec2_run_1"
-        perf_dir = "performance/test_final_models/ae/dataset2_20220222_135813"
+        perf_dir = "performance/test_final_models/ae/dataset2_20220222_162628"
         # Load data
         data, assets = load_data(dataset="raffinot_bloomberg_comb_update_2021")
+        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
+        market_budget['rc'] = market_budget['rc'].astype(int)
     else:
         raise NotImplementedError(dataset)
 
@@ -81,20 +90,22 @@ if __name__ == "__main__":
             cv_results = _parallel_pool(
                 delayed(hedged_portfolio_weights_wrapper)(cv, returns, cluster_assignment[cv],
                                                           f"{garch_base_dir}/{cv}",
-                                                          port_weights, strats=strats, window=None)
+                                                          port_weights, strats=strats, method=args.method)
                 for cv in cv_folds
             )
         # cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
         cv_results = {cv: res for (cv, res) in cv_results}
         LOGGER.info("Done.")
     else:
+        LOGGER.info(f"n_jobs = 1: compute weights sequentially...")
         cv_results = {}
         for cv in cv_folds:
-            LOGGER.info(f"CV: {cv}")
             cv_results[cv] = hedged_portfolio_weights_wrapper(cv, returns, cluster_assignment[cv],
                                                               f"{garch_base_dir}/{cv}",
-                                                              port_weights, strats=strats, window=None)
+                                                              port_weights, strats=strats, method=args.method)
+        LOGGER.info("Done.")
 
+    LOGGER.info("Portfolio returns...")
     # Now parse cv portfolio weights and train weights
     cv_portfolio = {
         cv: {
@@ -112,6 +123,7 @@ if __name__ == "__main__":
     }
     # Get portfolio returns
     port_perf, leverage = cv_portfolio_perf_df(cv_portfolio, train_weights, portfolios=strats)
+    LOGGER.info("Done.")
 
     # Format final results
     port_returns = pd.DataFrame()
@@ -120,17 +132,22 @@ if __name__ == "__main__":
     new_port_weights = {
         strat: {cv: cv_results[cv]["port"][strat] for cv in cv_results} for strat in strats
     }
+    signals = {
+        strat: {cv: cv_results[cv]["signal"][strat] for cv in cv_results} for strat in strats
+    }
 
     if args.save:
         LOGGER.info('Saving results... ')
-        port_returns.to_csv(f"{perf_dir}/portfolios_returns_hedged.csv")
-        leverage.to_csv(f"{perf_dir}/leverage_hedged.csv")
-        pickle.dump(new_port_weights, open(f"{perf_dir}/portfolios_weights_hedged.p", "wb"))
+        port_returns.to_csv(f"{perf_dir}/portfolios_returns_hedged_{METHODS_MAPPING[args.method]}.csv")
+        leverage.to_csv(f"{perf_dir}/leverage_hedged_{METHODS_MAPPING[args.method]}.csv")
+        pickle.dump(signals, open(f"{perf_dir}/hedging_signals_{METHODS_MAPPING[args.method]}.p", "wb"))
+        pickle.dump(new_port_weights,
+                    open(f"{perf_dir}/portfolios_weights_hedged_{METHODS_MAPPING[args.method]}.p", "wb"))
 
     if args.show:
         LOGGER.info('Show performance... ')
         or_port_perf = pd.read_csv(f"{perf_dir}/portfolios_returns.csv",
-                               index_col=0)
+                                   index_col=0)
         or_port_perf.index = pd.to_datetime(or_port_perf.index)
         for strat in strats:
             plt.figure(figsize=(20, 10))

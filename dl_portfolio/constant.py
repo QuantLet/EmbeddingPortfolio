@@ -19,6 +19,8 @@ PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'a
 BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
 BASE_FACTOR_ORDER_RAFFINOT = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
 
+AVAILABLE_METHODS = ["hedged_strat_cum_excess_return_cluster", "hedged_equal_cum_excess_return_cluster"]
+METHODS_MAPPING = {k: i for i, k in enumerate(AVAILABLE_METHODS)}
 # Cv dates
 
 DATA_SPECS_BOND = {
