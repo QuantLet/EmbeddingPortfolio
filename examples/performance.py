@@ -309,12 +309,15 @@ if __name__ == "__main__":
     if args.save:
         stats.to_csv(f"{save_dir}/backtest_stats.csv")
     print(stats.to_string())
+    LOGGER.info("Done with backtest.")
 
     ##########################
     # Model evaluation
     # Average prediction across runs for each cv
+    LOGGER.info("Starting with evaluation...")
     returns, scaled_returns, pred, scaled_pred = average_prediction_cv(cv_results)
 
+    LOGGER.info("Prediction metric")
     # Compute pred metric
     total_rmse = []
     total_r2 = []
@@ -330,7 +333,6 @@ if __name__ == "__main__":
 
     # Average prediction across runs
     returns, scaled_returns, pred, scaled_pred = average_prediction(cv_results)
-
     # Compute pred metric
     scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
     same_ret = pd.DataFrame(scaler.fit_transform(returns), index=returns.index, columns=returns.columns)
@@ -342,13 +344,15 @@ if __name__ == "__main__":
                                  returns.columns}
     EVALUATION['model']['total_r2'] = metrics.r2_score(returns, pred, multioutput='uniform_average')
 
-    if args.save:
-        pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
-    else:
-        pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
+    # if args.save:
+    #     pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
+    # else:
+    #     pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
+    LOGGER.info("Done.")
 
     # loading analysis
     # loading over cv folds
+    LOGGER.info("CV loadings plots")
     p = 0
     n_cv = len(cv_results[p])
     n_cols = 6
@@ -379,8 +383,10 @@ if __name__ == "__main__":
     if args.show:
         plt.show()
     plt.close()
+    LOGGER.info("Done.")
 
     # Correlation
+    LOGGER.info("Correlation...")
     avg_cv_corr = []
     for cv in range(n_folds):
         cv_corr = []
@@ -438,7 +444,9 @@ if __name__ == "__main__":
     if args.show:
         plt.show()
     plt.close()
+    LOGGER.info("Done.")
 
+    LOGGER.info("Cluster analysis...")
     # Cluster analysis
     cv_labels = {}
     for cv in range(n_folds):
@@ -523,8 +531,11 @@ if __name__ == "__main__":
     if args.show:
         plt.show()
     plt.close()
+    LOGGER.info("Done.")
 
+    LOGGER.info("Saving final results...")
     # Save final result
     if args.save:
         pickle.dump(cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb"))
         json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
+    LOGGER.info("Done.")
