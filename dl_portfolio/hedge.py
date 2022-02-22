@@ -1,5 +1,41 @@
 import numpy as np
 import pandas as pd
+from typing import List, Dict
+
+
+def hedged_portfolio_weights_wrapper(cv: int, returns: pd.DataFrame, cluster: pd.Series, cv_garch_dir: str,
+                                     or_port_weights: Dict, strats: List[str] = ['ae_rp_c', 'aeaa', 'aerp', 'aeerc'],
+                                     window=None):
+    assets = list(returns.columns)
+    train_probas = pd.read_csv(f"{cv_garch_dir}/train_activation_probas.csv", index_col=0)
+    train_probas.index = pd.to_datetime(train_probas.index)
+    probas = pd.read_csv(f"{cv_garch_dir}/activation_probas.csv", index_col=0)
+
+    # Handle stupid renaming of columns from R
+    probas = probas[train_probas.columns]  # Just to be sure
+    columns = list(train_probas.columns)
+    columns = [c.replace(".", "-") for c in columns]
+    train_probas.columns = columns
+    probas.columns = columns
+
+    probas.index = pd.to_datetime(probas.index)
+    train_returns = returns.loc[train_probas.index]
+    test_returns = returns.loc[probas.index]
+
+    if window is not None:
+        assert isinstance(window, int)
+        train_returns = train_returns.iloc[-window:]
+
+    res = {"port": {}}
+    for strat in strats:
+        original_weights = or_port_weights[strat].iloc[cv][assets]
+        hedged_weights = hedged_portfolio_weights(train_returns, train_probas, probas, cluster, assets,
+                                                  original_weights)
+        res["port"][strat] = hedged_weights
+    res["train_returns"] = train_returns
+    res["returns"] = test_returns
+
+    return res
 
 
 def hedged_portfolio_weights(train_returns, train_probas, probas, cluster, assets, original_weights):
@@ -61,6 +97,8 @@ def get_hedged_cum_excess_return_cluster(returns, weights, probas, cluster, clus
 
 
 def get_best_threshold(returns, weights, probas, cluster, cluster_name, method="cum_excess_return"):
+    print(probas)
+    print(cluster_name)
     thresholds = np.linspace(0, np.max(probas[cluster_name]) + 1e-6, 100)
     if method == "cum_excess_return":
         metric = [[get_hedged_cum_excess_return_cluster(returns, weights, probas, cluster, cluster_name, t),
