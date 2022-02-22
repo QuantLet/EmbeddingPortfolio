@@ -18,19 +18,7 @@ from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
 
-# PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-# STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-
-# AE bond
-# PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-# STRAT = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-
-# AE raffinot
-PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
-STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-
-# PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'ae_rp', 'ae_rp_c', 'aeaa']
-# STRAT = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa']
+PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 if __name__ == "__main__":
     import argparse, json
@@ -147,7 +135,7 @@ if __name__ == "__main__":
         if i == 0:
             portfolios = PORTFOLIOS
         else:
-            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['ae_ivp', 'ae_rp', 'ae_rp_c']
+            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['aerp', 'aeerc', 'ae_rp_c']
         cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,
@@ -197,16 +185,6 @@ if __name__ == "__main__":
     for p in PORTFOLIOS:
         ann_perf[p] = port_perf[p]['total'].iloc[:, 0]
 
-    # Some renaming
-    port_weights['aerp'] = port_weights['ae_ivp'].copy()
-    port_weights['aeerc'] = port_weights['ae_rp'].copy()
-    ann_perf['aerp'] = ann_perf.loc[:, 'ae_ivp'].values
-    ann_perf['aeerc'] = ann_perf.loc[:, 'ae_rp'].values
-
-    port_weights.pop('ae_ivp')
-    port_weights.pop('ae_rp')
-    ann_perf.drop(['ae_ivp', 'ae_rp'], axis=1, inplace=True)
-
     ##########################
     # Backtest performance
     if args.save:
@@ -214,10 +192,10 @@ if __name__ == "__main__":
         ann_perf.to_csv(f"{save_dir}/portfolios_returns.csv")
         leverage.to_csv(f"{save_dir}/leverage.csv")
         pickle.dump(port_weights, open(f"{save_dir}/portfolios_weights.p", "wb"))
-        plot_perf(ann_perf, strategies=STRAT,
+        plot_perf(ann_perf, strategies=PORTFOLIOS,
                   save_path=f"{save_dir}/performance_all.png",
                   show=args.show, legend=args.legend)
-        plot_perf(ann_perf, strategies=[p for p in STRAT if p not in ['aerp', 'aeerc']],
+        plot_perf(ann_perf, strategies=[p for p in PORTFOLIOS if p not in ['aerp', 'aeerc']],
                   save_path=f"{save_dir}/performance_ae_rp_c_vs_all.png",
                   show=args.show, legend=args.legend)
         if 'hrp' in PORTFOLIOS:
@@ -256,7 +234,7 @@ if __name__ == "__main__":
         bar_plot_weights(port_weights['aeaa'], save_path=f"{save_dir}/weights_aeaa.png", show=args.show,
                          legend=args.legend)
     else:
-        plot_perf(ann_perf, strategies=STRAT, show=args.show, legend=args.legend)
+        plot_perf(ann_perf, strategies=PORTFOLIOS, show=args.show, legend=args.legend)
         if 'hrp' in PORTFOLIOS:
             plot_perf(ann_perf, strategies=['hrp', 'aerp'], show=args.show, legend=args.legend)
             bar_plot_weights(port_weights['hrp'], show=args.show)

@@ -18,7 +18,7 @@ from dl_portfolio.constant import PORTFOLIOS
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None, loading=None,
-                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp', 'herc'],
+                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc', 'herc'],
                       **kwargs):
     assert all([p in PORTFOLIOS for p in portfolio]), [p for p in portfolio if p not in PORTFOLIOS]
     port_w = {}
@@ -63,19 +63,19 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None, loa
         assert embedding is not None
         port_w['kmaa'] = kmaa_weights(returns, n_clusters=embedding.shape[-1])
 
-    if 'ae_ivp' in portfolio:
-        LOGGER.info('Computing AE IVP weights...')
+    if 'aerp' in portfolio:
+        LOGGER.info('Computing AE Risk Parity weights...')
         assert embedding is not None
-        port_w['ae_ivp'] = ae_ivp_weights(returns, embedding)
+        port_w['aerp'] = ae_ivp_weights(returns, embedding)
 
-    if 'ae_rp' in portfolio:
-        LOGGER.info('Computing AE Riskparity weights...')
+    if 'aeerc' in portfolio:
+        LOGGER.info('Computing AE Risk Contribution weights...')
         assert budget is not None
         assert embedding is not None
-        port_w['ae_rp'] = ae_riskparity_weights(returns, embedding, loading, budget, risk_parity='budget')
+        port_w['aeerc'] = ae_riskparity_weights(returns, embedding, loading, budget, risk_parity='budget')
 
     if 'ae_rp_c' in portfolio:
-        LOGGER.info('Computing AE Riskparity Cluster weights...')
+        LOGGER.info('Computing AE Risk Contribution Cluster weights...')
         assert budget is not None
         assert embedding is not None
         port_w['ae_rp_c'] = ae_riskparity_weights(returns, embedding, loading, budget, risk_parity='cluster')

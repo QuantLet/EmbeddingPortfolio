@@ -419,7 +419,7 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                                fee: float = 2e-4, volatility_target: Optional[float] = 0.05, **kwargs):
     """
 
-    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp', 'ae_rp']
+    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc']
    :param train_returns:
     :param returns:
     :param weights: Dict with portfolio keys and corresponding weight
@@ -491,8 +491,8 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
 
 
 def cv_portfolio_perf(cv_results: Dict,
-                      portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
-                                          'ae_rp'],
+                      portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp',
+                                          'aeerc'],
                       **kwargs) -> Union[Dict, pd.DataFrame]:
     """
 
@@ -535,7 +535,7 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf, leverage
 
 
-def cv_portfolio_perf_df(cv_portfolio: Dict, train_weights: Dict, portfolios: List[str] = ['ae_rp_c', 'aeaa', 'ae_rp'],
+def cv_portfolio_perf_df(cv_portfolio: Dict, train_weights: Dict, portfolios: List[str] = ['ae_rp_c', 'aeaa', 'aeerc'],
                          **kwargs):
     """
 

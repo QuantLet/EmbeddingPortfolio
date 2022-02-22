@@ -16,9 +16,9 @@ from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_scor
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 
-# PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+# PORTFOLIOS = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
-PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # PORTFOLIOS = ['ae_rp_c']

@@ -18,18 +18,18 @@ from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
 
-# PORTFOLIOS = ['equal', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+# PORTFOLIOS = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # AE bond
-# PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+# PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 # STRAT = ['equal', 'equal_class', 'markowitz', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 # AE raffinot
-PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'hrp', 'hcaa', 'ae_rp', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 STRAT = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
-# PORTFOLIOS = ['equal', 'equal_class', 'ae_ivp', 'ae_rp', 'ae_rp_c', 'aeaa']
+# PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa']
 # STRAT = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa']
 
 if __name__ == "__main__":
@@ -148,7 +148,7 @@ if __name__ == "__main__":
         if i == 0:
             portfolios = PORTFOLIOS
         else:
-            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['ae_ivp', 'ae_rp', 'ae_rp_c']
+            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['aerp', 'aeerc', 'ae_rp_c']
         cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,
@@ -200,15 +200,6 @@ if __name__ == "__main__":
         ann_perf[p] = port_perf[p]['total'].iloc[:, 0]
 
     # Some renaming
-    port_weights['aerp'] = port_weights['ae_ivp'].copy()
-    port_weights['aeerc'] = port_weights['ae_rp'].copy()
-    ann_perf['aerp'] = ann_perf.loc[:, 'ae_ivp'].values
-    ann_perf['aeerc'] = ann_perf.loc[:, 'ae_rp'].values
-
-    port_weights.pop('ae_ivp')
-    port_weights.pop('ae_rp')
-    ann_perf.drop(['ae_ivp', 'ae_rp'], axis=1, inplace=True)
-
     LOGGER.info("Get cluster assignment...")
     cv_labels = {}
     for cv in range(n_folds):
