@@ -23,6 +23,12 @@ if __name__ == "__main__":
                         default=os.cpu_count() - 1,
                         type=int,
                         help="Number of parallel jobs")
+    parser.add_argument("--save",
+                        action='store_true',
+                        help="Save results")
+    parser.add_argument("--show",
+                        action='store_true',
+                        help="Show performance")
     args = parser.parse_args()
     # ------------------------------------------------ input ------------------------------------------------
     # dataset1
@@ -33,8 +39,8 @@ if __name__ == "__main__":
         LOGGER.info("Run for dataset1")
         # Define paths
         ae_base_dir = "final_models/ae/dataset/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
-        garch_base_dir = "./activationProba/output/dataset1/test/20220221132420_ec2_run_1"
-        perf_dir = "performance/test_final_models/ae/dataset1_20220221_232911"
+        garch_base_dir = "./activationProba/output/dataset1/test/20220222142525_ec2_run_2"
+        perf_dir = "performance/test_final_models/ae/dataset1_20220222_155538"
         # Load data
         data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
         market_budget = pd.read_csv("data/market_budget_bond.csv", index_col=0)
@@ -74,7 +80,7 @@ if __name__ == "__main__":
         with Parallel(n_jobs=args.n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
                 delayed(hedged_portfolio_weights_wrapper)(cv, returns, cluster_assignment[cv],
-                                                          f"{garch_base_dir}/{cv + 1}",
+                                                          f"{garch_base_dir}/{cv}",
                                                           port_weights, strats=strats, window=None)
                 for cv in cv_folds
             )
@@ -94,7 +100,7 @@ if __name__ == "__main__":
         cv: {
             "returns": cv_results[cv]["returns"],
             "train_returns": cv_results[cv]["train_returns"],
-            "port": {port: cv_results[cv]["port"][port].values for port in strats
+            "port": {port: cv_results[cv]["port"][port] for port in strats
                      # if port not in ["equal", "equal_classs"]
                      }
         } for cv in cv_folds
@@ -104,27 +110,33 @@ if __name__ == "__main__":
             strat: port_weights[strat].iloc[cv] for strat in list(port_weights.keys())
         } for cv in cv_folds
     }
-
-    print([cv_portfolio[0]["port"].keys()])
-    print(port_weights.keys())
-    print(strats)
-    exit()
+    # Get portfolio returns
     port_perf, leverage = cv_portfolio_perf_df(cv_portfolio, train_weights, portfolios=strats)
-    port_perf_no_fee, _ = cv_portfolio_perf_df(cv_portfolio, train_weights, portfolios=strats, fee=0)
-    or_port_perf = pd.read_csv(f"{perf_dir}/portfolios_returns.csv", index_col=0)
-    or_port_perf.index = pd.to_datetime(or_port_perf.index)
 
-    plt.figure(figsize=(20, 10))
-    plt.plot(np.cumsum(or_port_perf["ae_rp_c"]), label="or")
-    plt.plot(np.cumsum(port_perf["ae_rp_c"]["total"]), label="hedge")
-    plt.plot(np.cumsum(port_perf_no_fee["ae_rp_c"]["total"]), label="hedge no fee")
-    plt.legend()
-    plt.show()
+    # Format final results
+    port_returns = pd.DataFrame()
+    for p in strats:
+        port_returns[p] = port_perf[p]['total'].iloc[:, 0]
+    new_port_weights = {
+        strat: {cv: cv_results[cv]["port"][strat] for cv in cv_results} for strat in strats
+    }
 
-    for strat in strats:
-        plt.figure(figsize=(20, 10))
-        plt.plot(np.cumsum(or_port_perf[strat]), label="or")
-        plt.plot(np.cumsum(port_perf[strat]["total"]), label="hedge")
-        plt.plot(np.cumsum(port_perf_no_fee[strat]["total"]), label="hedge no fee")
-        plt.legend()
-        plt.show()
+    if args.save:
+        LOGGER.info('Saving results... ')
+        port_returns.to_csv(f"{perf_dir}/portfolios_returns_hedged.csv")
+        leverage.to_csv(f"{perf_dir}/leverage_hedged.csv")
+        pickle.dump(new_port_weights, open(f"{perf_dir}/portfolios_weights_hedged.p", "wb"))
+
+    if args.show:
+        LOGGER.info('Show performance... ')
+        or_port_perf = pd.read_csv(f"{perf_dir}/portfolios_returns.csv",
+                               index_col=0)
+        or_port_perf.index = pd.to_datetime(or_port_perf.index)
+        for strat in strats:
+            plt.figure(figsize=(20, 10))
+            plt.plot(np.cumsum(or_port_perf[strat]), label="or")
+            plt.plot(np.cumsum(port_returns[strat]), label="hedge")
+            plt.title(strat)
+            plt.legend()
+            plt.show()
+    LOGGER.info("Done.")
