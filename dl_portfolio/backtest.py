@@ -493,22 +493,16 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
 def cv_portfolio_perf(cv_results: Dict,
                       portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'ae_ivp', 'hrp', 'rp',
                                           'ae_rp'],
-                      volatility_target: Optional[float] = 0.05,
-                      fee: float = 2e-4,
                       **kwargs) -> Union[Dict, pd.DataFrame]:
     """
 
-    :param cv_results: Dictionnary with keys:
+    :param cv_results: Dictionary with keys:
      - first key is cv fold
      - for each cv:
         - "port" for portfolio weights with each strategy as key: [cv]["port"]["hrp"], [cv]["port"]["rp"], etc.
         - "train_returns"
         - "returns"
-
-
     :param portfolios:
-    :param annualized:
-    :param fee: 2 bps = 0.02 %
     :return:
     """
     assert all([p in PORTFOLIOS for p in portfolios])
@@ -532,9 +526,54 @@ def cv_portfolio_perf(cv_results: Dict,
                                                                   weights,
                                                                   portfolios,
                                                                   prev_weights=prev_weights,
-                                                                  fee=fee,
-                                                                  volatility_target=volatility_target,
                                                                   **kwargs)
+        for p in portfolios:
+            port_perf[p]['total'] = pd.concat([port_perf[p]['total'], one_cv_perf[p]])
+            leverage[p].append(one_cv_leverage[p])
+    leverage = pd.DataFrame(leverage)
+
+    return port_perf, leverage
+
+
+def cv_portfolio_perf_df(cv_portfolio: Dict, train_weights: Dict, portfolios: List[str] = ['ae_rp_c', 'aeaa', 'ae_rp'],
+                         **kwargs):
+    """
+
+    :param cv_portfolio: Dictionary with keys:
+     - first key is cv fold
+     - for each cv:
+        - "port" for portfolio weights with each strategy as key: [cv]["port"]["hrp"], [cv]["port"]["rp"], etc.
+        - "train_returns"
+        - "returns"
+    :poram portfolios: List of portfolio on which to compute weights
+    :param train_weights: Dictionary with keys (cv: 0, 1, 2, ...), each containing a pd.DataFrame of weights
+    :return:
+    """
+    assert all([p in PORTFOLIOS for p in portfolios])
+    port_perf = {}
+    leverage = {}
+    for p in portfolios:
+        port_perf[p] = {}
+        leverage[p] = []
+        port_perf[p]['total'] = pd.DataFrame()
+
+    assets = cv_portfolio[0]['train_returns'].columns
+    for cv in cv_portfolio:
+        weights = cv_portfolio[cv]['port'].copy()
+        if cv == 0:
+            prev_weights = {p: pd.DataFrame(np.ones_like(cv_portfolio[cv]['port']["ae_rp_c"]), columns=assets) for p in
+                            portfolios if p not in ['equal', 'equal_class']}
+        else:
+            prev_weights = cv_portfolio[cv - 1]['port']
+
+        one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(cv_portfolio[cv]['train_returns'],
+                                                                  cv_portfolio[cv]['returns'],
+                                                                  weights,
+                                                                  portfolios,
+                                                                  train_weights=train_weights[cv],
+                                                                  prev_weights=prev_weights,
+                                                                  **kwargs)
+
         for p in portfolios:
             port_perf[p]['total'] = pd.concat([port_perf[p]['total'], one_cv_perf[p]])
             leverage[p].append(one_cv_leverage[p])

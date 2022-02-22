@@ -35,7 +35,7 @@ def hedged_portfolio_weights_wrapper(cv: int, returns: pd.DataFrame, cluster: pd
     res["train_returns"] = train_returns
     res["returns"] = test_returns
 
-    return res
+    return cv, res
 
 
 def hedged_portfolio_weights(train_returns, train_probas, probas, cluster, assets, original_weights):
@@ -97,8 +97,6 @@ def get_hedged_cum_excess_return_cluster(returns, weights, probas, cluster, clus
 
 
 def get_best_threshold(returns, weights, probas, cluster, cluster_name, method="cum_excess_return"):
-    print(probas)
-    print(cluster_name)
     thresholds = np.linspace(0, np.max(probas[cluster_name]) + 1e-6, 100)
     if method == "cum_excess_return":
         metric = [[get_hedged_cum_excess_return_cluster(returns, weights, probas, cluster, cluster_name, t),
