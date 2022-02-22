@@ -15,7 +15,7 @@ run = function(config, save_dir=NULL, debug=FALSE){
   
   counter = 1
   for (cv in (length(config$data_specs)-2):length(config$data_specs)) {
-    print(cv)
+    print(paste("CV to go:", length(config$data_specs) - cv + 1))
     if (save) {
       cv_save_dir = file.path(save_dir, (cv - 1))
       if (!dir.exists(cv_save_dir)) {
@@ -69,6 +69,13 @@ run = function(config, save_dir=NULL, debug=FALSE){
       
       # Model selection
       best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug)
+      if (save){
+        model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
+        if (debug) {
+          print(paste("Saving model to", model_path))
+        }
+        saveRDS(best_model$model, file = model_path)
+      }
       # Now get probas
       if (!is.null(best_model$model)) {
         # First get proba on train set for proba threshold tuning
@@ -98,8 +105,6 @@ run = function(config, save_dir=NULL, debug=FALSE){
     cv_activation_probas = xts(cv_activation_probas, order.by = index(test_data))
     
     if (save){
-      model_path = file.path(cv_save_dir, paste0(factors[ind], "model.rds"))
-      saveRDS(best_model$model, file = model_path)
       write.zoo(cv_train_activation_probas,
                 file = file.path(cv_save_dir, "train_activation_probas.csv"),
                 sep = ",")
