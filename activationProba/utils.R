@@ -160,6 +160,7 @@ predict_proba = function(train_data, test_data, window_size, model,
       .combine = 'c',
       .packages = c("forecast", "fGarch")
     ) %dopar% {
+      # For first observation in test set, just predict the proba using previously trained model
       if (i == 1) {
         proba = tryCatch(
           next_proba(model),
@@ -168,6 +169,9 @@ predict_proba = function(train_data, test_data, window_size, model,
         )
 
       } else {
+        # From now, first add the last observed observation
+        # Fit new model
+        # Predict probability
         temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance

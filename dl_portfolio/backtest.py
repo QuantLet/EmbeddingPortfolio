@@ -16,7 +16,8 @@ from dl_portfolio.weights import portfolio_weights, equal_class_weights
 from dl_portfolio.constant import PORTFOLIOS
 
 
-def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format: bool = True, **kwargs):
+def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format: bool = True, sspw_tto=True,
+                   **kwargs):
     """
 
     :param perf:
@@ -34,9 +35,15 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
     perf = pd.concat([perf, benchmark], 1)
 
     strats = list(perf.keys())
+    if sspw_tto:
+        cols = ['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%', 'ES-5%', 'SR', 'PSR', 'minTRL', 'MDD',
+                'CR', 'CEQ', 'SSPW', 'TTO']
+    else:
+        cols = ['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%', 'ES-5%', 'SR', 'PSR', 'minTRL', 'MDD',
+                'CR', 'CEQ']
+
     stats = pd.DataFrame(index=strats,
-                         columns=['Return', 'Volatility', 'Skewness', 'Excess kurtosis', 'VaR-5%',
-                                  'ES-5%', 'SR', 'PSR', 'minTRL', 'MDD', 'CR', 'CEQ', 'SSPW', 'TTO'],
+                         columns=cols,
                          dtype=np.float32)
     ports = list(weights.keys())
     assets = weights[ports[0]].columns
@@ -52,21 +59,37 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
             assert market_budget is not None
             weights['equal_class'] = pd.DataFrame(equal_class_weights(market_budget)).T
 
-        stats.loc[strat] = [perf[strat].mean() * period,
-                            annualized_volatility(perf[strat], period=period),
-                            scipy_stats.skew(perf[strat], axis=0),
-                            scipy_stats.kurtosis(perf[strat], axis=0) - 3,
-                            hist_VaR(perf[strat], level=0.05),
-                            hist_ES(perf[strat], level=0.05),
-                            sharpe_ratio(perf[strat], period=period),
-                            probabilistic_sharpe_ratio(perf[strat], sr_benchmark=0),
-                            min_track_record_length(perf[strat], sr_benchmark=0),
-                            get_mdd(np.cumprod(perf[strat] + 1)),
-                            calmar_ratio(np.cumprod(perf[strat] + 1)),
-                            ceq(perf[strat], period=period),
-                            sspw(weights[strat]) if strat not in bench_names else np.nan,
-                            total_average_turnover(weights[strat]) if strat not in bench_names + ['equal'] else 0.
-                            ]
+        if sspw_tto:
+            stats.loc[strat] = [perf[strat].mean() * period,
+                                annualized_volatility(perf[strat], period=period),
+                                scipy_stats.skew(perf[strat], axis=0),
+                                scipy_stats.kurtosis(perf[strat], axis=0) - 3,
+                                hist_VaR(perf[strat], level=0.05),
+                                hist_ES(perf[strat], level=0.05),
+                                sharpe_ratio(perf[strat], period=period),
+                                probabilistic_sharpe_ratio(perf[strat], sr_benchmark=0),
+                                min_track_record_length(perf[strat], sr_benchmark=0),
+                                get_mdd(np.cumprod(perf[strat] + 1)),
+                                calmar_ratio(np.cumprod(perf[strat] + 1)),
+                                ceq(perf[strat], period=period),
+                                sspw(weights[strat]) if strat not in bench_names else np.nan,
+                                total_average_turnover(weights[strat]) if strat not in bench_names + ['equal'] else 0.
+                                ]
+        else:
+            stats.loc[strat] = [perf[strat].mean() * period,
+                                annualized_volatility(perf[strat], period=period),
+                                scipy_stats.skew(perf[strat], axis=0),
+                                scipy_stats.kurtosis(perf[strat], axis=0) - 3,
+                                hist_VaR(perf[strat], level=0.05),
+                                hist_ES(perf[strat], level=0.05),
+                                sharpe_ratio(perf[strat], period=period),
+                                probabilistic_sharpe_ratio(perf[strat], sr_benchmark=0),
+                                min_track_record_length(perf[strat], sr_benchmark=0),
+                                get_mdd(np.cumprod(perf[strat] + 1)),
+                                calmar_ratio(np.cumprod(perf[strat] + 1)),
+                                ceq(perf[strat], period=period)
+                                ]
+
     if format:
         print("Formatting table")
         stats['Return'] = stats['Return'] * 100
@@ -74,7 +97,8 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
         stats['ES-5%'] = stats['ES-5%'] * 100
         stats['MDD'] = stats['MDD'] * 100
         stats['CEQ'] = stats['CEQ'] * 100
-        stats['TTO'] = stats['TTO'] * 100
+        if sspw_tto:
+            stats['TTO'] = stats['TTO'] * 100
     if kwargs.get("round", False):
         stats = np.round(stats, 2)
 
@@ -127,7 +151,7 @@ def get_target_vol_other_weights(portfolio: str):
         test_end = data_specs[cv]['end']
         w = {'other': weights.loc[data_specs[cv]['test_start']:].iloc[0]}
         if cv == 0:
-            prev_w = {'other': np.ones_like(w) for p in ['other']}
+            prev_w = {'other': np.ones_like(w)}
         train_returns = returns.loc[:test_start].iloc[-1000:-1]
         test_returns = returns.loc[test_start:test_end]
         one_cv_perf, l = get_portfolio_perf_wrapper(train_returns, test_returns, w, portfolios=['other'],
