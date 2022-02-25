@@ -34,7 +34,6 @@ def plot_sensitivity(sensitivity: pd.DataFrame, save_path=None, show=False, max_
                    aspect="auto",
                    cmap=cmap,
                    interpolation="nearest")
-    plt.colorbar(c)
 
     xtickslabels = list(sensitivity.index)
     xticks = list(range(0, len(sensitivity), len(sensitivity) // max_xticks + 1))
