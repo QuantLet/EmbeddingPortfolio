@@ -11,7 +11,7 @@ import seaborn as sns
 from sklearn import metrics, preprocessing
 
 from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
-    get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights
+    get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights, cv_portfolio_perf_df
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, \
     assign_cluster_from_consmat
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
@@ -82,6 +82,7 @@ if __name__ == "__main__":
 
     EVALUATION = {'model': {}, 'cluster': {}}
 
+    LOGGER.info("Loading data...")
     # Load paths
     models = os.listdir(args.base_dir)
     paths = [f"{args.base_dir}/{d}" for d in models if os.path.isdir(f"{args.base_dir}/{d}") and d[0] != "."]
@@ -124,12 +125,13 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError()
 
+
+    LOGGER.info("Main loop to get results and portfolio weights...")
     # Main loop to get results
     cv_results = {}
     train_cov = {}
     test_cov = {}
     port_perf = {}
-
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
         if i == 0:
@@ -145,7 +147,10 @@ if __name__ == "__main__":
                                        window=args.window,
                                        n_jobs=args.n_jobs,
                                        ae_config=config)
+    LOGGER.info("Done.")
 
+
+    LOGGER.info("Backtest weights...")
     # Get average weights for AE portfolio across runs
     port_weights = get_dl_average_weights(cv_results)
     # Build dictionary for cv_portfolio_perf
@@ -158,17 +163,31 @@ if __name__ == "__main__":
                 weights = pd.DataFrame(cv_results[0][cv]['port'][port]).T
                 weights.index = [date]
                 port_weights[cv][port] = weights
-    cv_portfolio = {
+
+    port_weights_df = {}
+    for port in port_weights[0]:
+        port_weights_df[port] = {}
+        for cv in cv_results[0]:
+            dates = cv_returns[cv].index
+            cv_weights = port_weights[cv][port]
+            cv_weights = pd.DataFrame(np.repeat(cv_weights.values, len(dates), axis=0),
+                                      index=dates, columns=cv_weights.columns)
+            cv_weights = cv_weights[cv_returns[cv].columns]
+            port_weights_df[port][cv] = cv_weights
+
+    cv_portfolio_df = {
         cv: {
             'returns': cv_returns[cv],
             'train_returns': cv_results[0][cv]['train_returns'],
-            'port': {port: port_weights[cv][port].values for port in port_weights[cv]
+            'port': {port: port_weights_df[port][cv] for port in port_weights_df
                      # if port not in ['equal', 'equal_classs']
                      }
         } for cv in cv_returns
     }
-    port_perf, leverage = cv_portfolio_perf(cv_portfolio, portfolios=PORTFOLIOS, volatility_target=0.05,
+
+    port_perf, leverage = cv_portfolio_perf_df(cv_portfolio_df, portfolios=PORTFOLIOS, volatility_target=0.05,
                                             market_budget=market_budget)
+    LOGGER.info("Done.")
 
     K = cv_results[i][0]['loading'].shape[-1]
     CV_DATES = [str(cv_results[0][cv]['returns'].index[0].date()) for cv in range(n_folds)]
@@ -185,8 +204,8 @@ if __name__ == "__main__":
     for p in PORTFOLIOS:
         ann_perf[p] = port_perf[p]['total'].iloc[:, 0]
 
-    ##########################
-    # Backtest performance
+
+    LOGGER.info("Saving backtest performance and plots...")
     if args.save:
         LOGGER.info('Saving performance... ')
         ann_perf.to_csv(f"{save_dir}/portfolios_returns.csv")
@@ -350,40 +369,41 @@ if __name__ == "__main__":
     #     pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
     LOGGER.info("Done.")
 
-    # loading analysis
-    # loading over cv folds
-    LOGGER.info("CV loadings plots")
-    p = 0
-    n_cv = len(cv_results[p])
-    n_cols = 6
-    n_rows = n_cv // n_cols + 1
-    figsize = (15, int(n_rows * 6))
-    fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
-    cbar_ax = fig.add_axes([.91, .3, .03, .4])
-    row = -1
-    col = 0
-    for cv in cv_results[p]:
-        loading = cv_results[p][cv]['loading'].copy()
-        if cv % n_cols == 0:
-            col = 0
-            row += 1
-        sns.heatmap(loading,
-                    ax=axs[row, col],
-                    vmin=0,
-                    vmax=1,
-                    cbar=cv == 0,
-                    cbar_ax=None if cv else cbar_ax, cmap='Reds')
-        date = str(cv_results[p][cv]['returns'].index[0].date())
-        axs[row, col].set_title(date)
-        col += 1
+    if False:
+        # loading analysis
+        # loading over cv folds
+        LOGGER.info("CV loadings plots")
+        p = 0
+        n_cv = len(cv_results[p])
+        n_cols = 6
+        n_rows = n_cv // n_cols + 1
+        figsize = (15, int(n_rows * 6))
+        fig, axs = plt.subplots(n_rows, n_cols, figsize=figsize, sharex=True, sharey=True)
+        cbar_ax = fig.add_axes([.91, .3, .03, .4])
+        row = -1
+        col = 0
+        for cv in cv_results[p]:
+            loading = cv_results[p][cv]['loading'].copy()
+            if cv % n_cols == 0:
+                col = 0
+                row += 1
+            sns.heatmap(loading,
+                        ax=axs[row, col],
+                        vmin=0,
+                        vmax=1,
+                        cbar=cv == 0,
+                        cbar_ax=None if cv else cbar_ax, cmap='Reds')
+            date = str(cv_results[p][cv]['returns'].index[0].date())
+            axs[row, col].set_title(date)
+            col += 1
 
-    fig.tight_layout(rect=[0, 0, .9, 1])
-    if args.save:
-        plt.savefig(f"{save_dir}/cv_loading_weights.png", bbox_inches='tight', transparent=True)
-    if args.show:
-        plt.show()
-    plt.close()
-    LOGGER.info("Done.")
+        fig.tight_layout(rect=[0, 0, .9, 1])
+        if args.save:
+            plt.savefig(f"{save_dir}/cv_loading_weights.png", bbox_inches='tight', transparent=True)
+        if args.show:
+            plt.show()
+        plt.close()
+        LOGGER.info("Done.")
 
     # Correlation
     LOGGER.info("Correlation...")
@@ -448,35 +468,27 @@ if __name__ == "__main__":
 
     LOGGER.info("Cluster analysis...")
     # Cluster analysis
+    LOGGER.info("Get cluster labels...")
     cv_labels = {}
     for cv in range(n_folds):
         cv_labels[cv] = {}
         for i in cv_results:
             c, cv_labels[cv][i] = get_cluster_labels(cv_results[i][cv]['embedding'])
+    LOGGER.info("Done.")
 
-    # Compute Rand index
+    LOGGER.info("Compute Rand Index...")
     EVALUATION['cluster']['rand_index'] = {}
     n_runs = len(cv_results)
     cv_rand = {}
     for cv in range(n_folds):
         cv_rand[cv] = rand_score_permutation(cv_labels[cv])
+    LOGGER.info("Done.")
 
+
+    LOGGER.info("Rand Index heatmap...")
     # Plot heatmap
     trii = np.triu_indices(n_runs, k=1)
     EVALUATION['cluster']['rand_index']['cv'] = [np.mean(cv_rand[cv][trii]) for cv in cv_rand]
-
-    # for cv in cv_rand:
-    #     mean = np.mean(cv_rand[cv][trii])
-    #     std = np.std(cv_rand[cv][trii])
-    #     triu = np.triu(cv_rand[cv], k=1)
-    #     sns.heatmap(triu, vmin=0, vmax=1)
-    #     plt.title(f"{CV_DATES[cv]}\nMean: {mean.round(2)}, Std: {std.round(2)}")
-    #     if args.save:
-    #         plt.savefig(f"{save_dir}/cv_plots/rand_cv_{cv}.png", bbox_inches='tight', transparent=True)
-    #     if args.show:
-    #         plt.show()
-    #     plt.close()
-
     # Plot heatmap of average rand
     avg_rand = np.zeros_like(cv_rand[0])
     trii = np.triu_indices(n_runs, k=1)
@@ -496,7 +508,10 @@ if __name__ == "__main__":
     if args.show:
         plt.show()
     plt.close()
+    LOGGER.info("Done.")
 
+
+    LOGGER.info("Consensus matrix...")
     # Consensus matrix
     assets = cv_labels[cv][0]['label'].index
     avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
@@ -511,16 +526,6 @@ if __name__ == "__main__":
             avg_cons_mat = avg_cons_mat.loc[:, order0]
         else:
             cons_mat = cons_mat.loc[order0, :]
-            cons_mat = cons_mat.loc[:, order0]
-
-        # plt.figure(figsize=(10, 10))
-        # sns.heatmap(cons_mat, square=True)
-        # if args.save:
-        #     plt.savefig(f"{save_dir}/cv_plots/cons_mat_cv_{cv}.png", bbox_inches='tight', transparent=True)
-        # if args.show:
-        #     plt.show()
-        # plt.close()
-
         avg_cons_mat += cons_mat
 
     avg_cons_mat = avg_cons_mat / len(cv_labels)

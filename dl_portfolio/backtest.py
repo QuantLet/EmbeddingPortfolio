@@ -105,7 +105,7 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
     return stats
 
 
-def get_target_vol_other_weights(portfolio: str):
+def get_target_vol_other_weights(portfolio: str, window_size=250):
     # Load pyrobustm results
     if portfolio == 'GMV_robust_bond':
         dataset = 'bond'
@@ -149,13 +149,17 @@ def get_target_vol_other_weights(portfolio: str):
     for cv in data_specs:
         test_start = data_specs[cv]['test_start']
         test_end = data_specs[cv]['end']
-        w = {'other': weights.loc[data_specs[cv]['test_start']:].iloc[0]}
+        w = {'other': weights.loc[test_start:test_end]}
         if cv == 0:
-            prev_w = {'other': np.ones_like(w)}
-        train_returns = returns.loc[:test_start].iloc[-1000:-1]
+            prev_w = {"other": pd.DataFrame(np.ones_like(w["other"]), columns=assets)}
+        else:
+            prev_w = {"other": weights.loc[data_specs[cv - 1]['test_start']:data_specs[cv - 1]['end']]}
+
+        train_returns = returns.loc[:test_start].iloc[-window_size - 1:-1]
         test_returns = returns.loc[test_start:test_end]
         one_cv_perf, l = get_portfolio_perf_wrapper(train_returns, test_returns, w, portfolios=['other'],
-                                                    prev_weights=prev_w)
+                                                    prev_weights=prev_w,
+                                                    train_weights={"other": w["other"].iloc[0, :]})
         leverage.append(l['other'])
         prev_w = w.copy()
         port_perf = pd.concat([port_perf, one_cv_perf['other']])
@@ -443,8 +447,15 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                                fee: float = 2e-4, volatility_target: Optional[float] = 0.05, **kwargs):
     """
 
+    Logic:
+    - Train weights are the portfolio weights on train set.
+    If train weights is not given (it corresponds to the usual case where weights are constant on test set),
+    then use same weights as on test set
+    - prev weights is previous cv weights or vector of 1s for the first cv
+    - weights is current weights for the test period
+
     :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc']
-   :param train_returns:
+    :param train_returns:
     :param returns:
     :param weights: Dict with portfolio keys and corresponding weight
     :param prev_weights: Dict with portfolio keys and corresponding weight for the previous period (to compute fees)
@@ -481,10 +492,8 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                 train_port_perf = portfolio_return(train_returns, weights=w)
                 cost = 0
             else:
-                if train_weights is None:
-                    train_port_perf = portfolio_return(train_returns, weights=weights[portfolio])
-                else:
-                    train_port_perf = portfolio_return(train_returns, weights=train_weights[portfolio])
+                assert train_weights is not None
+                train_port_perf = portfolio_return(train_returns, weights=train_weights[portfolio])
 
                 if weights[portfolio].shape[0] > 1:
                     assert isinstance(weights[portfolio], pd.DataFrame)
@@ -492,11 +501,17 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
                     cost = pd.concat([prev_weights[portfolio].iloc[-1:, :], weights[portfolio]])
                     cost = fee * np.abs(cost.diff().dropna()).sum(1)
                     cost = pd.Series(cost, index=returns.index)
+                    assert cost.isna().sum() == 0
                 else:
-                    cost = fee * np.sum(np.abs(prev_weights[portfolio] - weights[portfolio]))
+                    mu = np.abs(prev_weights[portfolio] - weights[portfolio])
+                    cost = fee * np.sum(mu)
+                    assert not np.isnan(cost)
 
             # Check Jaeger et al 2021
             base_vol = np.max((np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))) * np.sqrt(252)
+            assert not np.isinf(base_vol)
+            assert not np.isnan(base_vol)
+
             leverage = 0.05 / base_vol
             cost = cost * leverage
             port_perf = leverage * port_perf
@@ -559,9 +574,14 @@ def cv_portfolio_perf(cv_results: Dict,
     return port_perf, leverage
 
 
-def cv_portfolio_perf_df(cv_portfolio: Dict, train_weights: Dict, portfolios: List[str] = ['ae_rp_c', 'aeaa', 'aeerc'],
-                         **kwargs):
+def cv_portfolio_perf_df(cv_portfolio: Dict, portfolios: List[str] = ['ae_rp_c', 'aeaa', 'aeerc'],
+                         train_weights: Optional[Dict] = None, **kwargs):
     """
+    Logic:
+    - Train weights are the portfolio weights on train set.
+    If train weights is not given (it corresponds to the usual case where weights are constant on test set),
+    then use same weights as on test set
+    - prev weights is previous cv weights or vector of 1s for the first cv
 
     :param cv_portfolio: Dictionary with keys:
      - first key is cv fold
@@ -590,11 +610,16 @@ def cv_portfolio_perf_df(cv_portfolio: Dict, train_weights: Dict, portfolios: Li
         else:
             prev_weights = cv_portfolio[cv - 1]['port']
 
+        if train_weights is not None:
+            train_w = train_weights[cv]
+        else:
+            train_w = {p: weights[p].iloc[0, :] for p in weights}
+
         one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(cv_portfolio[cv]['train_returns'],
                                                                   cv_portfolio[cv]['returns'],
                                                                   weights,
                                                                   portfolios,
-                                                                  train_weights=train_weights[cv],
+                                                                  train_weights=train_w,
                                                                   prev_weights=prev_weights,
                                                                   **kwargs)
 
@@ -615,7 +640,7 @@ def portfolio_return(returns, weights: Optional[Union[float, np.ndarray]] = None
 
 
 def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None, compute_weights=True,
-           window: Optional[int] = None, **kwargs):
+           window: Optional[int] = 250, **kwargs):
     ae_config = kwargs.get('ae_config')
     res = {}
 
