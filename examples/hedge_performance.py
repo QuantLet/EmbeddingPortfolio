@@ -21,7 +21,7 @@ if __name__ == "__main__":
                         type=str,
                         help="Dataset name: dataset1 or dataset2")
     parser.add_argument("--method",
-                        default="hedged_strat_cum_excess_return_cluster",
+                        default="calibrated_exceedance",
                         type=str,
                         help="Method to compute optimal threshold")
     parser.add_argument("--n_jobs",
@@ -47,7 +47,8 @@ if __name__ == "__main__":
         # Define paths
         ae_base_dir = "final_models/ae/dataset/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
         garch_base_dir = "./activationProba/output/dataset1/test/20220222142525_ec2_run_2"
-        perf_dir = "performance/test_final_models/ae/dataset1_20220222_155538"
+        perf_dir = "./performance/test_final_models/ae/dataset1_20220224_131550"
+
         # Load data
         data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
         market_budget = pd.read_csv("data/market_budget_bond.csv", index_col=0)
@@ -62,7 +63,8 @@ if __name__ == "__main__":
         # Define paths
         ae_base_dir = "final_models/ae/dataset/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
         garch_base_dir = "./activationProba/output/dataset2/test/20220222100230_ec2_run_1"
-        perf_dir = "performance/test_final_models/ae/dataset2_20220222_162628"
+        perf_dir = "./performance/test_final_models/ae/dataset2_20220224_132227"
+
         # Load data
         data, assets = load_data(dataset="raffinot_bloomberg_comb_update_2021")
         market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
@@ -81,16 +83,18 @@ if __name__ == "__main__":
     for cv in cluster_assignment:
         cluster_assignment[cv] = cluster_assignment[cv].loc[assets]
 
-    strats = [s for s in list(port_weights.keys()) if "ae" in s]
+    strats = [s for s in list(port_weights.keys()) if "ae" in s and s != "aeerc"]
     cv_folds = list(cluster_assignment.keys())
 
+    LOGGER.info(f"Method for optimal threshold is: {args.method}")
     if args.n_jobs > 1:
         LOGGER.info(f"Compute weights with {args.n_jobs} jobs...")
         with Parallel(n_jobs=args.n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
                 delayed(hedged_portfolio_weights_wrapper)(cv, returns, cluster_assignment[cv],
                                                           f"{garch_base_dir}/{cv}",
-                                                          port_weights, strats=strats, method=args.method)
+                                                          port_weights, strats=strats,
+                                                          target=target, method=args.method)
                 for cv in cv_folds
             )
         # cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
