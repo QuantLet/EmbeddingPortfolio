@@ -121,8 +121,12 @@ def get_inner_cluster_weights(cov, loading, clusters, market_budget=None):
                 rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
                 index=cluster_items
             )
-    weights = {i: weights.get(i) for i in range(n_clusters) if weights.get(i) is not None}  # reorder dict
-
+    reorder_weights = {}
+    i = 0
+    for c in weights:
+        reorder_weights[i] = weights[c]
+        i+=1
+    weights = {i: weights[c] for i, c in enumerate(list(weights.keys()))}
     return weights
 
 
