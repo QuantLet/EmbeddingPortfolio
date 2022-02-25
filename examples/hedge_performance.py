@@ -122,7 +122,7 @@ if __name__ == "__main__":
         } for cv in cv_folds
     }
     # Get portfolio returns
-    port_perf, leverage = cv_portfolio_perf_df(cv_portfolio, train_weights, portfolios=strats)
+    port_perf, leverage = cv_portfolio_perf_df(cv_portfolio, portfolios=strats, train_weights=train_weights)
     LOGGER.info("Done.")
 
     # Format final results
