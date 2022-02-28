@@ -1,0 +1,15 @@
+{
+  "run": "test",
+  "window_size": 250,
+  "model.params": {
+    "cond.dist": [
+      "norm",
+      "std",
+      "snorm",
+      "sstd"
+    ],
+    "garch.order.p": [1, 2],
+    "garch.order.q": [0, 1, 2]
+  },
+  "datatset": "dataset1"
+}
