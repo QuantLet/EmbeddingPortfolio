@@ -285,35 +285,20 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
                                                     scaler=scaler)
     elif test_set == 'train':
         # For first cv: predict on train data then for the others used previous validation data for prediction
-        if cv == 0:
-            test_data, _, _, _, dates, _ = get_features(data,
-                                                        data_spec['start'],
-                                                        data_spec['end'],
-                                                        assets,
-                                                        val_start=data_spec['val_start'],
-                                                        test_start=data_spec.get('test_start'),
-                                                        scaler=scaler)
-        else:
-            data_spec = config.data_specs[cv - 1]
-            _, test_data, _, _, dates, _ = get_features(data,
-                                                        data_spec['start'],
-                                                        data_spec['end'],
-                                                        assets,
-                                                        val_start=data_spec['val_start'],
-                                                        test_start=data_spec.get('test_start'),
-                                                        scaler=scaler)
+        test_data, _, _, _, dates, _ = get_features(data,
+                                                    data_spec['start'],
+                                                    data_spec['end'],
+                                                    assets,
+                                                    val_start=data_spec['val_start'],
+                                                    test_start=data_spec.get('test_start'),
+                                                    scaler=scaler)
     else:
         raise NotImplementedError(test_set)
 
     # Prediction
     test_features = encoder.predict(test_data)
     lin_activation = dense_layer.predict(test_data)
-
-    if test_set == "train" and cv > 0:
-        index = dates["val"]
-    else:
-        index = dates[test_set]
-
+    index = dates[test_set]
     test_features = pd.DataFrame(test_features, index=index)
     lin_activation = pd.DataFrame(lin_activation, index=index)
 
