@@ -45,9 +45,10 @@ if __name__ == "__main__":
     if dataset == "dataset1":
         LOGGER.info("Run for dataset1")
         # Define paths
-        ae_base_dir = "final_models/ae/dataset/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
-        garch_base_dir = "./activationProba/output/dataset1/test/20220222142525_ec2_run_2"
-        perf_dir = "./performance/test_final_models/ae/dataset1_20220224_131550"
+        data_base_dir = "./activationProba/data/dataset1"
+        # ae_base_dir = "final_models/ae/dataset1/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
+        garch_base_dir = "./activationProba/output/dataset1/20220301004321"
+        perf_dir = "./performance/test_final_models/ae/dataset1_20220301_095750"
 
         # Load data
         data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
@@ -61,7 +62,8 @@ if __name__ == "__main__":
     elif dataset == "dataset2":
         LOGGER.info("Run for dataset2")
         # Define paths
-        ae_base_dir = "final_models/ae/dataset/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
+        data_base_dir = "./activationProba/data/dataset2"
+        # ae_base_dir = "final_models/ae/dataset2/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
         garch_base_dir = "./activationProba/output/dataset2/test/20220222100230_ec2_run_1"
         perf_dir = "./performance/test_final_models/ae/dataset2_20220224_132227"
 
@@ -91,26 +93,23 @@ if __name__ == "__main__":
         LOGGER.info(f"Compute weights with {args.n_jobs} jobs...")
         with Parallel(n_jobs=args.n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
-                delayed(hedged_portfolio_weights_wrapper)(cv, returns, cluster_assignment[cv],
-                                                          f"{garch_base_dir}/{cv}",
-                                                          port_weights, strats=strats,
-                                                          target=target, method=args.method)
+                delayed(hedged_portfolio_weights_wrapper)(cv, returns, cluster_assignment[cv], f"{garch_base_dir}/{cv}",
+                                                          f"{data_base_dir}/{cv}", port_weights, strats=strats,
+                                                          method=args.method)
                 for cv in cv_folds
             )
-        # cv_results = {cv_results[i][0]: cv_results[i][1] for i in range(len(cv_results))}
         cv_results = {cv: res for (cv, res) in cv_results}
-        LOGGER.info("Done.")
     else:
         LOGGER.info(f"n_jobs = 1: compute weights sequentially...")
         cv_results = {}
         for cv in cv_folds:
-            cv_results[cv] = hedged_portfolio_weights_wrapper(cv, returns, cluster_assignment[cv],
-                                                              f"{garch_base_dir}/{cv}",
-                                                              port_weights, strats=strats, method=args.method)
-        LOGGER.info("Done.")
+            _, cv_results[cv] = hedged_portfolio_weights_wrapper(cv, returns, cluster_assignment[cv],
+                                                                 f"{garch_base_dir}/{cv}", f"{data_base_dir}/{cv}",
+                                                                 port_weights, strats=strats, method=args.method)
+    LOGGER.info("Done.")
 
-    LOGGER.info("Portfolio returns...")
     # Now parse cv portfolio weights and train weights
+    LOGGER.info("Portfolio returns...")
     cv_portfolio = {
         cv: {
             "returns": cv_results[cv]["returns"],

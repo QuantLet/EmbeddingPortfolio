@@ -7,16 +7,22 @@ from dl_portfolio.constant import AVAILABLE_METHODS
 
 
 def hedged_portfolio_weights_wrapper(cv: int, returns: pd.DataFrame, cluster: pd.Series, cv_garch_dir: str,
+                                     cv_data_dir: str,
                                      or_port_weights: Dict, strats: List[str] = ['ae_rp_c', 'aeaa', 'aerp', 'aeerc'],
-                                     window: Optional[int] = None, target: Optional[pd.DataFrame] = None,
+                                     window: Optional[int] = None,
                                      method: Optional[str] = "hedged_strat_cum_excess_return_cluster"):
     LOGGER.info(f"CV: {cv}")
     assets = list(returns.columns)
-
+    # Load target
+    train_target = pd.read_csv(f"{cv_data_dir}/train_linear_activation.csv", index_col=0)
+    train_target.index = pd.to_datetime(train_target.index)
+    # Load prediction
     train_probas = pd.read_csv(f"{cv_garch_dir}/train_activation_probas.csv", index_col=0)
-    train_probas.index = pd.to_datetime(train_probas.index)
+    train_probas.index = pd.to_datetime([pd.to_datetime(d).date() for d in train_probas.index])
+
     probas = pd.read_csv(f"{cv_garch_dir}/activation_probas.csv", index_col=0)
-    probas.index = pd.to_datetime(probas.index)
+    probas.index = pd.to_datetime([pd.to_datetime(d).date() for d in probas.index])
+
     # Handle stupid renaming of columns from R
     probas = probas[train_probas.columns]  # Just to be sure
     columns = list(train_probas.columns)
@@ -24,8 +30,8 @@ def hedged_portfolio_weights_wrapper(cv: int, returns: pd.DataFrame, cluster: pd
     train_probas.columns = columns
     probas.columns = columns
 
+    train_target = returns.loc[train_probas.index]
     train_returns = returns.loc[train_probas.index]
-    train_target = target.loc[train_probas.index]
     test_returns = returns.loc[probas.index]
 
     if window is not None:
