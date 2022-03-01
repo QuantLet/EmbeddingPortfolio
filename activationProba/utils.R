@@ -10,19 +10,6 @@ library(doParallel)
 # source("definition.R")
 #library(fExtremes)
 
-get_cv_data_old = function(path, start_date, test_start, end_date, window_size = NULL) {
-  # load dataset
-  data = load_data(path = path, start_date = start_date, end_date = end_date)
-  train_data = data[index(data) < test_start]
-  if (!is.null(window_size)) {
-    start_date = index(train_data)[nrow(train_data) - config$window_size + 1]
-    train_data = train_data[start_date <= index(train_data),]
-  }
-  test_data = data[test_start <= index(data)]
-
-  return(list(train = train_data, test = test_data))
-}
-
 get_cv_data = function(dataset, cv, window_size = NULL) {
   # load dataset
   train_data = load_data(path = file.path("data", dataset, cv, "train_linear_activation.csv"), window_size=window_size)
