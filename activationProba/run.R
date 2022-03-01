@@ -1,47 +1,23 @@
 source("utils.R")
 
-run = function(config, save_dir=NULL, debug=FALSE){
+run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
   if (is.null(save_dir)){
     save = FALSE
   } else {
     save = TRUE
   }
-  if (config$run == "train") {
-    data_path = config$datapath$train
-  }
-  if (config$run == "test") {
-    data_path = config$datapath$test
-  }
-  
   counter = 1
-  for (cv in (length(config$data_specs)-2):length(config$data_specs)) {
-    print(paste("CV to go:", length(config$data_specs) - cv + 1))
+  max_cv = config$cvs - 1
+  for (cv in 0:max_cv) {
+    print(paste("CV to go:", max_cv - cv + 1))
     if (save) {
-      cv_save_dir = file.path(save_dir, (cv - 1))
+      cv_save_dir = file.path(save_dir, cv)
       if (!dir.exists(cv_save_dir)) {
         dir.create(cv_save_dir)
       }
     }
     # load dataset
-    data_spec = config$data_specs[[cv]]
-    if (config$run == "train") {
-      test_start = data_spec$val_start
-      end = data_spec$end
-    }
-    if (config$run == "val") {
-      stop("Not implemented")
-      test_start = data_spec$val_start
-      end = data_spec$test_start
-    }
-    if (config$run == "test") {
-      test_start = data_spec$test_start
-      end = data_spec$end
-    }
-    data = get_cv_data(data_path,
-                       data_spec$start,
-                       test_start,
-                       end,
-                       config$window_size)
+    data = get_cv_data(dataset, cv, window_size = config$window_size)
     print(paste0("Last train: ", index(tail(data$train, 1))[1]))
     print(paste0("First test: ", index(data$test)[1]))
     
@@ -68,7 +44,7 @@ run = function(config, save_dir=NULL, debug=FALSE){
       test_data = data$test[, ind]
       
       # Model selection
-      best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug)
+      best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = arima)
       if (save){
         model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
         if (debug) {
@@ -88,7 +64,8 @@ run = function(config, save_dir=NULL, debug=FALSE){
         }
         # Now predict probas on test set
         probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
-                               fit_model, next_proba, parallel = !debug)
+                               fit_model, next_proba, parallel = !debug, arima=arima)
+        probas = probas$proba
       } else {
         train_probas = rep(NaN, length(index(train_data)))
         probas = rep(NaN, length(index(test_data)))
@@ -117,14 +94,11 @@ run = function(config, save_dir=NULL, debug=FALSE){
     if (nrow(train_activation_probas) > 0) {
       cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
     }
-    
     train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
     train_activation_probas = as.xts(train_activation_probas)
+
     activation_probas = rbind(activation_probas, cv_activation_probas)
     activation_probas = as.xts(activation_probas)
-    counter = counter + 1
-    last_train_date = index(data$train)[nrow(data$train)]
-    
     print("Train probas")
     print(tail(train_activation_probas))
     print("Test probas")
@@ -132,7 +106,10 @@ run = function(config, save_dir=NULL, debug=FALSE){
     print("NaNs CV:")
     print(paste("Train:", sum(is.na(cv_train_activation_probas))))
     print(paste("Test:", sum(is.na(cv_activation_probas))))
-    
+
+    # Finally
+    counter = counter + 1
+    last_train_date = index(data$train)[nrow(data$train)]
   }
   return (list(train=train_activation_probas, test=activation_probas))
 }

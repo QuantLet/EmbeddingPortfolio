@@ -5,12 +5,11 @@ library(rjson)
 
 # ------------------------ Input ------------------------
 # Input
-dataset = "dataset2"
-config_path = "./config/dataset2.json"
+dataset = "dataset1"
+config_path = "./config/dataset1.json"
 save = TRUE
 save_dir = "output"
 do.debug = FALSE
-
 
 # ------------------------ Script ------------------------
 
@@ -22,10 +21,6 @@ if (save) {
     dir.create(save_dir)
   }
   save_dir = file.path(save_dir, dataset)
-  if (!dir.exists(save_dir)) {
-    dir.create(save_dir)
-  }
-  save_dir = file.path(save_dir, config$run)
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
@@ -42,7 +37,11 @@ if (save) {
 
 # Main loop
 t1 = Sys.time()
-result = run(config, save_dir = save_dir, debug = do.debug)
+if (save) {
+  result = run(config, save_dir = save_dir, debug = do.debug)
+} else {
+  result = run(config, debug = do.debug)
+}
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
 
