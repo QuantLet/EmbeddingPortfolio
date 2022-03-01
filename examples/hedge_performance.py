@@ -48,7 +48,7 @@ if __name__ == "__main__":
         data_base_dir = "./activationProba/data/dataset1"
         # ae_base_dir = "final_models/ae/dataset1/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
         garch_base_dir = "./activationProba/output/dataset1/20220301004321"
-        perf_dir = "./performance/test_final_models/ae/dataset1_20220301_095750"
+        perf_dir = "./performance/test_final_models/ae/dataset1_20220224_131550"
 
         # Load data
         data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         # Define paths
         data_base_dir = "./activationProba/data/dataset2"
         # ae_base_dir = "final_models/ae/dataset2/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
-        garch_base_dir = "./activationProba/output/dataset2/test/20220222100230_ec2_run_1"
+        garch_base_dir = "./activationProba/output/dataset2/20220301094654"
         perf_dir = "./performance/test_final_models/ae/dataset2_20220224_132227"
 
         # Load data
