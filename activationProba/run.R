@@ -17,7 +17,7 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       }
     }
     # load dataset
-    data = get_cv_data(dataset, cv, window_size = config$window_size)
+    data = get_cv_data(config$dataset, cv, window_size = config$window_size)
     print(paste0("Last train: ", index(tail(data$train, 1))[1]))
     print(paste0("First test: ", index(data$test)[1]))
     

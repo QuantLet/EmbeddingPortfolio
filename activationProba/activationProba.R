@@ -5,8 +5,7 @@ library(rjson)
 
 # ------------------------ Input ------------------------
 # Input
-dataset = "dataset1"
-config_path = "./config/dataset1.json"
+config_path = "./config/config.json"
 save = TRUE
 save_dir = "output"
 do.debug = FALSE
@@ -20,7 +19,7 @@ if (save) {
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
-  save_dir = file.path(save_dir, dataset)
+  save_dir = file.path(save_dir, config$dataset)
   if (!dir.exists(save_dir)) {
     dir.create(save_dir)
   }
