@@ -10,7 +10,7 @@ library(doParallel)
 # source("definition.R")
 #library(fExtremes)
 
-get_cv_data = function(path, start_date, test_start, end_date, window_size = NULL) {
+get_cv_data_old = function(path, start_date, test_start, end_date, window_size = NULL) {
   # load dataset
   data = load_data(path = path, start_date = start_date, end_date = end_date)
   train_data = data[index(data) < test_start]
@@ -20,6 +20,14 @@ get_cv_data = function(path, start_date, test_start, end_date, window_size = NUL
   }
   test_data = data[test_start <= index(data)]
 
+  return(list(train = train_data, test = test_data))
+}
+
+get_cv_data = function(dataset, cv, window_size = NULL) {
+  # load dataset
+  train_data = load_data(path = file.path("data", dataset, cv, "train_linear_activation.csv"), window_size=window_size)
+  test_data = load_data(path = file.path("data", dataset, cv, "test_linear_activation.csv"))
+  
   return(list(train = train_data, test = test_data))
 }
 
@@ -39,22 +47,25 @@ load_data = function(path, end_date = NULL, start_date = NULL, window_size = NUL
   return(data)
 }
 
-fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL) {
+fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=TRUE) {
   n = nrow(data)
   # Select mean model
   if (is.null(formula)) {
-    ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
-    arima.order = unname(forecast::arimaorder(ARIMAfit))
-    n_nans = 0
-    if (arima.order[2] > 0) {
-      data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
-      n_nans = n - nrow(data)
-      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+    if (arima) {
+      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
       arima.order = unname(forecast::arimaorder(ARIMAfit))
+      if (arima.order[2] > 0) {
+        data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
+        ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+        arima.order = unname(forecast::arimaorder(ARIMAfit))
+      }
+      stopifnot(arima.order[2] == 0)
+      formula = substitute(~ arma(a, b) + garch(p, q),
+                           list(a = arima.order[1], b = arima.order[3], p = p, q = q))
+    } else {
+      formula = substitute(~ garch(p, q), list(p = p, q = q))
     }
-    stopifnot(arima.order[2] == 0)
-    formula = substitute(~arma(a, b) + garch(p, q),
-                         list(a = arima.order[1], b = arima.order[3], p = p, q = q))
+    
   }
   garch.model = tryCatch(
   {
@@ -75,7 +86,12 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL) {
 }
 
 
-model_selection = function(data, model.params, fit_model, parallel = TRUE) {
+model_selection = function(data, model.params, fit_model, parallel = TRUE, arima = TRUE) {
+  if (!arima) {
+    print("ARIMA is False, center data")
+    data.mu = mean(data, na.rm=TRUE)
+    data = data - data.mu
+  }
   # Normalize data to have variance 1
   data.sd = sd(data)
   data = data / data.sd
@@ -109,7 +125,7 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
     ) %dopar% {
 
       tryCatch(
-        fit_model(data, cond.dist, p = garch.order.p, q = garch.order.q),
+        fit_model(data, cond.dist, p = garch.order.p, q = garch.order.q, arima=arima),
         error = function(e) list(model = NULL, aic = Inf),
         silent = FALSE)
     }
@@ -120,7 +136,7 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
       cond.dist = tuning.grid[i, "cond.dist"]
       garch.order.p = tuning.grid[i, "garch.order.p"]
       garch.order.q = tuning.grid[i, "garch.order.q"]
-      r = fit_model(data, cond.dist, p = garch.order.p, q = garch.order.q)
+      r = fit_model(data, cond.dist, p = garch.order.p, q = garch.order.q, arima=arima)
       result = append(result, list(r))
     }
   }
@@ -136,8 +152,10 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE) {
 }
 
 predict_proba = function(train_data, test_data, window_size, model,
-                         fit_model, next_proba, parallel = TRUE) {
-
+                         fit_model, next_proba, parallel = TRUE, arima = TRUE) {
+  if (!arima) {
+    print("ARIMA is False")
+  }
   formula = model@formula
   cond.dist = model@fit$params$cond.dist
 
@@ -155,14 +173,14 @@ predict_proba = function(train_data, test_data, window_size, model,
     stopifnot(foreach::getDoParRegistered())
     # How many workers are availalbes ?
     # print(paste(foreach::getDoParWorkers()," workers available"))
-    probas = foreach(
+    forecasts = foreach(
       i = 1:nrow(test_data),
-      .combine = 'c',
+      .combine = 'rbind',
       .packages = c("forecast", "fGarch")
     ) %dopar% {
       # For first observation in test set, just predict the proba using previously trained model
       if (i == 1) {
-        proba = tryCatch(
+        forecast = tryCatch(
           next_proba(model),
           error = function(e) NaN,
           silent = FALSE
@@ -175,66 +193,69 @@ predict_proba = function(train_data, test_data, window_size, model,
         temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
+        if (!arima) {
+          temp = temp - mean(temp, na.rm=TRUE)
+        }
+        # Normalize data to have variance 1
         temp = temp / sd(temp)
         model = tryCatch(
-          fit_model(temp, cond.dist, formula = formula),
+          fit_model(temp, cond.dist, formula = formula, arima=arima),
           error = function(e) list(model = NULL, aic = Inf),
           silent = FALSE)
         model = model$model
         if (!is.null(model)) {
-          proba = tryCatch(
+          forecast = tryCatch(
             next_proba(model),
             error = function(e) NaN,
             silent = FALSE
           )
         } else {
-          proba = NaN
+          forecast = NaN
         }
       }
-      proba
+      forecast
     }
     parallel::stopCluster(cl = my.cluster)
   } else {
-    probas = c()
+    forecasts = c()
     for (i in 1:nrow(test_data)) {
       if (i == 1) {
         if (!is.null(model)) {
-          proba = next_proba(model)
+          forecast = next_proba(model)
         } else {
-          proba = NaN
+          forecast = NaN
         }
       } else {
         temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
+        if (!arima) {
+          temp = temp - mean(temp, na.rm=TRUE)
+        }
         temp = temp / sd(temp)
-        model = fit_model(temp, cond.dist, formula = formula)
+        model = fit_model(temp, cond.dist, formula = formula, arima=arima)
         model = model$model
         if (!is.null(model)) {
-          proba = next_proba(model)
+          forecast = next_proba(model)
         } else {
-          proba = NaN
+          forecast = NaN
         }
       }
-      probas = c(probas, proba)
+      forecasts = rbind(forecasts, forecast)
     }
   }
   # probas = xts(probas, order.by = index(test_data))
   # colnames(probas) = "proba"
-
-  return(probas)
+  forecasts = data.frame(forecasts)
+  colnames(forecasts) = c("proba", "meanForecast", "meanError", "sdForecast")
+  rownames(forecasts) = 1:nrow(forecasts)
+  return(forecasts)
 }
 
-next_proba = function(object, conf = 0.95) {
+prediction_conf = function(object, conf = 0.95) {
   cond.dist = object@fit$params$cond.dist
-  # Predict next value
-  model.forecast = fGarch::predict(object = object, n.ahead = 1, conf = conf)
-  meanForecast = model.forecast$meanForecast # conditional mean from mean model
-  meanError = model.forecast$meanError # Error
-  sdForecast = model.forecast$standardDeviation # conditional volatility
   # Get conf interval:
   # https://rdrr.io/cran/fGarch/src/R/methods-predict.R
-
   if (cond.dist == "norm") {
     crit_valu = qnorm(1 - (1 - conf) / 2)
     crit_vald = qnorm((1 - conf) / 2)
@@ -258,9 +279,19 @@ next_proba = function(object, conf = 0.95) {
     crit_valu = e[round(t * (1 - (1 - conf) / 2))]
     crit_vald = e[round(t * (1 - conf) / 2)]
   }
-
   int_l = meanForecast + crit_vald * meanError
   int_u = meanForecast + crit_valu * meanError
+  
+  return (list(int_u=int_u, int_l=int_l))
+}
+
+next_proba = function(object, conf = 0.95) {
+  cond.dist = object@fit$params$cond.dist
+  # Predict next value
+  model.forecast = fGarch::predict(object = object, n.ahead = 1, conf = conf)
+  meanForecast = model.forecast$meanForecast # conditional mean from mean model
+  meanError = model.forecast$meanError # Error
+  sdForecast = model.forecast$standardDeviation # conditional volatility
 
   # Calculate proba
   Z_hat = -meanForecast / sdForecast
@@ -276,8 +307,8 @@ next_proba = function(object, conf = 0.95) {
   if (cond.dist == "sstd") {
     proba = fGarch::psstd(Z_hat)
   }
-
-  return(proba)
+  
+  return (c(proba, meanForecast, meanError, sdForecast))
 }
 
 get_dist_functon = function(dist) {
