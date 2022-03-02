@@ -1,26 +1,24 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 
-# install and load packages
-# libraries = c("fGarch", "FinTS", "forecast", "xts")
 source("utils.R")
-config_path = "./config/config.json"
-config = fromJSON(file = config_path)
 
 dataset = "dataset1"
 window_size = 250
 model_name = "20220301004321"
-cv = 0
+cv = 2
 factor.name = "SPX_X"
 
 # Load model
 model_path = file.path("./output", dataset, model_name, cv, paste0(factor.name, "_model.rds"))
 model <- readRDS(model_path)
+model
 
 # Load data
 data = get_cv_data(dataset, cv, window_size = window_size)
 print(paste0("Last train: ", index(tail(data$train, 1))[1]))
 print(paste0("First test: ", index(data$test)[1]))
+print(paste0("Last test: ", index(data$test)[nrow(data$test)]))
 data = data$train
 factors = colnames(data)
 index = index(data)
