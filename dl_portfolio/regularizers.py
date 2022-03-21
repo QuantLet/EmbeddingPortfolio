@@ -1,6 +1,5 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
-from tensorflow.python.ops import math_ops
 from typing import Optional, Dict
 from tensorflow.keras.regularizers import Regularizer
 
@@ -55,19 +54,3 @@ class WeightsOrthogonality(Regularizer):
                 'max_dim': self.max_dim,
                 'regularizer': self.regularizer
                 }
-
-
-def add_l1_regularization(model, layers, penalty=0.01):
-    for layer in model.layers:
-        if layer.name in layers:
-            model.add_loss(
-                lambda: penalty * tf.reduce_mean(math_ops.reduce_sum(math_ops.abs(layer.trainable_variables[0]))))
-    return
-
-
-def add_l2_regularization(model, layers, penalty=0.01):
-    for layer in model.layers:
-        if layer.name in layers:
-            model.add_loss(
-                lambda: penalty * tf.reduce_mean(math_ops.reduce_sum(math_ops.square(layer.trainable_variables[0]))))
-    return

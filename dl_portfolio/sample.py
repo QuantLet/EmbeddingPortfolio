@@ -2,13 +2,14 @@ import numpy as np
 
 
 def id_nb_bootstrap(n_obs, block_length):
-    """Create bootstrapped indexes with the none overlapping block bootstrap
+    """
+    Create bootstrapped indexes with the none overlapping block bootstrap
     ('nbb') strategy given the number of observations in a timeseries and
     the length of the blocks.
-    Returns
-    -------
-    _id : array
-        Bootstrapped indexes.
+
+    :param n_obs:
+    :param block_length:
+    :return:
     """
     assert block_length < n_obs
     assert block_length > 3
