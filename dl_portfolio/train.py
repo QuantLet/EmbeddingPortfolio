@@ -8,7 +8,6 @@ from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name
 from tensorflow.keras import backend as K
 from tensorboard.plugins import projector
-from dl_portfolio.losses import weighted_mse
 import matplotlib.pyplot as plt
 from dl_portfolio.ae_data import bb_resample_sample
 
@@ -130,19 +129,9 @@ def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, 
         if test_data is not None:
             test_input = build_model_input(test_data, model_type, features=None, assets=assets)
 
-    if loss == 'weighted_mse':
-        sample_weights = df_sample_weights.loc[dates['train']]
-        sample_weights = tf.Variable(
-            sample_weights.values,
-            dtype=tf.float32
-        )
-        train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
-    else:
-        train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
-
+    train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
     val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
     test_dataset = tf.data.Dataset.from_tensor_slices((test_input, test_data))
-
     train_dataset = train_dataset.batch(batch_size)
     val_dataset = val_dataset.batch(batch_size)
     test_dataset = test_dataset.batch(batch_size)
@@ -207,23 +196,11 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
     else:
         n_features = None
 
-    if loss == 'weighted_mse':
-        sample_weights = df_sample_weights.loc[dates['train']]
-        sample_weights = tf.Variable(
-            sample_weights.values,
-            dtype=tf.float32
-        )
-        if n_features:
-            train_dataset = tf.data.Dataset.from_tensor_slices(
-                (train_input[0], train_input[1], train_data, sample_weights))
-        else:
-            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data, sample_weights))
+    if n_features:
+        train_dataset = tf.data.Dataset.from_tensor_slices(
+            (train_input[0], train_input[1], train_data))
     else:
-        if n_features:
-            train_dataset = tf.data.Dataset.from_tensor_slices(
-                (train_input[0], train_input[1], train_data))
-        else:
-            train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
+        train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
 
     if n_features:
         val_dataset = tf.data.Dataset.from_tensor_slices((val_input[0], val_input[1], val_data))
@@ -274,48 +251,32 @@ def r_square(y_true, y_pred):
 
 
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
-        loss: str = None, loss_asset_weights: Optional[tf.Tensor] = None, callbacks: Dict = None,
-        val_dataset: tf.data.Dataset = None, extra_features: bool = False, save_path: str = None,
-        shuffle: bool = False, cv=None, data=None, assets=None, config=None, df_sample_weights=None):
+        loss: str = None, callbacks: Dict = None, val_dataset: tf.data.Dataset = None, extra_features: bool = False,
+        save_path: str = None, shuffle: bool = False, cv=None, data=None, assets=None, config=None,
+        df_sample_weights=None):
     """
 
-    :param model: keras model to train
-    :param train_dataset: train dataset
-    :param epochs: number of epochs
-    :param learning_rate: learning rate
-    :param loss: loss function instance
-    :param callbacks: Dictionary of callbacks
-    :param val_dataset: validation dataset
-    :param extra_features: boolean, flag if model use extra features, dataset is then a list
-    :param save_path: Base directory for logs and saved object
+    :param model:
+    :param train_dataset:
+    :param epochs:
+    :param learning_rate:
+    :param loss:
+    :param callbacks:
+    :param val_dataset:
+    :param extra_features:
+    :param save_path:
+    :param shuffle:
+    :param cv:
+    :param data:
+    :param assets:
+    :param config:
+    :param df_sample_weights:
     :return:
     """
-    # x = None, y = None, batch_size = None, epochs = 1, verbose = 'auto',
-    # callbacks = None, validation_split = 0.0, validation_data = None, shuffle = True,
-    # class_weight = None, sample_weight = None, initial_epoch = 0, steps_per_epoch = None,
-    # validation_steps = None, validation_batch_size = None, validation_freq = 1,
-    # max_queue_size = 10, workers = 1, use_multiprocessing = False
 
-    if loss == 'mse_with_covariance_penalty':
-        pass
-    elif loss == 'mse':
-        loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
-        if loss_asset_weights is not None:
-            loss_fn = weighted_mse
-    elif loss == 'weighted_mse':
-        raise NotImplementedError(
-            'Verify implementation: check sample_weight parameter: https://www.tensorflow.org/api_docs/python/tf/keras/losses/MeanSquaredError')
-        loss_fn = weighted_mse
-        if loss_asset_weights is not None:
-            raise NotImplementedError('Do not support both sample weights and output weights for now')
-
-
-    else:
-        raise NotImplementedError()
-
+    loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
     if callbacks.get('ActivityRegularizer'):
         tf.config.run_functions_eagerly(True)
-        # cv_callbacks.append(ActivityRegularizer(model))
 
     # Train
     LOGGER.info('Start training')
@@ -384,50 +345,21 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                                                         scaler_func=config.scaler_func,
                                                         resample=config.resample,
                                                         loss=config.loss,
-                                                        drop_remainder_obs=config.drop_remainder_obs,
-                                                        df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None
-                                                        )
+                                                        drop_remainder_obs=config.drop_remainder_obs)
 
         # Iterate over the batches of the dataset.
         batch_loss = []
         batch_reg_loss = []
-        if loss == 'weighted_mse':
-            if extra_features:
-                for step, (x_batch_train_0, x_batch_train_1, y_batch_train, weights_batch) in enumerate(
-                        train_dataset):
-                    loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
-                                                      weights_batch)
-                    batch_loss.append(loss_value)
-                    batch_reg_loss.append(reg_loss)
-            else:
-                for step, (x_batch_train, y_batch_train, weights_batch) in enumerate(train_dataset):
-                    loss_value, reg_loss = train_step(x_batch_train, y_batch_train, weights_batch)
-                    batch_loss.append(loss_value)
-                    batch_reg_loss.append(reg_loss)
+        if extra_features:
+            for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
+                loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
+                batch_loss.append(loss_value)
+                batch_reg_loss.append(reg_loss)
         else:
-            if loss_asset_weights is None:
-                if extra_features:
-                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
-                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train)
-                        batch_loss.append(loss_value)
-                        batch_reg_loss.append(reg_loss)
-                else:
-                    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
-                        batch_loss.append(loss_value)
-                        batch_reg_loss.append(reg_loss)
-            else:
-                if extra_features:
-                    for step, (x_batch_train_0, x_batch_train_1, y_batch_train) in enumerate(train_dataset):
-                        loss_value, reg_loss = train_step([x_batch_train_0, x_batch_train_1], y_batch_train,
-                                                          loss_asset_weights)
-                        batch_loss.append(loss_value)
-                        batch_reg_loss.append(reg_loss)
-                else:
-                    for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
-                        loss_value, reg_loss = train_step(x_batch_train, y_batch_train, loss_asset_weights)
-                        batch_loss.append(loss_value)
-                        batch_reg_loss.append(reg_loss)
+            for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+                loss_value, reg_loss = train_step(x_batch_train, y_batch_train)
+                batch_loss.append(loss_value)
+                batch_reg_loss.append(reg_loss)
 
         # Compute loss over epoch
         epoch_loss = np.mean(batch_loss)

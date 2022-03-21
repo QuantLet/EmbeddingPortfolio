@@ -13,7 +13,6 @@ resample = {
     'block_length': 60,
     'when': 'each_epoch'
 }
-loss_asset_weights = None
 crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 

@@ -197,23 +197,12 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                 shuffle = True
 
         # Set extra loss parameters
-        if config.loss_asset_weights is not None:
-            loss_asset_weights = {a: 1. for a in assets}
-            for a in config.loss_asset_weights:
-                loss_asset_weights[a] = config.loss_asset_weights[a]
-            LOGGER.debug(f'Loss asset weights is: {loss_asset_weights}')
-            loss_asset_weights = np.array(list(loss_asset_weights.values()))
-            loss_asset_weights = tf.cast(loss_asset_weights, dtype=tf.float32)
-        else:
-            loss_asset_weights = None
-
         if shuffle:
             model, history = fit(model,
                                  None,
                                  config.epochs,
                                  config.learning_rate,
                                  loss=config.loss,
-                                 loss_asset_weights=loss_asset_weights,
                                  callbacks=config.callbacks,
                                  val_dataset=None,
                                  extra_features=n_features is not None,
@@ -222,15 +211,13 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                  cv=cv,
                                  data=data,
                                  assets=assets,
-                                 config=config,
-                                 df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None)
+                                 config=config)
         else:
             model, history = fit(model,
                                  train_dataset,
                                  config.epochs,
                                  config.learning_rate,
                                  loss=config.loss,
-                                 loss_asset_weights=loss_asset_weights,
                                  callbacks=config.callbacks,
                                  val_dataset=val_dataset,
                                  extra_features=n_features is not None,
