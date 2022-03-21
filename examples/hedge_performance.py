@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from joblib import Parallel, delayed
-from dl_portfolio.ae_data import load_data
+from dl_portfolio.data import load_data
 from dl_portfolio.hedge import hedged_portfolio_weights_wrapper
 from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER

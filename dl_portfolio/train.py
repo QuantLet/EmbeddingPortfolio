@@ -2,14 +2,14 @@ import tensorflow as tf
 import numpy as np
 from typing import Dict, List, Optional, Union
 import os
-from dl_portfolio.ae_data import get_features
+from dl_portfolio.data import get_features
 from dl_portfolio.data import drop_remainder
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name
 from tensorflow.keras import backend as K
 from tensorboard.plugins import projector
 import matplotlib.pyplot as plt
-from dl_portfolio.ae_data import bb_resample_sample
+from dl_portfolio.data import bb_resample_sample
 
 
 def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.ndarray] = None,
@@ -25,26 +25,6 @@ def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.n
         data = [data, features]
 
     return data
-
-
-def build_model_input_old(train_data, val_data, test_data, model_type, features=None):
-    if model_type == 'pca_permut_ae_model':
-        raise NotImplementedError()
-        train_input = [train_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-        val_input = [val_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-        if test_data is not None:
-            test_input = [test_data[:, i].reshape(-1, 1) for i in range(len(assets))]
-    elif model_type in ['ae_model', 'pca_ae_model']:
-        train_input = train_data
-        val_input = val_data
-        test_input = test_data
-    else:
-        raise NotImplementedError()
-    if features:
-        train_input = [train_data, features['train']]
-        val_input = [val_data, features['val']]
-
-    return train_input, val_input, test_input
 
 
 def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, batch_size: int,
@@ -169,13 +149,6 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
         val_data = val_data[indices, :]
         features['val'] = features['val'][indices, :]
         dates['val'] = dates['val'][indices]
-
-    # if shuffle_columns_while_training:
-    #     train_data = np.transpose(train_data)
-    #     np.random.seed(random_seed)
-    #     np.random.shuffle(train_data)
-    #     np.random.seed(seed)
-    #     train_data = np.transpose(train_data)
 
     LOGGER.debug(f'Train shape: {train_data.shape}')
     LOGGER.debug(f'Validation shape: {val_data.shape}')

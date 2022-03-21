@@ -1,184 +1,12 @@
-import numpy as np
-from typing import List, Dict
 import pandas as pd
-import datetime as dt
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.constant import BASE_FREQ, BASE_COLUMNS, RESAMPLE_DICT
+from typing import List, Optional, Dict, Union
 from sklearn import preprocessing
-import tensorflow as tf
+import numpy as np
+import datetime as dt
+from dl_portfolio.sample import id_nb_bootstrap
 
-
-def one_month_from_freq(freq, base_freq=BASE_FREQ):
-    if base_freq == BASE_FREQ:
-        hour = base_freq * 2
-        if freq == hour:
-            month = 24 * 30
-        elif freq == hour * 2:
-            month = 12 * 30
-        elif freq == hour * 4:
-            month = 6 * 30
-        elif freq == hour * 12:
-            month = 2 * 30
-        elif freq == hour * 24:
-            month = 30
-    elif base_freq == 'D':
-        month = 22
-
-    return month
-
-
-def build_seq_data(data, seq_len, nb_sequence=None, horizon=1):
-    LOGGER.info(f'Data shape: {data.shape}')
-    n_sample = data.shape[0] - horizon
-    max_nb_sequence = n_sample - seq_len + 1
-    LOGGER.info(f'Max nb of sequences: {max_nb_sequence}')
-    if nb_sequence is None:
-        nb_sequence = max_nb_sequence
-    if nb_sequence > max_nb_sequence:
-        nb_sequence = max_nb_sequence
-    LOGGER.info(f"NB sequence: {nb_sequence}")
-    seq_data = np.zeros((nb_sequence, seq_len, 1))
-    seq_data[:] = np.nan
-    label = np.zeros((nb_sequence, 1))
-    label[:] = np.nan
-    for i in range(nb_sequence):
-        seq_data[i] = data[i:i + seq_len]
-        label[i] = data[i + seq_len + horizon - 1]
-
-    seq_data = seq_data.astype(np.float32)
-    label = label.astype(np.float32)
-    assert np.sum(np.isnan(seq_data)) == 0, np.sum(np.isnan(seq_data))
-    assert np.sum(label[:-1, 0] != seq_data[1:, -1, 0]) == 0
-
-    return seq_data, label
-
-
-def build_seq(data, seq_len):
-    data = np.array(
-        [data[i - seq_len:i] for i in range(seq_len, len(data) + 1)])
-    return data
-
-
-def data_to_freq(data, freq):
-    # raise NotImplementedError('Verify resamplig method to make sure we dont look into the future, in particular for freq < D')
-    assert freq in [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8, BASE_FREQ * 24,
-                    BASE_FREQ * 48], f'Specified freq must be one of [BASE_FREQ, BASE_FREQ * 2, BASE_FREQ * 4, BASE_FREQ * 8, BASE_FREQ * 48], freq is: {freq}'
-    assert data.index.freq == '30T', 'Data must have BASE_FREQ'
-    if freq != BASE_FREQ:
-        if freq == BASE_FREQ * 2:
-            freq = '1H'
-        elif freq == BASE_FREQ * 4:
-            freq = '2H'
-        elif freq == BASE_FREQ * 8:
-            freq = '4H'
-        elif freq == BASE_FREQ * 24:
-            freq = '12H'
-        elif freq == BASE_FREQ * 48:
-            freq = '1D'
-
-        re_data = pd.DataFrame()
-        assets = np.unique(list(data.columns.get_level_values(0))).tolist()
-        for asset in assets:
-            re_data = pd.concat([re_data, data[asset].resample(freq,
-                                                               closed='right',
-                                                               label='right').agg(RESAMPLE_DICT)], 1)
-        re_data.columns = pd.MultiIndex.from_product([assets, BASE_COLUMNS])
-
-        return re_data
-
-
-def get_feature(feature_name: str, data: pd.DataFrame, **kwargs):
-    if feature_name in BASE_COLUMNS:
-        feature = data[feature_name]
-    elif feature_name == 'returns':
-        raise NotImplementedError('It seems that we are looking into the future with that feature....')
-        time_period = kwargs.get('time_period', 1)
-        feature = data['close'].pct_change(time_period)
-    elif feature_name == 'open_close_returns':
-        feature = data['close'] / data['open'].values - 1
-
-    elif feature_name == 'log_returns':
-        time_period = kwargs.get('time_period', 1)
-        feature = np.log(data['close'].pct_change(time_period) + 1)
-
-    elif feature_name == 'realized_volatility':
-        time_period = kwargs.get('time_period')
-        assert time_period is not None
-        feature = np.log(data['close']).rolling(time_period).std()
-
-    return feature
-
-
-def build_delayed_window(data: np.ndarray, seq_len: int, return_2d: bool = False):
-    """
-
-    :param data: data
-    :param seq_len: length of window
-    :param return_2d: if True then return  (n, seq_len, n_features)
-    :return:
-    """
-    n = len(data)
-    n_features = data.shape[-1]
-    # sequence data: (n, seq_len, n_features)
-    seq_data = np.zeros((n, seq_len, n_features))
-    seq_data[:] = np.nan
-    seq_data[seq_len - 1:, :] = np.array([data[i - seq_len:i] for i in range(seq_len, n + 1)], dtype=np.float32)
-
-    if return_2d:
-        data = seq_data
-    else:
-        # concatenate columns: (n, seq_len * n_features)
-        data = np.zeros((n, seq_len * n_features))
-        data[:] = np.nan
-        for i in range(n_features):
-            data[:, i * seq_len:seq_len * (i + 1)] = seq_data[:, :, i]
-    return data
-
-
-def reshape_to_2d_data(data: np.ndarray, n_features: int, seq_len: int):
-    """
-
-    :param data: array with shape (n, seq_len * n_features). Columns are organised as (x^1_t-k-1, ..., x^1_t, x^2_t-k-1,
-     ..., x^2_t, ..., x^f_t-k-1, ..., x^f_t)
-    :param n_features:
-    :param seq_len:
-    :return:
-    """
-    seq_data = np.zeros((len(data), seq_len, n_features))
-    seq_data[:] = np.nan
-    for i in range(n_features):
-        seq_data[:, :, i] = data[:, i * seq_len:seq_len * (i + 1)]
-    assert np.isnan(seq_data).sum() == 0
-    return seq_data
-
-
-def min_max_scaler(X: np.ndarray, feature_range: tuple, minX: float = None, maxX: float = None):
-    """
-
-    :param X: data
-    :param feature_range: (min, max)
-    :param minX: min from train set to apply transformation on unseen data
-    :param maxX: max from train set to apply transformation on unseen data
-    :return:
-    """
-    if minX is None and maxX is None:
-        minX = X.min(axis=0)
-        maxX = X.max(axis=0)
-
-    X_std = (X - minX) / (maxX - minX)
-    X_scaled = X_std * (feature_range[1] - feature_range[0]) + feature_range[0]
-
-    return X_scaled, minX, maxX
-
-
-def normalize_2d(data):
-    """
-
-    :param data: (n, seq_len, n_features)
-    :return:
-    """
-
-    raise NotImplementedError()
+DATASETS = ['bond', 'raffinot_bloomberg_comb_update_2021']
 
 
 def drop_remainder(indices, batch_size, last=False):
@@ -193,624 +21,241 @@ def drop_remainder(indices, batch_size, last=False):
     return indices
 
 
-class DataLoader(object):
-    def __init__(self, model_type: str, features: List, freq: int = 3600,
-                 path: str = 'data/crypto_data/price/train_data_1800.p',
-                 pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 nb_folds: int = 5, val_size: int = 6, no_cash: bool = False, window: int = 1, batch_size: int = 32,
-                 cv_type: str = 'incremental'):
-        self._freq = freq
-        if 'crypto_data' in path:
-            self._base_freq = 1800
+def load_data(dataset='global', **kwargs):
+    assert dataset in DATASETS, dataset
+    if dataset == 'bond':
+        data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
+                                             crypto_assets=kwargs.get('crypto_assets', None))
+    elif dataset == 'raffinot_bloomberg_comb_update_2021':
+        data, assets = load_bloomberg_comb_update_2021()
+    else:
+        raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
+
+    return data, assets
+
+
+def bb_resample_sample(data: np.ndarray, dates: List, block_length: int = 44):
+    nbb_id = id_nb_bootstrap(len(data), block_length=block_length)
+    data = data[nbb_id]
+    dates = dates[nbb_id]
+    return data, dates
+
+
+def load_bloomberg_comb_update_2021():
+    data = pd.read_csv('data/raffinot/bloomberg_comb_update_2021.csv', index_col=0)
+    data.index = pd.to_datetime(data.index)
+    data = data.interpolate(method='polynomial', order=2)
+    data = data.astype(np.float32)
+    assets = list(data.columns)
+
+    return data, assets
+
+
+def load_global_bond_data(crix=False, crypto_assets=None):
+    data = pd.read_csv('./data/ALLA/alla_data_20211101.csv')
+    data = data.interpolate(method='polynomial', order=2)
+    data = data.set_index('Date')
+    data.index = pd.to_datetime(data.index)
+    data = data.dropna()
+
+    if crix:
+        raise NotImplementedError("You need to update CRIX data or use old all_data.csv")
+        assert crypto_assets is None
+        crix = pd.read_pickle('./data/crypto_data/crix_1H_20160630_20210614.p')
+        crix = crix.resample('1D', closed='right', label='left').agg('last')
+        crix.index = pd.to_datetime([d.date() for d in crix.index])
+
+        data = pd.concat([data, crix], 1)
+        data = data.dropna()
+    if crypto_assets is not None:
+        crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800_20150808_20211102.p')
+        crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
+        crypto_data = crypto_data.resample('1H',
+                                           closed='right',
+                                           label='right').agg('last')
+        crypto_data = crypto_data.resample('1D',
+                                           closed='right',
+                                           offset="23h",
+                                           label='right').agg('last')
+        crypto_data.index = pd.to_datetime([str(d.date()) for d in crypto_data.index])
+        data = pd.concat([data, crypto_data], 1).dropna()
+
+    data = data.astype(np.float32)
+
+    assets = list(data.columns)
+    return data, assets
+
+
+def hour_in_week(dates: List[dt.datetime]) -> np.ndarray:
+    hinw = np.array([date.weekday() * 24 + date.hour for date in dates], dtype=np.float32)
+    hinw = np.round(np.sin(2 * np.pi * hinw / 168), 4)
+    return hinw
+
+
+def get_features(data, start: str, end: str, assets: List, val_start: str = None, test_start: str = None,
+                 rescale=None, scaler: Union[str, Dict] = 'StandardScaler', resample=None,
+                 features_config: Optional[List] = None,
+                 **kwargs):
+    """
+
+    :param data:
+    :param start:
+    :param end:
+    :param assets:
+    :param val_start:
+    :param test_start:
+    :param rescale:
+    :param scaler: if str, then must be name of scaler and we fit the scaler, if Dict, then we use the parameter defined in scaler to transform (used for inference)
+    :param resample:
+    :param features_config:
+    :param kwargs:
+    :return:
+    """
+    data = data[assets]
+    # Train/val/test split
+    assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+    if val_start is not None:
+        assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(val_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(val_start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+    if test_start is not None:
+        assert dt.datetime.strptime(start, '%Y-%m-%d') < dt.datetime.strptime(test_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(val_start, '%Y-%m-%d') < dt.datetime.strptime(test_start, '%Y-%m-%d')
+        assert dt.datetime.strptime(test_start, '%Y-%m-%d') < dt.datetime.strptime(end, '%Y-%m-%d')
+
+    if val_start is not None:
+        train_data = data.loc[start:val_start].iloc[:-1]
+        if test_start is not None:
+            val_data = data.loc[val_start:test_start].iloc[:-1]
+            test_data = data.loc[test_start:end]
         else:
-            self._base_freq = 'D'
-        self._window = window
-        self._features = features
-        self._n_features = len(features)
-        self._features_name = [f['name'] for f in self._features]
-        self._pairs = pairs
-        self._nb_folds = nb_folds
-        self._val_size = val_size
-        self._model_type = model_type
-        self._batch_size = batch_size
-        self._cv_type = cv_type
+            val_data = data.loc[val_start:end]
+            test_data = None
+    else:
+        train_data = data.loc[start:end]
+        val_data = None
+        test_data = None
 
-        if not no_cash:
-            self._assets = self._pairs + ['cash']
-        else:
-            self._assets = self._pairs
-        self._n_assets = len(self._assets)
-        LOGGER.info(f'Creating data_loader for {self._n_assets} assets : {self._assets}')
+    LOGGER.debug(f"Train from {train_data.index[0]} to {train_data.index[-1]}")
+    if val_data is not None:
+        LOGGER.debug(f"Validation from {val_data.index[0]} to {val_data.index[-1]}")
+    if test_data is not None:
+        LOGGER.debug(f"Test from {test_data.index[0]} to {test_data.index[-1]}")
 
-        # load data
-        self.df_data = pd.read_pickle(path)
-        self.df_data = self.df_data.astype(np.float32)
-        # resample
-        if 'crypto_data' in path:
-            self.df_data = data_to_freq(self.df_data, freq)
+    # featurization
+    train_data = train_data.pct_change(1).dropna()
+    train_dates = train_data.index
+    train_data = train_data.values
 
-        # Get returns
-        self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
-        if not no_cash:
-            # Add cash column
-            self.df_returns['cash'] = 0.
-        self.df_returns = self.df_returns.astype(np.float32)
-        # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
-        # returns[:, -1] = daily_risk_free_rate
+    if val_data is not None:
+        val_data = val_data.pct_change(1).dropna()
+        val_dates = val_data.index
+        val_data = val_data.values
+    else:
+        val_dates = None
 
-        # dropna
-        before_drop = len(self.df_data)
-        has_nan = np.sum(self.df_data.isna().sum()) > 0
-        if has_nan:
-            LOGGER.info('They are NaNs in original dataframe, dropping...')
-        self.df_data = self.df_data.dropna()
-        after_drop = len(self.df_data)
-        if has_nan:
-            LOGGER.info(f'Dropped {before_drop - after_drop} NaNs')
+    if test_data is not None:
+        test_data = test_data.pct_change(1).dropna()
+        test_dates = test_data.index
+        test_data = test_data.values
+    else:
+        test_dates = None
 
-        # get last feature index
-        last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
-        self.df_data = self.df_data.loc[:last_ind]
-
-        # TODO: move this into cv fold generation
-        # Build features, returns and corresponding base index
-        LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
-        if self._model_type in ['EIIE', 'asset_independent_model']:
-            self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
-        else:
-            self._input_data, self.df_returns, self._indices, self._dates = self.build_1d_features_and_returns()
-
-        # Train / Test split
-        LOGGER.info('Train / test split')
-        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type=self._cv_type)
-
-    def build_1d_pair_features(self, pair, window=None):
-        if window is None:
-            window = self._window
-
-        df_features = pd.DataFrame()
-        for feature_spec in self._features:
-            params = feature_spec.get('params')
-            if params is not None:
-                feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
+    # standardization
+    if scaler is not None:
+        if isinstance(scaler, str):
+            if scaler == 'StandardScaler':
+                kwargs['with_std'] = kwargs.get('with_std', True)
+                kwargs['with_mean'] = kwargs.get('with_mean', True)
+                scaler = preprocessing.StandardScaler(**kwargs)
+            elif scaler == 'MinMaxScaler':
+                assert 'feature_range' in kwargs
+                scaler = preprocessing.MinMaxScaler(**kwargs)
             else:
-                feature = get_feature(feature_spec['name'], self.df_data[pair])
-            df_features = pd.concat([df_features, feature], 1)
+                raise NotImplementedError(scaler)
 
-        df_features.columns = self._features_name
+            scaler.fit(train_data)
+            train_data = scaler.transform(train_data)
+            if val_data is not None:
+                val_data = scaler.transform(val_data)
 
-        if window > 1:
-            df_features = pd.DataFrame(build_delayed_window(df_features.values, window),
-                                       index=df_features.index)
-        self._lookback = np.max(df_features.isna().sum())
-        max_feature_lookback = np.max([f['params'].get('time_period') for f in self._features if 'params' in f])
-        assert self._lookback == max_feature_lookback + window - 1
-        LOGGER.info(f'Lookback is {self._lookback}')
+            if test_data is not None:
+                test_data = scaler.transform(test_data)
 
-        before_drop = len(df_features)
-        # drop na
-        df_features.dropna(inplace=True)
-        after_drop = len(df_features)
-        if self._lookback != before_drop - after_drop:
-            raise ValueError(f'Problem with NaNs count:\n{df_features.isna().sum()}')
+        elif isinstance(scaler, dict):
+            mean_ = scaler['attributes']['mean_']
+            std = scaler['attributes']['scale_']  # same as np.sqrt(scaler['attributes']['var_'])
+            train_data = (train_data - mean_) / std
+            if val_data is not None:
+                val_data = (val_data - mean_) / std
+            if test_data is not None:
+                test_data = (test_data - mean_) / std
 
-        return df_features
+        else:
+            raise NotImplementedError(scaler)
 
-    def build_1d_features_and_returns(self, **kwargs):
-        df_features = pd.DataFrame()
-        for pair in self._pairs:
-            pair_feature = self.build_1d_pair_features(pair, **kwargs)
-            df_features = pd.concat([df_features, pair_feature], 1)
-        df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
-        assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
+    if rescale is not None:
+        train_data = train_data * rescale
+        if val_data is not None:
+            val_data = val_data * rescale
+        if test_data is not None:
+            test_data = test_data * rescale
 
-        # Get corresponding returns
-        dates = df_features.index
-        return_dates = dates + dt.timedelta(seconds=self._freq)
-        df_returns = self.df_returns.reindex(return_dates)
-        if np.sum(df_returns.isna().sum()) != 0:
-            raise NotImplementedError(
-                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
-        assert len(df_features) == len(df_returns)
-        assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
+    dates = {
+        'train': train_dates,
+        'val': val_dates,
+        'test': test_dates
+    }
 
-        # Base index
-        n_samples = len(df_features)
-        indices = list(range(n_samples))
-        dates = df_features.index
-        # Convert to float32
-        df_features, df_returns = df_features.astype(np.float32), df_returns.astype(np.float32)
+    if features_config:
+        n_features = len(features_config)
+        features = {
+            'train': [],
+            'val': [],
+            'test': [],
+        }
+        for feature_config in features_config:
+            if feature_config['name'] == 'hour_in_week':
+                f = {
+                    'train': hour_in_week(dates['train']),
+                    'val': hour_in_week(dates['val']),
+                    'test': hour_in_week(dates['test']) if test_data is not None else None
 
-        return df_features, df_returns, indices, dates
-
-    def build_features_EIIE(self):
-        pairs_features = {}
-        df_features, df_returns, indices, dates = self.build_1d_features_and_returns(window=1)
-
-        """for pair in self._pairs:
-            pairs_features[pair] = reshape_to_2d_data(df_features[pair].values, n_features=self._n_features,
-                                                      seq_len=self._window)
-        assert np.sum(
-            np.unique([pairs_features[k].shape for k in pairs_features.keys()]) != [self._n_features, self._window,
-                                                                                    len(dates)]) == 0"""
-        for pair in self._pairs:
-            pairs_features[pair] = df_features[pair]
-
-        return pairs_features, df_returns, indices, dates
-
-    def cv_folds(self, nb_folds: int = 1, n_months: int = 6, type='incremental'):
-        """
-
-        :param nb_folds:
-        :param val_size:
-        :param type:
-        :return:
-        """
-        if type != 'incremental':
-            raise NotImplementedError()
-
-        month = one_month_from_freq(self._freq, base_freq=self._base_freq)
-        val_size = n_months * month
-        cv_indices = {}
-        for i in range(nb_folds, 0, -1):
-            if i > 1:
-                cv_indices[nb_folds - i] = {
-                    'train': drop_remainder(self._indices[:-val_size * i], self._batch_size, last=False),
-                    'test': drop_remainder(self._indices[- val_size * i:- val_size * (i - 1)], self._batch_size,
-                                           last=True)
                 }
-            else:
-                cv_indices[nb_folds - i] = {
-                    'train': drop_remainder(self._indices[:-val_size * i], self._batch_size, last=False),
-                    'test': drop_remainder(self._indices[- val_size:], self._batch_size, last=True)
-                }
-
-        return cv_indices
-
-    def cv_split(self, cv):
-        raise ValueError('No need for that, drop_remainder has been implemented')
-        LOGGER.info('Train / test split')
-        train_indices = self._cv_indices[cv]['train']
-        train_nb_batch = len(train_indices) // self._batch_size
-        LOGGER.info(f'nb_batch in training: {train_nb_batch}')
-        drop_first = np.remainder(len(train_indices), self._batch_size)
-        LOGGER.info(f'Drop first {drop_first} in train set')
-        self._train_indices = train_indices[drop_first:]
-        self._train_dates = self._dates[train_indices]
-
-        test_indices = self._cv_indices[cv]['test']
-        test_nb_batch = len(test_indices) // self._batch_size
-        LOGGER.info(f'nb_batch in test: {test_nb_batch}')
-        drop_first = np.remainder(len(test_indices), self._batch_size)
-        LOGGER.info(f'Drop first {drop_first} in train set')
-        self._test_indices = test_indices[drop_first:]
-        self._test_dates = self._dates[test_indices]
-
-    @property
-    def cv_indices(self):
-        return self._cv_indices
-
-    @property
-    def assets(self):
-        return self._assets
-
-    @property
-    def n_assets(self):
-        return self._n_assets
-
-    @property
-    def pairs(self):
-        return self._pairs
-
-    @property
-    def n_pairs(self):
-        return len(self._pairs)
-
-    @property
-    def n_features(self):
-        return self._n_features
-
-    @property
-    def input_data(self):
-        return self._input_data
-
-    @property
-    def returns(self):
-        return self.df_returns.values
-
-    @property
-    def dates(self):
-        return self._dates
-
-    @property
-    def window(self):
-        return self._window
-
-    @property
-    def train_indices(self):
-        return self._train_indices
-
-    @property
-    def train_dates(self):
-        return self._train_dates
-
-    @property
-    def test_indices(self):
-        return self._test_indices
-
-    @property
-    def test_dates(self):
-        return self._test_dates
-
-
-class SeqDataLoader(object):
-    def __init__(self, model_type: str, features: List, start_date: str, freq: int = 3600,
-                 path: str = 'crypto_data/price/train_data_1800.p',
-                 pairs: List[Dict] = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP'],
-                 preprocess_param: Dict = None, nb_folds: int = 5, val_size: int = 6, no_cash: bool = False,
-                 seq_len: int = 1, batch_size: int = 32, cv_type: str = 'incremental', horizon: int = 1,
-                 lookfront: int = 1):
-        self._preprocess_param = preprocess_param
-        self._freq = freq
-        if 'crypto_data' in path:
-            self._base_freq = 1800
-        else:
-            self._base_freq = 'D'
-        self._seq_len = seq_len
-        self._features = features
-        self._n_features = len(features)
-        self._features_name = [f['name'] for f in self._features]
-        self._pairs = pairs
-        self._nb_folds = nb_folds
-        self._val_size = val_size
-        self._model_type = model_type
-        self._batch_size = batch_size
-        self._cv_type = cv_type
-        self._horizon = horizon
-        self.lookfront = lookfront
-        if self._horizon > 1:
-            raise NotImplementedError()
-        if not no_cash:
-            self._assets = self._pairs + ['cash']
-        else:
-            self._assets = self._pairs
-        self._n_assets = len(self._assets)
-        LOGGER.info(f'Creating data_loader for {self._n_assets} assets : {self._assets}')
-
-        # load data
-        self.df_data = pd.read_pickle(path)
-        self.df_data = self.df_data.loc[start_date:, self._pairs]
-        self.df_data = self.df_data.astype(np.float32)
-        # resample
-        if 'crypto_data' in path:
-            self.df_data = data_to_freq(self.df_data, freq)
-        # Get returns
-        self.df_returns = (self.df_data.loc[:, pd.IndexSlice[:, 'close']] / self.df_data.loc[:, pd.IndexSlice[:,
-                                                                                                'open']].values - 1).droplevel(
-            1, 1)
-        # self.df_returns = self.df_data.loc[:, pd.IndexSlice[:, 'close']].pct_change().droplevel(1, 1)
-        if not no_cash:
-            # Add cash column
-            self.df_returns['cash'] = 0.
-        self.df_returns = self.df_returns.astype(np.float32)
-        self.df_returns = np.log(self.df_returns + 1.)
-        # daily_risk_free_rate = (1 + US_10Y_BOND) ** (1 / 3650) - 1
-        # returns[:, -1] = daily_risk_free_rate
-
-        # dropna
-        before_drop = len(self.df_data)
-        has_nan = np.sum(self.df_data.isna().sum()) > 0
-        if has_nan:
-            LOGGER.info('They are NaNs in original dataframe, dropping...')
-        self.df_data = self.df_data.dropna()
-        after_drop = len(self.df_data)
-        if has_nan:
-            LOGGER.info(f'Dropped {before_drop - after_drop} NaNs')
-
-        # get last feature index
-        last_ind = self.df_returns.index[-1] - dt.timedelta(seconds=freq)
-        self.df_data = self.df_data.loc[:last_ind]
-
-        # Build features, returns and corresponding base index
-        LOGGER.info(f'Building {len(self._features_name)} features: {self._features_name}')
-        self._input_data, self.df_returns, self._indices, self._dates = self.build_features_EIIE()
-
-        # Train / Test split
-        LOGGER.info('Train / test split')
-        self._cv_indices = self.cv_folds(self._nb_folds, self._val_size, type=self._cv_type)
-
-    def build_1d_pair_features(self, pair):
-        df_features = pd.DataFrame()
-        self._feature_index = {}
-        for i, feature_spec in enumerate(self._features):
-            assert feature_spec.get('lookback') is not None
-            self._feature_index[feature_spec['name']] = i
-            params = feature_spec.get('params')
-            if params is not None:
-                feature = get_feature(feature_spec['name'], self.df_data[pair], **params)
-            else:
-                feature = get_feature(feature_spec['name'], self.df_data[pair])
-            df_features = pd.concat([df_features, feature], 1)
-
-        df_features.columns = self._features_name
-        self._lookback = np.max(df_features.isna().sum())
-        max_feature_lookback = np.max([f.get('lookback') for f in self._features])
-        assert self._lookback == max_feature_lookback, f"max_feature_lookback: {max_feature_lookback}, self._lookback: {self._lookback}"
-        LOGGER.info(f'Lookback is {self._lookback}')
-        before_drop = len(df_features)
-        # drop na
-        df_features.dropna(inplace=True)
-        after_drop = len(df_features)
-        if self._lookback != before_drop - after_drop:
-            raise ValueError(f'Problem with NaNs count:\n{df_features.isna().sum()}')
-        return df_features
-
-    def build_1d_features_and_returns(self):
-        df_features = pd.DataFrame()
-        for pair in self._pairs:
-            pair_feature = self.build_1d_pair_features(pair)
-            df_features = pd.concat([df_features, pair_feature], 1)
-        df_features.columns = pd.MultiIndex.from_product([self._pairs, pair_feature.columns])
-        assert not any(df_features.isna().sum(1)), 'Problem in df_features: there are NaNs'
-
-        # df_returns = df_features.loc[:, pd.IndexSlice[:,'returns']].droplevel(1,1)
-        # df_returns = df_returns.iloc[1:,:]
-
-        # Get corresponding returns
-        dates = df_features.index
-        if self.lookfront > 0:
-            # return_dates = dates + dt.timedelta(seconds=self._freq)
-            return_dates = list(dates)[self.lookfront:]
-        else:
-            return_dates = dates
-
-        df_returns = self.df_returns.reindex(return_dates)
-        # df_features['index'] = list(range(len(df_features)))
-        # df_returns['index'] = list(range(len(df_returns)))
-        # df_returns = df_returns.dropna()
-
-        # features_dates = df_returns.index - dt.timedelta(seconds=self._freq)
-        # df_features = df_features.reindex(features_dates)
-        # df_features = df_features.dropna()
-
-        # print(df_features['index'])
-        # print(df_returns['index'])
-        # exit()
-
-        if np.sum(df_features.isna().sum()) != 0:
-            raise NotImplementedError()
-        if np.sum(df_returns.isna().sum()) != 0:
-            raise NotImplementedError(
-                'If returns does not exist for one date, then we need to delete corresponding raw in df_feature')
-        if self.lookfront > 0:
-            df_features = df_features.iloc[:-self.lookfront]
-        assert len(df_features) == len(df_returns)
-        # assert np.sum(df_features.index != df_returns.index - dt.timedelta(seconds=self._freq)) == 0
-
-        # Base index
-        n_samples = len(df_features)
-        indices = list(range(n_samples))
-        dates = df_features.index
-        # Convert to float32
-        df_features, df_returns = df_features.astype(np.float32), df_returns.astype(np.float32)
-        return df_features, df_returns, indices, dates
-
-    def build_features_EIIE(self):
-        pairs_features = {}
-        df_features, df_returns, indices, dates = self.build_1d_features_and_returns()
-
-        for pair in self._pairs:
-            pairs_features[pair] = df_features[pair]
-
-        return pairs_features, df_returns, indices, dates
-
-    def cv_folds(self, nb_folds: int = 1, n_months: int = 6, type='incremental'):
-        """
-
-        :param nb_folds:
-        :param val_size:
-        :param type:
-        :return:
-        """
-
-        month = one_month_from_freq(self._freq, base_freq=self._base_freq)
-        val_size = n_months * month
-        assert val_size * nb_folds < len(
-            self._indices), f'val_size * nb_folds is too big: {val_size * nb_folds}\n val_size: {val_size}, ' \
-                            f'nb_folds: {nb_folds} for {len(self._indices)} samples'
-        cv_indices = {}
-        if type == 'incremental':
-            for i in range(nb_folds, 0, -1):
-                if i > 1:
-                    cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i - self._horizon + 1],
-                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
-                    }
-                else:
-                    cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i - self._horizon + 1],
-                        'test': self._indices[- val_size:]
-                    }
-        elif type == 'fold':
-            for i in range(nb_folds, 0, -1):
-                if i == nb_folds:
-                    cv_indices[nb_folds - i] = {
-                        'train': self._indices[:-val_size * i - self._horizon + 1],
-                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
-                    }
-                elif 1 < i < nb_folds:
-                    cv_indices[nb_folds - i] = {
-                        'train': self._indices[-val_size * (i + 1):-val_size * i - self._horizon + 1],
-                        'test': self._indices[- val_size * i:- val_size * (i - 1)]
-                    }
-                else:
-                    cv_indices[nb_folds - i] = {
-                        'train': self._indices[-val_size * (i + 1):-val_size * i - self._horizon + 1],
-                        'test': self._indices[- val_size:]
-                    }
+            features['train'].append(f['train'])
+            features['val'].append(f['val'])
+            features['test'].append(f['test'])
+        if n_features == 1:
+            features['train'] = features['train'][0].reshape(-1, 1)
+            features['val'] = features['val'][0].reshape(-1, 1)
+            features['test'] = features['test'][0].reshape(-1, 1) if test_data is not None else None
         else:
             raise NotImplementedError()
+    else:
+        features = None
 
-        return cv_indices
-
-    def get_cv_data(self, cv):
-        seq_normalization = False
-        train_indices = self.cv_indices[cv]['train']
-        test_indices = self.cv_indices[cv]['test']
-
-        train_data = {pair: self._input_data[pair].iloc[train_indices] for pair in self._input_data}
-        test_data = {pair: self._input_data[pair].iloc[test_indices] for pair in self._input_data}
-
-        if self._preprocess_param is not None:
-            LOGGER.info('Preprocessing ...')
-            for pair in self._input_data:
-                features_seq_normalize = []
-                for feature_name in self._preprocess_param:
-                    print(feature_name, self._preprocess_param[feature_name])
-                    if self._preprocess_param[feature_name]['method'] == 'minmax':
-                        scaler = preprocessing.MinMaxScaler(
-                            self._preprocess_param[feature_name]['params']['feature_range'])
-                        LOGGER.info('Fit to train set and transform')
-                        scaler.fit(train_data[pair][[feature_name]])
-                        train_data[pair].loc[:, feature_name] = scaler.transform(
-                            train_data[pair][[feature_name]].values)
-                        LOGGER.info('Transform test set')
-                        test_data[pair].loc[:, feature_name] = scaler.transform(
-                            test_data[pair][[feature_name]].values)
-                    elif self._preprocess_param[feature_name]['method'] == 'mean_std':
-                        scaler = preprocessing.StandardScaler(**self._preprocess_param[feature_name]['params'])
-                        LOGGER.info('Fit to train set and transform')
-                        scaler.fit(train_data[pair][[feature_name]])
-                        train_data[pair].loc[:, feature_name] = scaler.transform(
-                            train_data[pair][[feature_name]].values)
-                        LOGGER.info('Transform test set')
-                        test_data[pair].loc[:, feature_name] = scaler.transform(
-                            test_data[pair][[feature_name]].values)
-                    elif self._preprocess_param[feature_name]['method'] == 'seq_normalization':
-                        seq_normalization = True
-                        features_seq_normalize.append(feature_name)
-                        pass
-
-                    else:
-                        raise NotImplementedError()
-
-        LOGGER.info('Reshape to sequence data ...')
-        self._train_indices = build_seq(train_indices, self._seq_len)
-        self._train_indices = self._train_indices[:, -1]
-        self._test_indices = build_seq(test_indices, self._seq_len)
-        self._test_indices = self._test_indices[:, -1]
-
-        train_data = np.array([build_seq(train_data[pair], self._seq_len) for pair in self._input_data])
-        test_data = np.array([build_seq(test_data[pair], self._seq_len) for pair in self._input_data])
-
-        if seq_normalization:
-            LOGGER.info('Sequence normalization')
-            for feature_name in features_seq_normalize:
-                feature_index = self._feature_index[feature_name]
-                base_norm = self._preprocess_param[feature_name]['params']['base']
-                LOGGER.info(
-                    f'Normalization sequence with base {base_norm} for feature: {feature_name} at index: {feature_index}')
-                train_data[:, :, :, feature_index] = train_data[:, :, :, feature_index] / np.expand_dims(
-                    train_data[:, :, base_norm, feature_index], -1)
-                test_data[:, :, :, feature_index] = test_data[:, :, :, feature_index] / np.expand_dims(
-                    test_data[:, :, base_norm, feature_index], -1)
-
-        return train_data, test_data
-
-    @property
-    def cv_indices(self):
-        return self._cv_indices
-
-    @property
-    def assets(self):
-        return self._assets
-
-    @property
-    def n_assets(self):
-        return self._n_assets
-
-    @property
-    def pairs(self):
-        return self._pairs
-
-    @property
-    def n_pairs(self):
-        return len(self._pairs)
-
-    @property
-    def n_features(self):
-        return self._n_features
-
-    @property
-    def input_data(self):
-        return self._input_data
-
-    @property
-    def returns(self):
-        return self.df_returns.values
-
-    @property
-    def dates(self):
-        return self._dates
-
-    @property
-    def window(self):
-        return self._seqlen
-
-    @property
-    def train_indices(self):
-        return self._train_indices
-
-    @property
-    def test_indices(self):
-        return self._test_indices
-
-    @property
-    def train_dates(self):
-        return self._dates[self._train_indices]
-
-    @property
-    def test_dates(self):
-        return self._dates[self._test_indices]
-
-    @property
-    def df_train_returns(self):
-        return self.df_returns.iloc[self.train_indices]
-
-    @property
-    def df_test_returns(self):
-        return self.df_returns.iloc[self.test_indices]
-
-    @property
-    def train_returns(self):
-        # shape: (n, horizon, n_pairs) if horizon > 1
-        if self._horizon > 1:
-            returns = np.array([self.df_returns.values[i: i + self._horizon] for i in range(len(self.train_indices))])
+    if resample is not None:
+        if resample['method'] == 'nbb':
+            where = resample.get('where', ['train'])
+            block_length = resample.get('block_length', 44)
+            if 'train' in where:
+                LOGGER.debug(f"Resampling training data with 'nbb' method with block length {block_length}")
+                # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
+                # train_data = train_data[nbb_id]
+                # dates['train'] = dates['train'][nbb_id]
+                train_data, dates['train'] = bb_resample_sample(train_data, dates['train'], block_length=block_length)
+            if 'val' in where:
+                LOGGER.debug(f"Resampling val data with 'nbb' method with block length {block_length}")
+                # nbb_id = id_nb_bootstrap(len(val_data), block_length=block_length)
+                # val_data = val_data[nbb_id]
+                # dates['val'] = dates['val'][nbb_id]
+                val_data, dates['val'] = bb_resample_sample(val_data, dates['val'], block_length=block_length)
+            if 'test' in where:
+                LOGGER.debug(f"Resampling test data with 'nbb' method with block length {block_length}")
+                # nbb_id = id_nb_bootstrap(len(train_data), block_length=block_length)
+                # test_data = test_data[nbb_id]
+                # dates['test'] = dates['test'][nbb_id]
+                test_data, dates['test'] = bb_resample_sample(test_data, dates['test'], block_length=block_length)
         else:
-            returns = self.df_returns.iloc[self.train_indices]
+            raise NotImplementedError(resample)
 
-        return returns
-
-    @property
-    def test_returns(self):
-        # shape: (n, horizon, n_pairs) if horizon > 1
-        if self._horizon > 1:
-            returns = np.array([self.df_returns.values[i: i + self._horizon] for i in range(len(self.test_indices))])
-        else:
-            returns = self.df_returns.iloc[self.test_indices]
-        return returns
-
-
-def features_generator(dataset, model_type: str = None):
-    for ind, features, _ in dataset:
-        if model_type == "EIIE":
-            features = tf.transpose(features, [0, 3, 1, 2])
-        elif model_type in ['asset_independent_model', 'stacked_asset_model']:
-            features = [features[:, :, :, i] for i in range(features.shape[-1])]
-
-        yield features
-
-
-def returns_generator(dataset):
-    for _, next_returns in dataset:
-        yield next_returns
+    return train_data, val_data, test_data, scaler, dates, features

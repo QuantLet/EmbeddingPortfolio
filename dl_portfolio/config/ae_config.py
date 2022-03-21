@@ -42,7 +42,7 @@ scaler_func = {
 model_type = 'ae_model'
 
 learning_rate = 1e-3
-epochs = 1000
+epochs = 2
 batch_size = 32
 drop_remainder_obs = False
 val_size = None
@@ -68,7 +68,7 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 100,
+        'patience': 1,
         'verbose': 1,
         'restore_best_weights': True
     }

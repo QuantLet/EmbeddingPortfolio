@@ -9,7 +9,7 @@ import tensorflow as tf
 from tensorflow.keras import activations
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.ae_data import get_features
+from dl_portfolio.data import get_features
 from dl_portfolio.pca_ae import build_model, create_decoder
 from dl_portfolio.regularizers import WeightsOrthogonality
 from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge

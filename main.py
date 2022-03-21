@@ -3,7 +3,7 @@ from dl_portfolio.logger import LOGGER
 from joblib import Parallel, delayed
 import os, logging
 from dl_portfolio.constant import LOG_DIR
-from dl_portfolio.ae_data import load_data
+from dl_portfolio.data import load_data
 
 if __name__ == "__main__":
     import argparse

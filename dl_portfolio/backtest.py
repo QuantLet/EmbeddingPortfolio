@@ -8,7 +8,7 @@ from joblib import Parallel, delayed
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.hedge import hedged_portfolio_weights
-from dl_portfolio.ae_data import load_data
+from dl_portfolio.data import load_data
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import DATA_SPECS_BOND, DATA_SPECS_MULTIASSET_TRADITIONAL
 from dl_portfolio.probabilistic_sr import probabilistic_sharpe_ratio, min_track_record_length
