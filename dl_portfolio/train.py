@@ -248,8 +248,6 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
     """
 
     loss_fn = tf.keras.losses.MeanSquaredError(name='mse_loss')
-    if callbacks.get('ActivityRegularizer'):
-        tf.config.run_functions_eagerly(True)
 
     # Train
     LOGGER.info('Start training')

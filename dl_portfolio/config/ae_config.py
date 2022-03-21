@@ -4,7 +4,7 @@ from dl_portfolio.regularizers import WeightsOrthogonality
 
 dataset = 'bond'
 show_plot = False
-save = False
+save = True
 nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
 
 resample = {
