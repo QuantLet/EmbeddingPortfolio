@@ -1,17 +1,10 @@
 import tensorflow as tf
-import numpy as np
-from dl_portfolio.pca_ae import NonNegAndUnitNormInit
-from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm,
-                                      PositiveSkewnessConstraint, TailUncorrelatedFeaturesConstraint,
-                                      PositiveSkewnessUncorrConstraint)
+from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
-from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_METALS_ASSETS, INDICES
-
-# VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset = 'bond'
 show_plot = False
-save = True
+save = False
 nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
 
 resample = {
@@ -24,9 +17,8 @@ loss_asset_weights = None
 crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
-# tf.config.run_functions_eagerly(True)
-seed = None  # np.random.randint(0, 100)
-assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
+seed = None
+assets = None
 encoding_dim = 4
 batch_normalization = True
 uncorrelated_features = True
@@ -39,7 +31,7 @@ features_config = None
 model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
 model_name = model_name.replace('.', 'd')
 
-shuffle_columns = False  # True
+shuffle_columns = False
 dropnan = False
 freq = "1D"
 drop_weekends = False
@@ -54,36 +46,23 @@ learning_rate = 1e-3
 epochs = 1000
 batch_size = 32
 drop_remainder_obs = False
-val_size = None  # 22*6 # 30 * 24
+val_size = None
 test_size = 0
 loss = 'mse'
 label_param = None
-# label_param = {
-#     'lq': 0.05,
-#     'uq': 0.95,
-#     'window': 24
-# }
-# cov_loss = 'mse_with_covariance_penalty'
 rescale = None
 
 # Constraints and regularizer
 activity_regularizer = None
 kernel_initializer = tf.keras.initializers.HeNormal(seed=seed)
-# kernel_initializer = NonNegAndUnitNormInit(initializer='he_normal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
     encoding_dim,
     weightage=ortho_weightage,
     axis=0,
     regularizer={'name': l_name, 'params': {l_name: l}}
 )
-# kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
-
-
-def scheduler(epoch):
-    return 1e-3 * np.exp(-epoch / 5000)
-
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)
 
 callbacks = {
     'EarlyStopping': {
@@ -96,145 +75,11 @@ callbacks = {
     }
 }
 
-# data_specs = {
-#     0: {
-#         'start': '2016-06-30',
-#         'val_start': '2018-12-11',
-#         'end': '2019-01-11'
-#     }
-# }
-
 data_specs = {
     0: {
         'start': '2016-06-30',
         'val_start': '2019-11-13',
         'test_start': '2019-12-12',
         'end': '2020-01-11'
-    },
-    1: {
-        'start': '2016-06-30',
-        'val_start': '2019-12-13',
-        'test_start': '2020-01-12',
-        'end': '2020-02-11'
-    },
-    2: {
-        'start': '2016-06-30',
-        'val_start': '2020-01-13',
-        'test_start': '2020-02-12',
-        'end': '2020-03-11'
-    },
-    3: {
-        'start': '2016-06-30',
-        'val_start': '2020-02-13',
-        'test_start': '2020-03-12',
-        'end': '2020-04-11'
-    },
-    4: {
-        'start': '2016-06-30',
-        'val_start': '2020-03-13',
-        'test_start': '2020-04-12',
-        'end': '2020-05-11'
-    },
-    5: {
-        'start': '2016-06-30',
-        'val_start': '2020-04-13',
-        'test_start': '2020-05-12',
-        'end': '2020-06-11'
-    },
-    6: {
-        'start': '2016-06-30',
-        'val_start': '2020-05-13',
-        'test_start': '2020-06-12',
-        'end': '2020-07-11'
-    },
-    7: {
-        'start': '2016-06-30',
-        'val_start': '2020-06-13',
-        'test_start': '2020-07-12',
-        'end': '2020-08-11'
-    },
-    8: {
-        'start': '2016-06-30',
-        'val_start': '2020-07-13',
-        'test_start': '2020-08-12',
-        'end': '2020-09-11'
-    },
-    9: {
-        'start': '2016-06-30',
-        'val_start': '2020-08-13',
-        'test_start': '2020-09-12',
-        'end': '2020-10-11'
-    },
-    10: {
-        'start': '2016-06-30',
-        'val_start': '2020-09-13',
-        'test_start': '2020-10-12',
-        'end': '2020-11-11'
-    },
-    11: {
-        'start': '2016-06-30',
-        'val_start': '2020-10-13',
-        'test_start': '2020-11-12',
-        'end': '2020-12-11'
-    },
-    12: {
-        'start': '2016-06-30',
-        'val_start': '2020-11-13',
-        'test_start': '2020-12-12',
-        'end': '2021-01-11'
-    },
-    13: {
-        'start': '2016-06-30',
-        'val_start': '2020-12-13',
-        'test_start': '2021-01-12',
-        'end': '2021-02-11'
-    },
-    14: {
-        'start': '2016-06-30',
-        'val_start': '2021-01-13',
-        'test_start': '2021-02-12',
-        'end': '2021-03-11'
-    },
-    15: {
-        'start': '2016-06-30',
-        'val_start': '2021-02-13',
-        'test_start': '2021-03-12',
-        'end': '2021-04-11'
-    },
-    16: {
-        'start': '2016-06-30',
-        'val_start': '2021-03-13',
-        'test_start': '2021-04-12',
-        'end': '2021-05-11'
-    },
-    17: {
-        'start': '2016-06-30',
-        'val_start': '2021-04-13',
-        'test_start': '2021-05-12',
-        'end': '2021-06-11'
-    },
-    18: {
-        'start': '2016-06-30',
-        'val_start': '2021-05-13',
-        'test_start': '2021-06-12',
-        'end': '2021-07-11'
-    },
-    19: {
-        'start': '2016-06-30',
-        'val_start': '2021-06-13',
-        'test_start': '2021-07-12',
-        'end': '2021-08-11'
-    },
-    20: {
-        'start': '2016-06-30',
-        'val_start': '2021-07-13',
-        'test_start': '2021-08-12',
-        'end': '2021-09-11'
-    },
-    21: {
-        'start': '2016-06-30',
-        'val_start': '2021-08-13',
-        'test_start': '2021-09-12',
-        'end': '2021-10-11'
     }
 }

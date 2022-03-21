@@ -2,13 +2,11 @@ import pandas as pd
 from dl_portfolio.logger import LOGGER
 from typing import List, Optional, Dict, Union
 from sklearn import preprocessing
-from sklearn.utils.class_weight import compute_class_weight
 import numpy as np
 import datetime as dt
 from dl_portfolio.sample import id_nb_bootstrap
 
-DATASETS = ['bond', 'global', 'global_crypto', 'raffinot_multi_asset', 'raffinot_bloomberg_comb_update_2021', 'sp500',
-            'cac']
+DATASETS = ['bond', 'raffinot_bloomberg_comb_update_2021']
 
 
 def load_data(dataset='global', **kwargs):
@@ -16,23 +14,8 @@ def load_data(dataset='global', **kwargs):
     if dataset == 'bond':
         data, assets = load_global_bond_data(crix=kwargs.get('crix', False),
                                              crypto_assets=kwargs.get('crypto_assets', None))
-    elif dataset == 'cac':
-        data, assets = load_cac_data(fillnan=kwargs.get('fillnan', True), start_date=kwargs.get('start_date'))
-    elif dataset == 'global':
-        assets = kwargs.get('assets', None)
-        dropnan = kwargs.get('dropnan', False)
-        fillnan = kwargs.get('fillnan', True)
-        freq = kwargs.get('freq', '1H')
-        base = kwargs.get('base', 'SPXUSD')
-        data, assets = load_global_data(assets=assets, dropnan=dropnan, fillnan=fillnan, freq=freq, base=base)
-    elif dataset == 'global_crypto':
-        data, assets = load_global_crypto_data()
-    elif dataset == 'raffinot_multi_asset':
-        data, assets = load_raffinot_multi_asset()
     elif dataset == 'raffinot_bloomberg_comb_update_2021':
         data, assets = load_bloomberg_comb_update_2021()
-    elif dataset == 'sp500':
-        data, assets = load_sp500_assets(kwargs.get('start_date', '1989-01-01'))
     else:
         raise NotImplementedError(f"dataset must be one of ['global', 'bond', 'global_crypto']: {dataset}")
 
@@ -143,9 +126,6 @@ def get_features(data, start: str, end: str, assets: List, val_start: str = None
             if test_data is not None:
                 test_data = (test_data - mean_) / std
 
-
-
-
         else:
             raise NotImplementedError(scaler)
 
@@ -224,151 +204,11 @@ def bb_resample_sample(data: np.ndarray, dates: List, block_length: int = 44):
     return data, dates
 
 
-def load_data_old(type: List = ['indices', 'forex', 'forex_metals', 'crypto', 'commodities'], dropnan: bool = False,
-                  fillnan: bool = True, freq: str = '1H'):
-    assert isinstance(freq, str)
-    data = pd.DataFrame()
-    assets = []
-    end = '2021-01-30 12:30:00'
-    start_date = []
-    for asset_class in type:
-        if asset_class == 'crypto':
-            LOGGER.debug('Loading crypto data')
-            crypto_assets = ['BTC', 'DASH', 'DOGE', 'ETH', 'LTC', 'XEM', 'XMR', 'XRP']
-            # Load data
-            crypto_data = pd.read_pickle('./data/crypto_data/price/clean_data_1800.p')
-            crypto_data = crypto_data.loc[:, pd.IndexSlice[crypto_assets, 'close']].droplevel(1, 1)
-            crypto_data.index = crypto_data.index.tz_localize('UTC')
-            crypto_data = crypto_data.resample('1H',
-                                               closed='right',
-                                               label='right').agg('last')
-            start_date.append(crypto_data.dropna().index[0])
-            data = pd.concat([data, crypto_data], 1)
-            assets = assets + crypto_assets
-            del crypto_data
-        elif asset_class == 'forex':
-            LOGGER.debug('Loading forex data')
-            fx_assets = ['CADUSD', 'CHFUSD', 'EURUSD', 'GBPUSD', 'JPYUSD', 'AUDUSD']
-            fxdata = pd.read_pickle('./data/histdatacom/forex_f_3600_2014_2021_close_index.p')
-            fxdata = fxdata.loc[:, pd.IndexSlice[fx_assets, 'close']].droplevel(1, 1)
-            start_date.append(fxdata.dropna().index[0])
-            data = pd.concat([data, fxdata], 1)
-            del fxdata
-            assets = assets + fx_assets
-
-        elif asset_class == 'forex_metals':
-            LOGGER.debug('Loading forex metals data')
-            fx_metals_assets = ['XAUUSD', 'XAGUSD']
-            fx_m_data = pd.read_pickle('./data/histdatacom/forex_metals_f_3600_2014_2021_close_index.p')
-            fx_m_data = fx_m_data.loc[:, pd.IndexSlice[fx_metals_assets, 'close']].droplevel(1, 1)
-            start_date.append(fx_m_data.dropna().index[0])
-            data = pd.concat([data, fx_m_data], 1)
-            del fx_m_data
-            assets = assets + fx_metals_assets
-        elif asset_class == 'indices':
-            LOGGER.debug('Loading indices data')
-            indices = ['UKXUSD', 'FRXUSD', 'JPXUSD', 'SPXUSD', 'NSXUSD', 'HKXUSD', 'AUXUSD']
-            indices_data = pd.read_pickle('./data/histdatacom/indices_f_3600_2014_2021_close_index.p')
-
-            indices_data = indices_data.loc[:, pd.IndexSlice[indices, 'close']].droplevel(1, 1)
-            us_market_hours = indices_data['SPXUSD'].dropna().index
-            start_date.append(indices_data.dropna().index[0])
-            data = pd.concat([data, indices_data], 1)
-            del indices_data
-            assets = assets + indices
-        elif asset_class == 'commodities':
-            LOGGER.debug('Loading commodities data')
-            com_assets = ['WTIUSD', 'BCOUSD']
-            com_data = pd.read_pickle('./data/histdatacom/commodities_f_3600_2014_2021_close_index.p')
-            com_data = com_data.loc[:, pd.IndexSlice[com_assets, 'close']].droplevel(1, 1)
-            start_date.append(com_data.dropna().index[0])
-            data = pd.concat([data, com_data], 1)
-            del com_data
-            assets = assets + com_assets
-        else:
-            raise ValueError(asset_class)
-
-    start_date = max(start_date)
-    data = data.loc[start_date:, :]
-    # assets = np.random.choice(assets, len(assets), replace=False).tolist()
-    # data = data.loc[:, pd.IndexSlice[assets, 'price']]
-    # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
-
-    if freq not in ["1H", "H"]:
-        # TODO
-        raise NotImplementedError('You must verify logic')
-        LOGGER.debug(f"Resampling to {freq} frequency")
-        data = data.resample(freq,
-                             closed='right',
-                             label='right').agg('last')
-
-    data = data.loc[:end]
-    if 'crypto' in type:
-        if dropnan:
-            data = data.dropna()
-        else:
-            if fillnan:
-                data = data.fillna(method='ffill')
-                data = data.dropna()
-    else:
-        if dropnan:
-            data = data.dropna()
-    data = data.loc[:, assets]
-
-    return data, assets
-
-
-def load_cac_data(fillnan: bool = True, start_date: Optional[str] = None):
-    data = pd.read_csv('data/CAC_2000101_20190101.csv', index_col=0)
-    data.index = pd.to_datetime(data.index)
-    # Droping assets with two many NaNs (recent stocks)
-    to_drop = list(data.columns[data.isna().sum() / len(data) * 100 > 9])
-    data = data.drop(to_drop, axis=1)
-    if start_date is None:
-        start_date = data.dropna().index[0]
-    data = data.loc[start_date:]
-    if fillnan:
-        data = data.interpolate(method='polynomial', order=2)
-    assets = list(data.columns)
-    return data, assets
-
-
-def load_sp500_assets(start_date='1989-01-01'):
-    data = pd.read_csv('data/sp500_data.csv', index_col=0, header=[0, 1])
-    data.index = pd.to_datetime(data.index)
-    data = data.loc[:, pd.IndexSlice[:, 'close']].droplevel(1, 1)
-    data = data.dropna(how='all')
-    data = data.astype(np.float32)
-
-    # Get assets that have prices after start date
-    all_starts = pd.DataFrame(columns=['start'], index=data.columns)
-    for a in data.columns:
-        all_starts.loc[a, 'start'] = data[a].dropna().index[0]
-    assets = list(all_starts.index[[d <= pd.to_datetime([start_date])[0] for d in all_starts['start']]])
-    max_start_date = max(all_starts.loc[assets, 'start'])
-    data = data.loc[max_start_date:, assets]
-    data = data.interpolate(method='polynomial', order=2)
-    data.dropna(inplace=True)
-
-    return data, assets
-
-
 def load_bloomberg_comb_update_2021():
     data = pd.read_csv('data/raffinot/bloomberg_comb_update_2021.csv', index_col=0)
     data.index = pd.to_datetime(data.index)
     data = data.interpolate(method='polynomial', order=2)
     data = data.astype(np.float32)
-    assets = list(data.columns)
-
-    return data, assets
-
-
-def load_raffinot_multi_asset():
-    data = pd.read_csv('data/raffinot/multiassets.csv')
-    data = data.set_index('Dates')
-    data.index = pd.to_datetime(data.index)
-    data = data.astype(np.float32)
-    data.dropna(inplace=True)
     assets = list(data.columns)
 
     return data, assets
@@ -491,10 +331,6 @@ def load_global_data(assets: Optional[List] = None, dropnan: bool = False, filln
 
             assert sum(data.isna().sum()) == 0
 
-    # assets = np.random.choice(assets, len(assets), replace=False).tolist()
-    # data = data.loc[:, pd.IndexSlice[assets, 'price']]
-    # data = pd.DataFrame(data.values, columns=pd.MultiIndex.from_product([assets, ['price']]), index=data.index)
-
     data = data.loc[:end]
     if any([a in crypto_assets for a in data.columns]):
         # We have cryptos in our table
@@ -509,97 +345,3 @@ def load_global_data(assets: Optional[List] = None, dropnan: bool = False, filln
             data = data.dropna()
 
     return data, assets
-
-
-def labelQuantile(close,
-                  lq=0.1,
-                  uq=0.9,
-                  window=30,
-                  log=True,
-                  binary=False):
-    """
-    # label_t = 1 if we hit the upper band in the next lookfront steps: r_t+l >= upper_band where 1 <= l <= lookfront
-    # label_t = 2 if we hit the lower band in the next lookfront steps: r_t+l >= upper_band where 1 <= l <= lookfront
-    # else label = 0
-    :param close: numpy, close price
-    :param lq: float, lower quantile
-    :param uq: float, upper quantile
-    :param lookfront: int, horizon forecast
-    :param window: int, rolling window size for computing the quantile
-    :param log: boolean, log scale or simple
-    :param fee: float, fee
-    :param binary: boolean, output is two classes or three classes
-    :return:
-    """
-
-    hist_returns = np.zeros(len(close), dtype=float)
-
-    if log:
-        hist_returns[1:] = np.log(close[1:] / close[0:-1])
-    else:
-        hist_returns[1:] = close[1:] / close[0:-1] - 1
-
-    labels = np.zeros(len(close), dtype=int)
-    returns = np.zeros(len(close), dtype=float)
-    lower_q = np.zeros(len(close), dtype=float)
-    upper_q = np.zeros(len(close), dtype=float)
-
-    for t in range(window, len(close)):
-        data_w = hist_returns[t - window: t + 1]  # select past window
-        lower_q_t = np.quantile(data_w, lq)
-        upper_q_t = np.quantile(data_w, uq)
-
-        r_t = hist_returns[t].copy()
-
-        if r_t <= lower_q_t:
-            if binary:
-                labels[t] = 1
-            else:
-                labels[t] = 2
-        elif r_t >= upper_q_t:
-            labels[t] = 1
-
-        returns[t] = hist_returns[t]
-        lower_q[t] = lower_q_t
-        upper_q[t] = upper_q_t
-
-    quantiles = np.concatenate([lower_q.reshape(-1, 1),
-                                upper_q.reshape(-1, 1)],
-                               axis=1)
-
-    quantiles[:window, 0] = lower_q[window]
-    quantiles[:window, 1] = upper_q[window]
-    returns[:window] = hist_returns[:window]
-    labels[:window] = np.nan
-
-    return labels, returns, quantiles
-
-
-def get_sample_weights(close, label_func, **kwargs):
-    window = kwargs.get('window')
-    binary = kwargs.get('binary', False)
-    labels, returns, quantiles = label_func(close, **kwargs)
-    if binary:
-        classes = [0, 1]
-    else:
-        classes = [0, 1, 2]
-
-    class_weights = compute_class_weight('balanced', classes=classes, y=labels if window is None else labels[window:])
-    class_weights = {
-        c: class_weights[c] for c in classes
-    }
-    LOGGER.debug(f"Class weights:\n{class_weights}")
-    sample_weights = np.zeros_like(labels, dtype=np.float32)
-    for c in class_weights:
-        sample_weights[labels == c] = class_weights[c]
-
-    return sample_weights, labels, returns, quantiles
-
-
-def get_sample_weights_from_df(data: pd.DataFrame, label_func, **kwargs):
-    sample_weights = pd.DataFrame(columns=data.columns, index=data.index)
-    labels = pd.DataFrame(columns=data.columns, index=data.index)
-    for c in data.columns:
-        sample_weights[c], labels[c], _, _ = get_sample_weights(data[c].values, label_func, **kwargs)
-    labels = labels.astype(int)
-    return sample_weights, labels

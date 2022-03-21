@@ -13,9 +13,9 @@ from typing import Optional
 from sklearn.cluster import KMeans
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.pca_ae import heat_map_cluster, get_layer_by_name, heat_map, build_model
+from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
 from dl_portfolio.data import drop_remainder
-from dl_portfolio.ae_data import get_features, load_data, get_sample_weights_from_df, labelQuantile
+from dl_portfolio.ae_data import get_features
 from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, build_model_input
 from dl_portfolio.constant import LOG_DIR
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
@@ -56,29 +56,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
 
     base_asset_order = assets.copy()
     assets_mapping = {i: base_asset_order[i] for i in range(len(base_asset_order))}
-
-    if config.loss == 'weighted_mse':
-        file_name = f"./data/sample_weights_lq_{config.label_param['lq']}_uq_{config.label_param['uq']}_w_{config.label_param['window']}.p"
-        if os.path.isfile(file_name):
-            LOGGER.debug(f'Loading sample weights from {file_name}')
-            df_sample_weights = pd.read_pickle(file_name)
-            df_sample_weights = df_sample_weights[assets]
-        else:
-            LOGGER.debug('Computing sample weights ...')
-            d, _ = load_data(type=['indices', 'forex', 'forex_metals', 'commodities'], dropnan=True)
-            t_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **config.label_param)
-            d, _ = load_data(type=['crypto'], dropnan=False)
-            c_sample_weights, _ = get_sample_weights_from_df(d, labelQuantile, **config.label_param)
-            df_sample_weights = pd.concat([t_sample_weights, c_sample_weights], 1)
-            df_sample_weights = df_sample_weights.fillna(0.0)
-            df_sample_weights = df_sample_weights[assets]
-            del d
-            del c_sample_weights
-            del t_sample_weights
-            LOGGER.debug(f'Saving sample weights to {file_name}')
-            df_sample_weights.to_pickle(
-                file_name)
-            LOGGER.debug('Done')
 
     for cv in config.data_specs:
         LOGGER.debug(f'Starting with cv: {cv}')
@@ -269,10 +246,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
 
         plot_history(history, save_path=save_path, show=config.show_plot)
 
-        # Evaluate
-        # model.evaluate(train_input, train_data)
-        # model.evaluate(val_input, val_data)
-
         # Get results for later analysis
         data_spec = config.data_specs[cv]
         train_data, val_data, test_data, scaler, dates, features = get_features(data,
@@ -301,17 +274,9 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             features['val'] = features['val'][indices, :]
             dates['val'] = dates['val'][indices]
 
-        # if shuffle_columns_while_training:
-        #     train_data = np.transpose(train_data)
-        #     np.random.seed(random_seed)
-        #     np.random.shuffle(train_data)
-        #     np.random.seed(seed)
-        #     train_data = np.transpose(train_data)
-
         LOGGER.debug(f'Train shape: {train_data.shape}')
         LOGGER.debug(f'Validation shape: {val_data.shape}')
 
-        # train_input, val_input, test_input = build_model_input(train_data, val_data, test_data, config.model_type, features=features)
         if features:
             train_input = build_model_input(train_data, config.model_type, features=features['train'], assets=assets)
             val_input = build_model_input(val_data, config.model_type, features=features['val'])
@@ -348,8 +313,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             encoder_layer2 = get_layer_by_name(name='encoder2', model=model)
             encoder_weights2 = encoder_layer2.get_weights()[0]
             encoder_weights = np.dot(encoder_weights1, encoder_weights2)
-            print(pd.DataFrame(encoder_weights1))
-            print(pd.DataFrame(encoder_weights2))
             encoder_weights = pd.DataFrame(encoder_weights, index=assets)
             heat_map(pd.DataFrame(encoder_weights1), show=True, vmin=0., vmax=1.)
             heat_map(pd.DataFrame(encoder_weights2), show=True, vmin=0., vmax=1.)
@@ -357,28 +320,17 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         elif config.model_type == 'pca_ae_model':
             encoder_layer = get_layer_by_name(name='encoder', model=model)
             encoder_weights = encoder_layer.get_weights()
-            # decoder_weights = model.layers[2].get_weights()
             encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
         elif config.model_type == 'ae_model':
             encoder_layer = get_layer_by_name(name='encoder', model=model)
             decoder_layer = get_layer_by_name(name='decoder', model=model)
             encoder_weights = encoder_layer.get_weights()
             decoder_weights = decoder_layer.get_weights()
-            # decoder_weights = model.layers[2].get_weights()
             encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
             decoder_weights = pd.DataFrame(decoder_weights[0].T, index=assets)
             LOGGER.debug(f"Decoder weights:\n{decoder_weights}")
 
         LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
-
-        # train_cluster_portfolio = encoder.predict(train_data)
-        # train_cluster_portfolio = pd.DataFrame(train_cluster_portfolio, index=dates['train'])
-        # train_cluster_portfolio = pd.DataFrame(np.dot(train_data, encoder_weights / encoder_weights.sum()), index=dates['train'])
-
-        # val_cluster_portfolio = encoder.predict(val_data)
-        # val_cluster_portfolio = pd.DataFrame(val_cluster_portfolio, index=dates['val'])
-        # val_cluster_portfolio = pd.DataFrame(np.dot(val_data, encoder_weights / encoder_weights.sum()), index=dates['val'])
-
         ## Get prediction on test_data
         if test_data is not None:
             if features:
@@ -392,23 +344,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
             else:
                 test_features = encoder.predict(test_input)
             test_features = pd.DataFrame(test_features, index=dates['test'])
-
-            # test_cluster_portfolio = encoder.predict(test_data)
-            # test_cluster_portfolio = pd.DataFrame(test_cluster_portfolio, index=dates['test'])
-            # test_cluster_portfolio = pd.DataFrame(np.dot(test_data, encoder_weights / encoder_weights.sum()), index=dates['test'])
-
-        # cluster_portfolio = {
-        #     'train': train_cluster_portfolio,
-        #     'val': val_cluster_portfolio,
-        #     'test': test_cluster_portfolio if test_data is not None else None
-        # }
-
-        # coskewness = PositiveSkewnessConstraint(encoding_dim, weightage=1, norm='1', normalize=False)
-        # LOGGER.debug(
-        #     f'Coskewness on validation set: {coskewness(tf.constant(val_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
-
-        # LOGGER.debug(
-        #     f'Coskewness on test set: {coskewness(tf.constant(test_cluster_portfolio.values, dtype=tf.float32)).numpy()}')
 
         # Rescale back input data
         train_data = scaler.inverse_transform(train_data)
@@ -452,7 +387,7 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                 vmax = 1
                 vmin = -1
             else:
-                vmax = None  # np.max(encoder_weights.max())
+                vmax = None
                 vmin = 0.
         else:
             vmax = None
@@ -478,28 +413,14 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                     plt.show()
 
         if config.save:
-            # train_data.to_pickle(f"{save_path}/train_returns.p")
-            # val_data.to_pickle(f"{save_path}/val_returns.p")
-            # val_prediction.to_pickle(f"{save_path}/val_prediction.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
             if decoder_weights is not None:
                 decoder_weights.to_pickle(f"{save_path}/decoder_weights.p")
-            # train_features.to_pickle(f"{save_path}/train_features.p")
-            # val_features.to_pickle(f"{save_path}/val_features.p")
             config.scaler_func['attributes'] = scaler.__dict__
             pickle.dump(config.scaler_func, open(f"{save_path}/scaler.p", "wb"))
-            # encoding_pca.to_pickle(f"{save_path}/encoding_pca.p")
-            # pickle.dump(cluster_portfolio, open(f"{save_path}/cluster_portfolio.p", "wb"))
-            # pickle.dump(pca_cluster_portfolio, open(f"{save_path}/pca_cluster_portfolio.p", "wb"))
 
             if test_data is not None:
                 pass
-                # test_data.to_pickle(f"{save_path}/test_returns.p")
-                # test_prediction.to_pickle(f"{save_path}/test_prediction.p")
-                # test_features.to_pickle(f"{save_path}/test_features.p")
-
-    # if config.save:
-    #     heat_map_cluster(save_dir, show=True, save=config.save, vmax=1., vmin=0.)
 
 
 def run_kmeans(config, data, assets, seed=None):
