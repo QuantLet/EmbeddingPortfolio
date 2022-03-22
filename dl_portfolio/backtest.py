@@ -386,61 +386,6 @@ def compute_balance(price, weights, prev_weights, prev_K, fee=2e-4, leverage=1):
     return K, N, cost
 
 
-def get_balance(portfolio: str, price: pd.DataFrame, cv_results: Dict, fee: float = 2e-4, **kwargs) -> Union[
-    pd.DataFrame, pd.DataFrame, List]:
-    """
-
-    :param price:
-    :param cv_results:
-    :param fee:
-    :param leverage:
-    :return:
-    """
-    shares = []
-    costs = []
-    balance = pd.DataFrame()
-    assets = price.columns
-    n_assets = price.shape[-1]
-    if portfolio == 'equal':
-        weights = pd.Series([1 / n_assets] * n_assets, index=assets)
-    elif portfolio == 'equal_class':
-        market_budget = kwargs.get('market_budget')
-        assert market_budget is not None
-        market_budget = market_budget.loc[assets, :]
-        weights = equal_class_weights(market_budget)
-
-    for cv in cv_results:
-        cv_ret = cv_results[cv]['returns'].copy()
-        loc = price.index.get_loc(cv_ret.index[0])
-        t0 = price.index[loc - 1]
-        t1 = cv_ret.index[-1]
-        cv_price = price.loc[t0:t1]
-        if portfolio not in ['equal', 'equal_class']:
-            weights = cv_results[cv]['port'][portfolio].copy()
-
-        # First compute leverage
-        train_port_returns = portfolio_return(price.loc[:t0].iloc[-80:-1], weights=weights)
-        base_vol = np.max((np.std(train_port_returns[-20:]), np.std(train_port_returns[-60:]))) * np.sqrt(252)
-        leverage = 0.05 / base_vol
-
-        if cv == 0:
-            prev_K = 1
-            prev_weights = np.ones_like(weights)
-        else:
-            prev_K = balance.values[-1]
-            prev_N = shares[-1]
-            prev_weights = price.loc[t0] * prev_N / prev_K
-
-        K, N, cost = compute_balance(cv_price, weights, prev_weights, prev_K, fee=fee, leverage=leverage)
-        shares.append(N)
-        balance = pd.concat([balance, K])
-        costs.append(cost)
-
-    port_returns = pd.DataFrame([[1.]] + balance.values.tolist()).pct_change(1).dropna().astype(np.float32)
-    port_returns.index = balance.index
-
-    return balance, port_returns, costs
-
 
 def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFrame, weights: Dict, portfolios: List,
                                train_weights: Optional[Dict] = None, prev_weights: Optional[Dict] = None,

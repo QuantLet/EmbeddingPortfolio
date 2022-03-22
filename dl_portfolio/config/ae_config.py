@@ -43,7 +43,7 @@ scaler_func = {
 model_type = 'ae_model'
 
 learning_rate = 1e-3
-epochs = 1000
+epochs = 2
 batch_size = 128
 drop_remainder_obs = False
 val_size = None
@@ -84,7 +84,7 @@ test_end = pd.date_range('2007-02-01', '2021-11-01', freq='1M')
 test_end = [str(d.date()) for d in test_end]
 
 data_specs = {}
-for i in range(len(val_start)):
+for i in range(len(val_start[:2])):
     data_specs[i] = {
         'start': '1989-02-01',
         'val_start': val_start[i],

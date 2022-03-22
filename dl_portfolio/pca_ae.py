@@ -1,23 +1,12 @@
-import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import json
-from sklearn import preprocessing
-import tensorflow as tf
-from tensorflow.keras import backend as K
-from dl_portfolio.custom_layer import DenseTied, TransposeDense, UncorrelatedFeaturesLayer
-from dl_portfolio.constraints import PositiveSkewnessConstraint, NonNegAndUnitNorm, \
-    UncorrelatedFeaturesConstraint
+from dl_portfolio.custom_layer import UncorrelatedFeaturesLayer
+from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 from typing import List, Optional
-from dl_portfolio.logger import LOGGER
 import tensorflow as tf
-import datetime as dt
-import os
 import seaborn as sns
 from tensorflow.keras.utils import CustomObjectScope
-from tensorflow.keras.callbacks import Callback
-import tensorflow_probability as tfp
 
 
 def create_linear_encoder_with_constraint(input_dim, encoding_dim):
