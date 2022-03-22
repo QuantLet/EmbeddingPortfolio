@@ -12,6 +12,13 @@ from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
+DATA_BASE_DIR_1 = "./activationProba/data/dataset1"
+GARCH_BASE_DIR_1 = "./activationProba/output/dataset1/20220301004321"
+PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20220322_150317"
+DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
+GARCH_BASE_DIR_2 = "./activationProba/output/dataset2/20220301094654"
+PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20220224_132227"
+
 if __name__ == "__main__":
     import argparse
 
@@ -45,9 +52,9 @@ if __name__ == "__main__":
     if dataset == "dataset1":
         LOGGER.info("Run for dataset1")
         # Define paths
-        data_base_dir = "./activationProba/data/dataset1"
-        garch_base_dir = "./activationProba/output/dataset1/20220301004321"
-        perf_dir = "./performance/test_final_models/ae/dataset1_20220322_150317"
+        data_base_dir = DATA_BASE_DIR_1
+        garch_base_dir = GARCH_BASE_DIR_1
+        perf_dir = PERF_DIR_1
 
         # Load data
         data, assets = load_data(dataset="dataset1")
@@ -60,9 +67,9 @@ if __name__ == "__main__":
     elif dataset == "dataset2":
         LOGGER.info("Run for dataset2")
         # Define paths
-        data_base_dir = "./activationProba/data/dataset2"
-        garch_base_dir = "./activationProba/output/dataset2/20220301094654"
-        perf_dir = "./performance/test_final_models/ae/dataset2_20220224_132227"
+        data_base_dir = DATA_BASE_DIR_2
+        garch_base_dir = GARCH_BASE_DIR_2
+        perf_dir = PERF_DIR_2
 
         # Load data
         data, assets = load_data(dataset="dataset2")
