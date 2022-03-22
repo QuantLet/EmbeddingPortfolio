@@ -16,6 +16,8 @@ def create_linear_features(base_dir):
     data, assets = load_data(dataset=config.dataset)
     os.mkdir(f"activationProba/data/{config.dataset}")
 
+    test_lin_activation = pd.DataFrame()
+
     cvs = list(config.data_specs.keys())
     for cv in cvs:
         LOGGER.info(f"Saving to: 'activationProba/data/{config.dataset}/{cv}'")
@@ -26,6 +28,13 @@ def create_linear_features(base_dir):
         train_act = pd.concat([train_act, val_act])
         train_act.to_csv(f"activationProba/data/{config.dataset}/{cv}/train_linear_activation.csv")
         test_act.to_csv(f"activationProba/data/{config.dataset}/{cv}/test_linear_activation.csv")
+
+        test_lin_activation = pd.concat([test_lin_activation, test_act])
+
+    _, _, train_lin_activation = get_linear_encoder(config, 'train', data, assets, base_dir, 0)
+    _, _, val_lin_activation = get_linear_encoder(config, 'val', data, assets, base_dir, 0)
+    lin_act = pd.concat([train_lin_activation, val_lin_activation, test_lin_activation])
+    lin_act.to_csv(f"activationProba/data/{config.dataset}/linear_activation.csv")
 
 
 if __name__ == "__main__":
