@@ -10,6 +10,10 @@ conda create -n NAME_OF_ENV python=3.8
 ```bash
 pip install . --upgrade
 ```
+
+- Errors while installation: "fastcluster" requirement could make installation fail. Just comment it in setup.py and
+install it directly via pip in terminal: `pip install fastcluster==1.2.3`
+ 
 ## Data
 
 Data is available upon request.

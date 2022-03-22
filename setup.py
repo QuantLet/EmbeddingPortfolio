@@ -21,8 +21,7 @@ setup(
         "joblib==1.0.0",
         "scikit-learn==0.24.0",
         "fastcluster==1.2.3",
-        "pytest==6.2.5",
-        # "jaxlib-0.3.0"
+        "pytest==6.2.5"
     ],
     setup_requires=['pytest-runner'],
     tests_require=['pytest'],
