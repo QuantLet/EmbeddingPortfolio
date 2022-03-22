@@ -14,7 +14,7 @@ def create_linear_features(base_dir):
 
     # Load test results
     data, assets = load_data(dataset=config.dataset)
-    os.mkdir(f"activationProba/data/{config.dataset}")
+    os.makedirs(f"activationProba/data/{config.dataset}")
 
     test_lin_activation = pd.DataFrame()
 
