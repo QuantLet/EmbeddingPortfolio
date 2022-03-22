@@ -1,13 +1,7 @@
 import tensorflow as tf
 import numpy as np
-from dl_portfolio.pca_ae import NonNegAndUnitNormInit
-from dl_portfolio.constraints import (UncorrelatedFeaturesConstraint, NonNegAndUnitNorm,
-                                      PositiveSkewnessConstraint, TailUncorrelatedFeaturesConstraint,
-                                      PositiveSkewnessUncorrConstraint)
+from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
-from dl_portfolio.constant import CRYPTO_ASSETS, COMMODITIES, FX_ASSETS, FX_METALS_ASSETS, INDICES
-
-# VALIDATION = 1 month from 2019-01-11 to 2019-12-11, THEN OUT OF SAMPLE TESTs
 
 dataset = 'bond'
 show_plot = False
@@ -24,9 +18,8 @@ loss_asset_weights = None
 crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
-# tf.config.run_functions_eagerly(True)
-seed = None  # np.random.randint(0, 100)
-assets = None  # COMMODITIES + FX_ASSETS + FX_METALS_ASSETS + INDICES + CRYPTO_ASSETS  # ['CRIX']
+seed = None
+assets = None
 encoding_dim = 4
 batch_normalization = True
 uncorrelated_features = True
@@ -47,7 +40,6 @@ shuffle_columns_while_training = False
 scaler_func = {
     'name': 'StandardScaler'
 }
-# features_config=None
 model_type = 'ae_model'
 
 learning_rate = 1e-3
@@ -58,32 +50,19 @@ val_size = None  # 22*6 # 30 * 24
 test_size = 0
 loss = 'mse'
 label_param = None
-# label_param = {
-#     'lq': 0.05,
-#     'uq': 0.95,
-#     'window': 24
-# }
-# cov_loss = 'mse_with_covariance_penalty'
 rescale = None
 
 # Constraints and regularizer
 activity_regularizer = None
 kernel_initializer = tf.keras.initializers.HeNormal(seed=seed)
-# kernel_initializer = NonNegAndUnitNormInit(initializer='he_normal', seed=seed)
 kernel_regularizer = WeightsOrthogonality(
     encoding_dim,
     weightage=ortho_weightage,
     axis=0,
     regularizer={'name': l_name, 'params': {l_name: l}}
 )
-# kernel_regularizer = None
 callback_activity_regularizer = False
-kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
-
-
-def scheduler(epoch):
-    return 1e-3 * np.exp(-epoch / 5000)
-
+kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)
 
 callbacks = {
     'EarlyStopping': {
@@ -95,14 +74,6 @@ callbacks = {
         'restore_best_weights': True
     }
 }
-
-# data_specs = {
-#     0: {
-#         'start': '2016-06-30',
-#         'val_start': '2018-12-11',
-#         'end': '2019-01-11'
-#     }
-# }
 
 data_specs = {
     0: {

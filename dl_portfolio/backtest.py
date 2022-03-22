@@ -110,24 +110,24 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
     if portfolio == 'GMV_robust_bond':
         dataset = 'bond'
         crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
-        weights = pd.read_csv('./run_7_global_bond_dl_portfolio_20220122_151211/weights_GMV_robust.csv', index_col=0)
+        weights = pd.read_csv('./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_GMV_robust.csv', index_col=0)
         data_specs = DATA_SPECS_BOND
     elif portfolio == "MeanVar_bond":
         dataset = 'bond'
         crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
-        weights = pd.read_csv('./run_7_global_bond_dl_portfolio_20220122_151211/weights_MeanVar_long.csv', index_col=0)
+        weights = pd.read_csv('./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_MeanVar_long.csv', index_col=0)
         data_specs = DATA_SPECS_BOND
     elif portfolio == 'GMV_robust_raffinot':
         dataset = 'raffinot_bloomberg_comb_update_2021'
         crypto_assets = None
         data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
-        weights = pd.read_csv('./run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_GMV_robust.csv',
+        weights = pd.read_csv('./final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_GMV_robust.csv',
                               index_col=0)
     elif portfolio == 'MeanVar_raffinot':
         dataset = 'raffinot_bloomberg_comb_update_2021'
         crypto_assets = None
         data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
-        weights = pd.read_csv('./run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_MeanVar_long.csv',
+        weights = pd.read_csv('./final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_MeanVar_long.csv',
                               index_col=0)
     else:
         raise NotImplementedError()
