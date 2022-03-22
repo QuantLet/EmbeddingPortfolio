@@ -3,7 +3,7 @@ from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 import pandas as pd
 
-dataset = 'raffinot_bloomberg_comb_update_2021'
+dataset = 'dataset2'
 show_plot = False
 save = True
 nmf_model = "./final_models/nmf/dataset2/m_0_seed_12_20211211_185210"

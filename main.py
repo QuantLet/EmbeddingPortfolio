@@ -7,6 +7,7 @@ from dl_portfolio.data import load_data
 
 if __name__ == "__main__":
     import argparse
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--n",
                         default=1,
@@ -57,6 +58,7 @@ if __name__ == "__main__":
         run = run_kmeans
     elif args.run == "nmf":
         from dl_portfolio.config import nmf_config as config
+
         run = run_nmf
     else:
         raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
@@ -64,12 +66,7 @@ if __name__ == "__main__":
     if not os.path.isdir(LOG_DIR):
         os.mkdir(LOG_DIR)
 
-    if config.dataset == 'bond':
-        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
-                                 freq=config.freq, crix=config.crix, crypto_assets=config.crypto_assets)
-    else:
-        data, assets = load_data(dataset=config.dataset, assets=config.assets, dropnan=config.dropnan,
-                                 freq=config.freq)
+    data, assets = load_data(dataset=config.dataset)
 
     if args.seeds:
         if args.n_jobs == 1:
