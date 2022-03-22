@@ -14,7 +14,7 @@ from dl_portfolio.pca_ae import build_model, create_decoder
 from dl_portfolio.regularizers import WeightsOrthogonality
 from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge
 from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
-from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
+from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET2, BASE_FACTOR_ORDER_DATASET1
 
 from sklearn.linear_model import LinearRegression, Lasso
 
@@ -304,10 +304,10 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
 
     if reorder_features:
         embedding = pd.read_pickle(f'{base_dir}/{cv}/encoder_weights.p')
-        if config.dataset == "bond":
-            base_order = BASE_FACTOR_ORDER_BOND
-        elif config.dataset == "raffinot_bloomberg_comb_update_2021":
-            base_order = BASE_FACTOR_ORDER_RAFFINOT
+        if config.dataset == "dataset1":
+            base_order = BASE_FACTOR_ORDER_DATASET1
+        elif config.dataset == "dataset2":
+            base_order = BASE_FACTOR_ORDER_DATASET2
         else:
             raise NotImplementedError()
         new_order = [embedding.loc[c].idxmax() for c in base_order]
@@ -444,12 +444,12 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
         relu_activation = None
 
     if reorder_features:
-        if config.dataset == "bond":
-            base_order = BASE_FACTOR_ORDER_BOND
-        elif config.dataset == "raffinot_bloomberg_comb_update_2021":
-            base_order = BASE_FACTOR_ORDER_RAFFINOT
+        if config.dataset == "dataset1":
+            base_order = BASE_FACTOR_ORDER_DATASET1
+        elif config.dataset == "dataset2":
+            base_order = BASE_FACTOR_ORDER_DATASET2
         else:
-            raise NotImplementedError()
+            raise NotImplementedError(config.dataset)
         new_order = [embedding.loc[c].idxmax() for c in base_order]
         test_features = reorder_columns(test_features, new_order)
         test_features.columns = base_order

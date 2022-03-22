@@ -52,7 +52,7 @@ if __name__ == "__main__":
 
         # Load data
         data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
-        market_budget = pd.read_csv("data/market_budget_bond.csv", index_col=0)
+        market_budget = pd.read_csv("data/market_budget_dataset1.csv", index_col=0)
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([["crypto", 1]] * len(cryptos)),
                                                                index=cryptos,
@@ -69,7 +69,7 @@ if __name__ == "__main__":
 
         # Load data
         data, assets = load_data(dataset="raffinot_bloomberg_comb_update_2021")
-        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
+        market_budget = pd.read_csv('data/market_budget_dataset2.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
         raise NotImplementedError(dataset)

@@ -27,7 +27,7 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
     :return:
     """
     bench_names = ['SP500', 'Russel2000', 'EuroStoxx50']
-    benchmark, _ = load_data(dataset='raffinot_bloomberg_comb_update_2021', assets=None)
+    benchmark, _ = load_data(dataset='dataset2')
     benchmark = benchmark.pct_change().dropna()
     benchmark = benchmark.loc[perf.index, bench_names]
     benchmark = benchmark * 0.05 / (benchmark.std() * np.sqrt(252))

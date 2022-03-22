@@ -16,8 +16,8 @@ LOG_DIR = 'log_AE'
 PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc', 'herc',
               'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
 
-BASE_FACTOR_ORDER_BOND = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
-BASE_FACTOR_ORDER_RAFFINOT = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
+BASE_FACTOR_ORDER_DATASET1 = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
+BASE_FACTOR_ORDER_DATASET2 = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]
 
 AVAILABLE_METHODS = ["calibrated_exceedance", "hedged_strat_cum_excess_return_cluster",
                      "hedged_equal_cum_excess_return_cluster"]

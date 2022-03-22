@@ -16,7 +16,7 @@ from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_scor
     assign_cluster_from_consmat
 from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.constant import BASE_FACTOR_ORDER_RAFFINOT, BASE_FACTOR_ORDER_BOND
+from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET2, BASE_FACTOR_ORDER_DATASET1
 
 PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
@@ -99,32 +99,29 @@ if __name__ == "__main__":
 
         assert "nmf" in config.model_type
     else:
-        raise ValueError(f"run '{args.run}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
+        raise ValueError(f"model_type '{args.model_type}' is not implemented. Shoule be 'ae' or 'kmeans' or 'nmf'")
 
     # Load Market budget
-    if config.dataset == 'bond':
-        market_budget = pd.read_csv('data/market_budget_bond.csv', index_col=0)
+    if config.dataset == 'dataset1':
+        market_budget = pd.read_csv('data/market_budget_dataset1.csv', index_col=0)
         cryptos = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([['crypto', 1]] * len(cryptos)),
                                                                index=cryptos,
                                                                columns=market_budget.columns)])
         # market_budget = market_budget.drop('CRIX')
         market_budget['rc'] = market_budget['rc'].astype(int)
-    elif config.dataset in ["raffinot_multi_asset", "raffinot_bloomberg_comb_update_2021"]:
-        market_budget = pd.read_csv('data/market_budget_raffinot_multiasset.csv', index_col=0)
+    elif config.dataset == 'dataset2':
+        market_budget = pd.read_csv('data/market_budget_dataset2.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
-    elif config.dataset == 'cac':
-        market_budget = pd.read_csv('data/market_budget_cac.csv', index_col=0)
+    else:
+        raise NotImplementedError(config.dataset)
+
+    if config.dataset == "dataset1":
+        CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1
+    elif config.dataset == "dataset2":
+        CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET2
     else:
         raise NotImplementedError()
-
-    if config.dataset == "bond":
-        CLUSTER_NAMES = BASE_FACTOR_ORDER_BOND
-    elif config.dataset == "raffinot_bloomberg_comb_update_2021":
-        CLUSTER_NAMES = BASE_FACTOR_ORDER_RAFFINOT
-    else:
-        raise NotImplementedError()
-
 
     LOGGER.info("Main loop to get results and portfolio weights...")
     # Main loop to get results
@@ -148,7 +145,6 @@ if __name__ == "__main__":
                                        n_jobs=args.n_jobs,
                                        ae_config=config)
     LOGGER.info("Done.")
-
 
     LOGGER.info("Backtest weights...")
     # Get average weights for AE portfolio across runs
@@ -186,7 +182,7 @@ if __name__ == "__main__":
     }
 
     port_perf, leverage = cv_portfolio_perf_df(cv_portfolio_df, portfolios=PORTFOLIOS, volatility_target=0.05,
-                                            market_budget=market_budget)
+                                               market_budget=market_budget)
     LOGGER.info("Done.")
 
     K = cv_results[i][0]['loading'].shape[-1]
@@ -203,7 +199,6 @@ if __name__ == "__main__":
     ann_perf = pd.DataFrame()
     for p in PORTFOLIOS:
         ann_perf[p] = port_perf[p]['total'].iloc[:, 0]
-
 
     LOGGER.info("Saving backtest performance and plots...")
     if args.save:
@@ -484,7 +479,6 @@ if __name__ == "__main__":
         cv_rand[cv] = rand_score_permutation(cv_labels[cv])
     LOGGER.info("Done.")
 
-
     LOGGER.info("Rand Index heatmap...")
     # Plot heatmap
     trii = np.triu_indices(n_runs, k=1)
@@ -509,7 +503,6 @@ if __name__ == "__main__":
         plt.show()
     plt.close()
     LOGGER.info("Done.")
-
 
     LOGGER.info("Consensus matrix...")
     # Consensus matrix

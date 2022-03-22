@@ -21,7 +21,7 @@ def drop_remainder(indices, batch_size, last=False):
     return indices
 
 
-def load_data(dataset='dataset1'):
+def load_data(dataset):
     assert dataset in DATASETS, dataset
     if dataset == 'dataset1':
         data, assets = load_dataset1()
