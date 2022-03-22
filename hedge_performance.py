@@ -13,7 +13,7 @@ from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
 DATA_BASE_DIR_1 = "./activationProba/data/dataset1"
-GARCH_BASE_DIR_1 = "./activationProba/output/dataset1/20220301004321"
+GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
 PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20220322_150317"
 DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
 GARCH_BASE_DIR_2 = "./activationProba/output/dataset2/20220301094654"
