@@ -107,28 +107,24 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
 
 def get_target_vol_other_weights(portfolio: str, window_size=250):
     # Load pyrobustm results
-    if portfolio == 'GMV_robust_bond':
-        dataset = 'bond'
-        crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+    if portfolio == 'GMV_robust_dataset1':
+        dataset = 'dataset1'
         weights = pd.read_csv('./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_GMV_robust.csv',
                               index_col=0)
         data_specs = DATA_SPECS_BOND
-    elif portfolio == "MeanVar_bond":
-        dataset = 'bond'
-        crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
+    elif portfolio == "MeanVar_dataset1":
+        dataset = 'dataset1'
         weights = pd.read_csv('./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_MeanVar_long.csv',
                               index_col=0)
         data_specs = DATA_SPECS_BOND
-    elif portfolio == 'GMV_robust_raffinot':
-        dataset = 'raffinot_bloomberg_comb_update_2021'
-        crypto_assets = None
+    elif portfolio == 'GMV_robust_dataset2':
+        dataset = 'dataset2'
         data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
         weights = pd.read_csv(
             './final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_GMV_robust.csv',
             index_col=0)
-    elif portfolio == 'MeanVar_raffinot':
-        dataset = 'raffinot_bloomberg_comb_update_2021'
-        crypto_assets = None
+    elif portfolio == 'MeanVar_dataset2':
+        dataset = 'dataset2'
         data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
         weights = pd.read_csv(
             './final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_MeanVar_long.csv',
@@ -138,11 +134,7 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
 
     weights.index = pd.to_datetime(weights.index)
     # Load data
-    data, assets = load_data(dataset=dataset,
-                             assets=None,
-                             freq='1D',
-                             crix=False,
-                             crypto_assets=crypto_assets)
+    data, assets = load_data(dataset=dataset)
 
     returns = data.pct_change(1).dropna()
 
@@ -223,14 +215,6 @@ def get_dl_average_weights(cv_results):
                 port_weights[cv][port] = weights
 
     return port_weights
-
-
-def get_average_perf(port_perf: Dict, port: str) -> pd.DataFrame:
-    perf = pd.DataFrame()
-    for i in port_perf:
-        perf = pd.concat([perf, port_perf[i][port]['total']], 1)
-    perf = perf.mean(1)
-    return perf
 
 
 def plot_perf(perf, strategies=['aerp'], save_path=None, show=False, legend=True, figsize=(20, 10)):

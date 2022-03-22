@@ -10,11 +10,11 @@ import pandas as pd
 import seaborn as sns
 from sklearn import metrics, preprocessing
 
-from dl_portfolio.backtest import cv_portfolio_perf, bar_plot_weights, backtest_stats, plot_perf, \
-    get_average_perf, get_ts_weights, get_cv_results, get_dl_average_weights, cv_portfolio_perf_df
+from dl_portfolio.backtest import bar_plot_weights, backtest_stats, plot_perf, get_ts_weights, get_cv_results, \
+    get_dl_average_weights, cv_portfolio_perf_df
 from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_score_permutation, \
     assign_cluster_from_consmat
-from dl_portfolio.evaluate import pred_vs_true_plot, average_prediction, average_prediction_cv
+from dl_portfolio.evaluate import average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET2, BASE_FACTOR_ORDER_DATASET1
 
@@ -358,10 +358,6 @@ if __name__ == "__main__":
                                  returns.columns}
     EVALUATION['model']['total_r2'] = metrics.r2_score(returns, pred, multioutput='uniform_average')
 
-    # if args.save:
-    #     pred_vs_true_plot(scaled_returns, scaled_pred, save_path=f"{save_dir}/pred_vs_true.png", show=args.show)
-    # else:
-    #     pred_vs_true_plot(scaled_returns, scaled_pred, show=args.show)
     LOGGER.info("Done.")
 
     if False:

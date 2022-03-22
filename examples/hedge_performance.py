@@ -46,29 +46,26 @@ if __name__ == "__main__":
         LOGGER.info("Run for dataset1")
         # Define paths
         data_base_dir = "./activationProba/data/dataset1"
-        # ae_base_dir = "final_models/ae/dataset1/m_0_bond_nbb_resample_bl_60_seed_4_1640003029645042"
         garch_base_dir = "./activationProba/output/dataset1/20220301004321"
-        perf_dir = "./performance/test_final_models/ae/dataset1_20220224_131550"
+        perf_dir = "./performance/test_final_models/ae/dataset1_20220322_150317"
 
         # Load data
-        data, assets = load_data(dataset="bond", crix=False, crypto_assets=["BTC", "DASH", "ETH", "LTC", "XRP"])
+        data, assets = load_data(dataset="dataset1")
         market_budget = pd.read_csv("data/market_budget_dataset1.csv", index_col=0)
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([["crypto", 1]] * len(cryptos)),
                                                                index=cryptos,
                                                                columns=market_budget.columns)])
-        # market_budget = market_budget.drop("CRIX")
         market_budget["rc"] = market_budget["rc"].astype(int)
     elif dataset == "dataset2":
         LOGGER.info("Run for dataset2")
         # Define paths
         data_base_dir = "./activationProba/data/dataset2"
-        # ae_base_dir = "final_models/ae/dataset2/m_0_raffinot_bloomberg_comb_update_2021_nbb_resample_bl_60_seed_1_1645050812225231"
         garch_base_dir = "./activationProba/output/dataset2/20220301094654"
         perf_dir = "./performance/test_final_models/ae/dataset2_20220224_132227"
 
         # Load data
-        data, assets = load_data(dataset="raffinot_bloomberg_comb_update_2021")
+        data, assets = load_data(dataset="dataset2")
         market_budget = pd.read_csv('data/market_budget_dataset2.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
