@@ -1,7 +1,12 @@
 # dl-portfolio
 
 ## Installation
-Install the requirements from `setup.py` with:
+
+- First, create a virtual environment with python3.8 with conda (or virtualenv):
+```bash
+conda create -n NAME_OF_ENV python=3.8
+```
+- Install the requirements from `setup.py` with:
 ```bash
 pip install . --upgrade
 ```
@@ -62,6 +67,11 @@ ARMA-GARCH modelling is done using R in `activationProba`.
 python create_lin_activation.py --base_dir=final_models/ae/dataset1/m_0_dataset1_nbb_resample_bl_60_seed_0_1647953383912806
 ```
 - repeat for dataset2
+
+Before running the script, define the parameters in `config/config.json`
+
+- Dataset1: Copy config_dataset1.json in config.json and run activationProba.R
+- Dataset2: Copy config_dataset2.json in config.json and run activationProba.R
 
 ## Prediction and backtest result
 
