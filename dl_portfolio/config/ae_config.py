@@ -1,11 +1,12 @@
 import tensorflow as tf
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
+import pandas as pd
 
-dataset = 'bond'
+dataset = 'raffinot_bloomberg_comb_update_2021'
 show_plot = False
 save = True
-nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
+nmf_model = "log_convex_nmf_raffinot_bloomberg_comb_update_2021/m_0_seed_12_20211211_185210"
 
 resample = {
     'method': 'nbb',
@@ -13,12 +14,13 @@ resample = {
     'block_length': 60,
     'when': 'each_epoch'
 }
+loss_asset_weights = None
 crix = False
 crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
 seed = None
 assets = None
-encoding_dim = 4
+encoding_dim = 5
 batch_normalization = True
 uncorrelated_features = True
 weightage = 1e-2
@@ -38,12 +40,11 @@ shuffle_columns_while_training = False
 scaler_func = {
     'name': 'StandardScaler'
 }
-# features_config=None
 model_type = 'ae_model'
 
 learning_rate = 1e-3
-epochs = 2
-batch_size = 32
+epochs = 1000
+batch_size = 128
 drop_remainder_obs = False
 val_size = None
 test_size = 0
@@ -68,17 +69,25 @@ callbacks = {
         'monitor': 'val_loss',
         'min_delta': 1e-3,
         'mode': 'min',
-        'patience': 1,
+        'patience': 100,
         'verbose': 1,
         'restore_best_weights': True
     }
 }
 
-data_specs = {
-    0: {
-        'start': '2016-06-30',
-        'val_start': '2019-11-13',
-        'test_start': '2019-12-12',
-        'end': '2020-01-11'
+val_start = pd.date_range('2007-01-01', '2021-09-01', freq='1MS')
+val_start = [str(d.date()) for d in val_start]
+
+test_start = pd.date_range('2007-02-01', '2021-10-01', freq='1MS')
+test_start = [str(d.date()) for d in test_start]
+test_end = pd.date_range('2007-02-01', '2021-11-01', freq='1M')
+test_end = [str(d.date()) for d in test_end]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
+        'start': '1989-02-01',
+        'val_start': val_start[i],
+        'test_start': test_start[i],
+        'end': test_end[i]
     }
-}
