@@ -16,8 +16,8 @@ DATA_BASE_DIR_1 = "./activationProba/data/dataset1"
 GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
 PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20220322_150317"
 DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
-GARCH_BASE_DIR_2 = "./activationProba/output/dataset2/20220301094654"
-PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20220224_132227"
+GARCH_BASE_DIR_2 = "activationProba/output/dataset2/final"
+PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20220323_152418"
 
 if __name__ == "__main__":
     import argparse
