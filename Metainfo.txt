@@ -1,4 +1,4 @@
-Name of Quantlet: 'dl-portfolio'
+Name of Quantlet: 'EmbeddingPortfolio'
 
 Published in: 'Quantlet: Does non-linear factorization of financial returns help build better portfolio?'
 
