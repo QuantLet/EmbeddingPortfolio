@@ -5,7 +5,7 @@ source("utils.R")
 
 dataset = "dataset1"
 window_size = 250
-model_name = "20220301004321"
+model_name = "final"
 cv = 2
 factor.name = "SPX_X"
 
