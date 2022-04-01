@@ -13,7 +13,7 @@ pip install . --upgrade
 
 ## Data
 
-Data is available here: https://drive.google.com/drive/folders/1HEou7cOtJDuAnXwWnZVuiLpwJYsc-cQ-?usp=sharing
+The data is available here: https://drive.google.com/drive/folders/1HEou7cOtJDuAnXwWnZVuiLpwJYsc-cQ-?usp=sharing
 
 - Download the data folder at the root. It contains the price data: `data/dataset1/dataset1.csv` and 
 `data/dataset1/dataset2.csv`.
@@ -21,6 +21,7 @@ Data is available here: https://drive.google.com/drive/folders/1HEou7cOtJDuAnXwW
   - `final_models` where you will find the 
   autoencoder and convex NMF models as well as the Markowitz and Robust Markowitz portfolio allocation.
   - `activationProba` where you will find the input and output from ARMA-GARCH modelling for the activations
+- Finally, our portfolio weights and corresponding evaluation used for the paper are saved in the `performance` folder.
 
 ## AE and NMF training
 
