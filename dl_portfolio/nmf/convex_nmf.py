@@ -34,7 +34,7 @@ class ConvexNMF(SemiNMF):
 
         for n_iter in range(self.max_iter):
             # Update G
-            G = self._update_g(X, G, F) # self._update_g(X, G, X.dot(W))
+            G = self._update_g(X, G, F)
             # Update W
             W = self._update_w(X, W, G)
             # Update F
