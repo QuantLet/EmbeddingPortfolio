@@ -322,7 +322,7 @@ if __name__ == "__main__":
     stats = backtest_stats(ann_perf, port_weights, period=250, format=True, market_budget=market_budget)
     if args.save:
         stats.to_csv(f"{save_dir}/backtest_stats.csv")
-    print(stats.to_string())
+    LOGGER.info(stats.to_string())
     LOGGER.info("Done with backtest.")
 
     ##########################
@@ -447,7 +447,12 @@ if __name__ == "__main__":
     rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
     plt.figure(figsize=(10, 6))
     plt.bar(range(len(avg_cv_corr)), avg_cv_corr, color=my_cmap(rescale(avg_cv_corr)), width=0.5)
-    _ = plt.xticks(range(len(avg_cv_corr)), range(len(avg_cv_corr)), rotation=90)
+    if len(avg_cv_corr) > 22:
+        xticks = range(0, len(avg_cv_corr), 6)
+    else:
+        xticks = range(len(avg_cv_corr))
+    xticks_labels = np.array(CV_DATES)[xticks].tolist()
+    _ = plt.xticks(xticks, xticks_labels, rotation=45)
     _ = plt.ylim([-1, 1])
 
     if args.save:
