@@ -253,7 +253,6 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
                                                  kernel_constraint=config.kernel_constraint,
                                                  kernel_regularizer=config.kernel_regularizer,
                                                  activity_regularizer=config.activity_regularizer,
-                                                 batch_size=config.batch_size if config.drop_remainder_obs else None,
                                                  loss=config.loss,
                                                  uncorrelated_features=config.uncorrelated_features,
                                                  weightage=config.weightage)
@@ -358,7 +357,6 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
                                                      kernel_constraint=config.kernel_constraint,
                                                      kernel_regularizer=config.kernel_regularizer,
                                                      activity_regularizer=config.activity_regularizer,
-                                                     batch_size=config.batch_size if config.drop_remainder_obs else None,
                                                      loss=config.loss,
                                                      uncorrelated_features=config.uncorrelated_features,
                                                      weightage=config.weightage)

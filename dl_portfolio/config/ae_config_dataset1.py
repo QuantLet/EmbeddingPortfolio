@@ -1,12 +1,11 @@
 import tensorflow as tf
-import numpy as np
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 
-dataset = 'bond'
+dataset = 'dataset1'
 show_plot = False
 save = True
-nmf_model = "log_convex_nmf_bond_CRYPTO_encoding_4_nbb_60_test_shuffle_nov_update/m_0_seed_0_20211212_181153"
+nmf_model = "./final_models/nmf/dataset1/m_0_seed_7_20220322_122627"
 
 resample = {
     'method': 'nbb',
@@ -14,12 +13,9 @@ resample = {
     'block_length': 60,
     'when': 'each_epoch'
 }
-loss_asset_weights = None
-crix = False
-crypto_assets = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
 
 seed = None
-assets = None
+
 encoding_dim = 4
 batch_normalization = True
 uncorrelated_features = True
@@ -32,11 +28,7 @@ features_config = None
 model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
 model_name = model_name.replace('.', 'd')
 
-shuffle_columns = False  # True
-dropnan = False
-freq = "1D"
-drop_weekends = False
-shuffle_columns_while_training = False
+shuffle_columns = False
 scaler_func = {
     'name': 'StandardScaler'
 }
@@ -46,7 +38,7 @@ learning_rate = 1e-3
 epochs = 1000
 batch_size = 32
 drop_remainder_obs = False
-val_size = None  # 22*6 # 30 * 24
+val_size = None
 test_size = 0
 loss = 'mse'
 label_param = None

@@ -32,8 +32,8 @@ def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, 
                        rescale: Optional[float] = None,
                        features_config: Optional[Dict] = None,
                        scaler_func: Optional[Dict] = None,
-                       resample: Optional[Dict] = None, loss: Optional[str] = None, drop_remainder_obs: bool = True,
-                       df_sample_weights=None):
+                       resample: Optional[Dict] = None,
+                       drop_remainder_obs: bool = False):
     if features_config:
         raise NotImplementedError()
     start = str(data.index[0])[:-9]
@@ -122,8 +122,7 @@ def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, 
 def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_size: int,
                    rescale: Optional[float] = None, features_config: Optional[Dict] = None,
                    scaler_func: Optional[Dict] = None,
-                   resample: Optional[Dict] = None, loss: Optional[str] = None, drop_remainder_obs: bool = True,
-                   df_sample_weights=None):
+                   resample: Optional[Dict] = None, drop_remainder_obs: bool = False):
     train_data, val_data, test_data, scaler, dates, features = get_features(data,
                                                                             data_spec['start'],
                                                                             data_spec['end'],
@@ -224,16 +223,14 @@ def r_square(y_true, y_pred):
 
 
 def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, learning_rate: float,
-        loss: str = None, callbacks: Dict = None, val_dataset: tf.data.Dataset = None, extra_features: bool = False,
-        save_path: str = None, shuffle: bool = False, cv=None, data=None, assets=None, config=None,
-        df_sample_weights=None):
+        callbacks: Dict = None, val_dataset: tf.data.Dataset = None, extra_features: bool = False,
+        save_path: str = None, shuffle: bool = False, cv=None, data=None, assets=None, config=None):
     """
 
     :param model:
     :param train_dataset:
     :param epochs:
     :param learning_rate:
-    :param loss:
     :param callbacks:
     :param val_dataset:
     :param extra_features:
@@ -312,11 +309,8 @@ def fit(model: tf.keras.models.Model, train_dataset: tf.data.Dataset, epochs, le
                                                         config.model_type,
                                                         batch_size=config.batch_size,
                                                         rescale=config.rescale,
-                                                        features_config=config.features_config,
                                                         scaler_func=config.scaler_func,
-                                                        resample=config.resample,
-                                                        loss=config.loss,
-                                                        drop_remainder_obs=config.drop_remainder_obs)
+                                                        resample=config.resample)
 
         # Iterate over the batches of the dataset.
         batch_loss = []
