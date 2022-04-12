@@ -65,19 +65,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         else:
             save_path = None
 
-        if config.shuffle_columns:
-            LOGGER.debug('Shuffle assets order')
-            if cv == 0:
-                random_assets = assets.copy()
-                np.random.seed(random_seed)
-                np.random.shuffle(random_assets)
-                np.random.seed(seed)
-                assets = random_assets
-            else:
-                np.random.seed(random_seed)
-                np.random.shuffle(assets)
-                np.random.seed(seed)
-
         LOGGER.debug(f'Assets order: {assets}')
         if config.loss == 'weighted_mse':
             # reorder columns
@@ -97,7 +84,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                      kernel_constraint=config.kernel_constraint,
                                                      kernel_regularizer=config.kernel_regularizer,
                                                      activity_regularizer=config.activity_regularizer,
-                                                     batch_size=config.batch_size if config.drop_remainder_obs else None,
                                                      loss=config.loss,
                                                      uncorrelated_features=config.uncorrelated_features,
                                                      weightage=config.weightage)
@@ -112,7 +98,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                      rescale=config.rescale,
                                                      scaler=config.scaler_func['name'],
                                                      resample=config.resample,
-                                                     features_config=config.features_config,
                                                      **config.scaler_func.get('params',
                                                                               {}))
 
@@ -185,11 +170,9 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                             config.model_type,
                                                             batch_size=config.batch_size,
                                                             rescale=config.rescale,
-                                                            features_config=config.features_config,
                                                             scaler_func=config.scaler_func,
                                                             resample=config.resample,
                                                             loss=config.loss,
-                                                            drop_remainder_obs=config.drop_remainder_obs,
                                                             df_sample_weights=df_sample_weights if config.loss == 'weighted_mse' else None
                                                             )
 
@@ -202,7 +185,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                  None,
                                  config.epochs,
                                  config.learning_rate,
-                                 loss=config.loss,
                                  callbacks=config.callbacks,
                                  val_dataset=None,
                                  extra_features=n_features is not None,
@@ -244,22 +226,8 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
                                                                                 rescale=config.rescale,
                                                                                 scaler=config.scaler_func['name'],
                                                                                 resample=config.resample,
-                                                                                features_config=config.features_config,
                                                                                 **config.scaler_func.get('params',
                                                                                                          {}))
-
-        if config.drop_remainder_obs:
-            indices = list(range(train_data.shape[0]))
-            indices = drop_remainder(indices, config.batch_size, last=False)
-            train_data = train_data[indices, :]
-            features['train'] = features['train'][indices, :]
-            dates['train'] = dates['train'][indices]
-
-            indices = list(range(val_data.shape[0]))
-            indices = drop_remainder(indices, config.batch_size, last=False)
-            val_data = val_data[indices, :]
-            features['val'] = features['val'][indices, :]
-            dates['val'] = dates['val'][indices]
 
         LOGGER.debug(f'Train shape: {train_data.shape}')
         LOGGER.debug(f'Validation shape: {val_data.shape}')
@@ -340,18 +308,6 @@ def run_ae(config, data, assets, log_dir: Optional[str] = None, seed: Optional[i
         if test_data is not None:
             test_data = scaler.inverse_transform(test_data)
             test_data = pd.DataFrame(test_data, index=dates['test'], columns=assets)
-
-        if config.shuffle_columns:
-            LOGGER.debug('Reorder results with base asset order')
-            val_prediction = val_prediction.loc[:, base_asset_order]
-            train_data = train_data.loc[:, base_asset_order]
-            val_data = val_data.loc[:, base_asset_order]
-            if test_data is not None:
-                test_data = test_data.loc[:, base_asset_order]
-                test_prediction = test_prediction.loc[:, base_asset_order]
-            encoder_weights = encoder_weights.loc[base_asset_order, :]
-            if decoder_weights is not None:
-                decoder_weights = decoder_weights.loc[base_asset_order, :]
 
         # Sort index in case of random sampling
         train_data.sort_index(inplace=True)
