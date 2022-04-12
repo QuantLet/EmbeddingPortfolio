@@ -1,11 +1,12 @@
 import tensorflow as tf
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
+import pandas as pd
 
-dataset = 'dataset1'
+dataset = 'dataset2'
 show_plot = False
 save = True
-nmf_model = "./final_models/nmf/dataset1/m_0_seed_7_20220322_122627"
+nmf_model = "./final_models/nmf/dataset2/m_0_seed_4_20220322_123053"
 
 resample = {
     'method': 'nbb',
@@ -15,8 +16,7 @@ resample = {
 }
 
 seed = None
-
-encoding_dim = 4
+encoding_dim = 5
 batch_normalization = True
 uncorrelated_features = True
 weightage = 1e-2
@@ -36,7 +36,7 @@ model_type = 'ae_model'
 
 learning_rate = 1e-3
 epochs = 1000
-batch_size = 32
+batch_size = 128
 drop_remainder_obs = False
 val_size = None
 test_size = 0
@@ -67,137 +67,19 @@ callbacks = {
     }
 }
 
-data_specs = {
-    0: {
-        'start': '2016-06-30',
-        'val_start': '2019-11-13',
-        'test_start': '2019-12-12',
-        'end': '2020-01-11'
-    },
-    1: {
-        'start': '2016-06-30',
-        'val_start': '2019-12-13',
-        'test_start': '2020-01-12',
-        'end': '2020-02-11'
-    },
-    2: {
-        'start': '2016-06-30',
-        'val_start': '2020-01-13',
-        'test_start': '2020-02-12',
-        'end': '2020-03-11'
-    },
-    3: {
-        'start': '2016-06-30',
-        'val_start': '2020-02-13',
-        'test_start': '2020-03-12',
-        'end': '2020-04-11'
-    },
-    4: {
-        'start': '2016-06-30',
-        'val_start': '2020-03-13',
-        'test_start': '2020-04-12',
-        'end': '2020-05-11'
-    },
-    5: {
-        'start': '2016-06-30',
-        'val_start': '2020-04-13',
-        'test_start': '2020-05-12',
-        'end': '2020-06-11'
-    },
-    6: {
-        'start': '2016-06-30',
-        'val_start': '2020-05-13',
-        'test_start': '2020-06-12',
-        'end': '2020-07-11'
-    },
-    7: {
-        'start': '2016-06-30',
-        'val_start': '2020-06-13',
-        'test_start': '2020-07-12',
-        'end': '2020-08-11'
-    },
-    8: {
-        'start': '2016-06-30',
-        'val_start': '2020-07-13',
-        'test_start': '2020-08-12',
-        'end': '2020-09-11'
-    },
-    9: {
-        'start': '2016-06-30',
-        'val_start': '2020-08-13',
-        'test_start': '2020-09-12',
-        'end': '2020-10-11'
-    },
-    10: {
-        'start': '2016-06-30',
-        'val_start': '2020-09-13',
-        'test_start': '2020-10-12',
-        'end': '2020-11-11'
-    },
-    11: {
-        'start': '2016-06-30',
-        'val_start': '2020-10-13',
-        'test_start': '2020-11-12',
-        'end': '2020-12-11'
-    },
-    12: {
-        'start': '2016-06-30',
-        'val_start': '2020-11-13',
-        'test_start': '2020-12-12',
-        'end': '2021-01-11'
-    },
-    13: {
-        'start': '2016-06-30',
-        'val_start': '2020-12-13',
-        'test_start': '2021-01-12',
-        'end': '2021-02-11'
-    },
-    14: {
-        'start': '2016-06-30',
-        'val_start': '2021-01-13',
-        'test_start': '2021-02-12',
-        'end': '2021-03-11'
-    },
-    15: {
-        'start': '2016-06-30',
-        'val_start': '2021-02-13',
-        'test_start': '2021-03-12',
-        'end': '2021-04-11'
-    },
-    16: {
-        'start': '2016-06-30',
-        'val_start': '2021-03-13',
-        'test_start': '2021-04-12',
-        'end': '2021-05-11'
-    },
-    17: {
-        'start': '2016-06-30',
-        'val_start': '2021-04-13',
-        'test_start': '2021-05-12',
-        'end': '2021-06-11'
-    },
-    18: {
-        'start': '2016-06-30',
-        'val_start': '2021-05-13',
-        'test_start': '2021-06-12',
-        'end': '2021-07-11'
-    },
-    19: {
-        'start': '2016-06-30',
-        'val_start': '2021-06-13',
-        'test_start': '2021-07-12',
-        'end': '2021-08-11'
-    },
-    20: {
-        'start': '2016-06-30',
-        'val_start': '2021-07-13',
-        'test_start': '2021-08-12',
-        'end': '2021-09-11'
-    },
-    21: {
-        'start': '2016-06-30',
-        'val_start': '2021-08-13',
-        'test_start': '2021-09-12',
-        'end': '2021-10-11'
+val_start = pd.date_range('2007-01-01', '2021-09-01', freq='1MS')
+val_start = [str(d.date()) for d in val_start]
+
+test_start = pd.date_range('2007-02-01', '2021-10-01', freq='1MS')
+test_start = [str(d.date()) for d in test_start]
+test_end = pd.date_range('2007-02-01', '2021-11-01', freq='1M')
+test_end = [str(d.date()) for d in test_end]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
+        'start': '1989-02-01',
+        'val_start': val_start[i],
+        'test_start': test_start[i],
+        'end': test_end[i]
     }
-}
