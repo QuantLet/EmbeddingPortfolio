@@ -7,7 +7,6 @@ show_plot = False
 save = True
 nmf_model = "./final_models/nmf/dataset1/m_0_seed_7_20220322_122627"
 
-
 resample = {
     'method': 'nbb',
     'where': ['train'],
