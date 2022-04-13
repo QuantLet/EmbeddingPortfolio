@@ -60,6 +60,17 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
             weights['equal_class'] = pd.DataFrame(equal_class_weights(market_budget)).T
 
         if sspw_tto:
+            if strat not in bench_names + ["equal"]:
+                if "hedge" in strat:
+                    sspw_value = np.mean([sspw(weights[strat][k]) for k in weights[strat]])
+                    tto_value = np.mean([total_average_turnover(weights[strat][k]) for k in weights[strat]])
+                else:
+                    sspw_value = sspw(weights[strat])
+                    tto_value = total_average_turnover(weights[strat])
+            else:
+                sspw_value = np.nan
+                tto_value = 0.
+
             stats.loc[strat] = [perf[strat].mean() * period,
                                 annualized_volatility(perf[strat], period=period),
                                 scipy_stats.skew(perf[strat], axis=0),
@@ -72,8 +83,8 @@ def backtest_stats(perf: pd.DataFrame, weights: Dict, period: int = 250, format:
                                 get_mdd(np.cumprod(perf[strat] + 1)),
                                 calmar_ratio(np.cumprod(perf[strat] + 1)),
                                 ceq(perf[strat], period=period),
-                                sspw(weights[strat]) if strat not in bench_names else np.nan,
-                                total_average_turnover(weights[strat]) if strat not in bench_names + ['equal'] else 0.
+                                sspw_value,
+                                tto_value
                                 ]
         else:
             stats.loc[strat] = [perf[strat].mean() * period,
