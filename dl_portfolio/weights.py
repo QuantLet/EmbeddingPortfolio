@@ -9,8 +9,6 @@ from sklearn.cluster import KMeans
 
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
-from portfoliolab.clustering.hrp import HierarchicalRiskParity
-from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
@@ -18,7 +16,7 @@ from dl_portfolio.constant import PORTFOLIOS
 
 
 def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None, loading=None,
-                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc', 'herc'],
+                      portfolio=['markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'rp', 'aeerc'],
                       **kwargs):
     assert all([p in PORTFOLIOS for p in portfolio]), [p for p in portfolio if p not in PORTFOLIOS]
     port_w = {}
@@ -38,20 +36,6 @@ def portfolio_weights(returns, shrink_cov=None, budget=None, embedding=None, loa
     if 'ivp' in portfolio:
         LOGGER.info('Computing IVP weights...')
         port_w['ivp'] = ivp_weights(S)
-
-    if 'hrp' in portfolio:
-        LOGGER.info('Computing HRP weights...')
-        port_w['hrp'] = hrp_weights(S)
-
-    if 'herc' in portfolio:
-        LOGGER.info('Computing HERC weights with variance as risk measure...')
-        port_w['herc'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'),
-                                      risk_measure='variance')
-
-    if 'hcaa' in portfolio:
-        LOGGER.info('Computing HCAA weights...')
-        port_w['hcaa'] = herc_weights(returns, optimal_num_clusters=kwargs.get('optimal_num_clusters'),
-                                      risk_measure='equal_weighting')
 
     if 'rp' in portfolio:
         LOGGER.info('Computing Riskparity weights...')
@@ -125,7 +109,7 @@ def get_inner_cluster_weights(cov, loading, clusters, market_budget=None):
     i = 0
     for c in weights:
         reorder_weights[i] = weights[c]
-        i+=1
+        i += 1
     weights = {i: weights[c] for i, c in enumerate(list(weights.keys()))}
     return weights
 
@@ -175,37 +159,6 @@ def markowitz_weights(mu: Union[pd.Series, np.ndarray], S: pd.DataFrame, fix_cov
 
     if weights is None:
         raise _exc
-
-    return weights
-
-
-def hrp_weights(S: pd.DataFrame, linkage: str = 'single') -> pd.Series:
-    # constructing our Single Linkage portfolio
-    hrp_single = HierarchicalRiskParity()
-    hrp_single.allocate(asset_names=S.columns,
-                        covariance_matrix=S,
-                        linkage=linkage)
-
-    weights = hrp_single.weights.T
-    weights = weights[0]
-    weights = weights[S.columns]
-
-    return weights
-
-
-def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: str = 'equal_weighting',
-                 covariance_matrix=None, optimal_num_clusters=None) -> pd.Series:
-    hercEW_single = HierarchicalEqualRiskContribution()
-    hercEW_single.allocate(asset_names=returns.columns,
-                           asset_returns=returns,
-                           covariance_matrix=covariance_matrix,
-                           risk_measure=risk_measure,
-                           optimal_num_clusters=optimal_num_clusters,
-                           linkage=linkage)
-
-    weights = hercEW_single.weights.T
-    weights = weights[0]
-    weights = weights[returns.columns]
 
     return weights
 
