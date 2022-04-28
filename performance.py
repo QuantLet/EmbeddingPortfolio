@@ -18,7 +18,7 @@ from dl_portfolio.evaluate import average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET2, BASE_FACTOR_ORDER_DATASET1
 
-PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'hrp', 'hcaa', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
+PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
 if __name__ == "__main__":
     import argparse, json
@@ -134,7 +134,7 @@ if __name__ == "__main__":
         if i == 0:
             portfolios = PORTFOLIOS
         else:
-            portfolios = [p for p in PORTFOLIOS if 'ae' in p]  # ['aerp', 'aeerc', 'ae_rp_c']
+            portfolios = [p for p in PORTFOLIOS if 'ae' in p]
         cv_results[i] = get_cv_results(path,
                                        args.test_set,
                                        n_folds,

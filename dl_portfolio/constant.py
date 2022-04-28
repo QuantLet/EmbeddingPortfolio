@@ -13,8 +13,8 @@ COMMODITIES = ['WTIUSD', 'BCOUSD']
 
 LOG_DIR = 'log_AE'
 
-PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc', 'herc',
-              'hcaa', 'ae_rp_c', 'kmaa', 'aeaa']
+PORTFOLIOS = ['equal', 'equal_class', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'rp', 'aeerc', 'ae_rp_c', 'kmaa',
+              'aeaa']
 
 BASE_FACTOR_ORDER_DATASET1 = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
 BASE_FACTOR_ORDER_DATASET2 = ["SP500", "EuroStox_Small", "Gold", "US-5Y", "French-5Y"]

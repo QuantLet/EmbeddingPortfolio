@@ -397,7 +397,7 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
     - prev weights is previous cv weights or vector of 1s for the first cv
     - weights is current weights for the test period
 
-    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp', 'aeerc']
+    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'rp', 'aeerc']
     :param train_returns:
     :param returns:
     :param weights: Dict with portfolio keys and corresponding weight
@@ -473,7 +473,7 @@ def get_portfolio_perf_wrapper(train_returns: pd.DataFrame, returns: pd.DataFram
 
 
 def cv_portfolio_perf(cv_results: Dict,
-                      portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'hrp', 'rp',
+                      portfolios: List = ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'rp',
                                           'aeerc'],
                       **kwargs) -> Union[Dict, pd.DataFrame]:
     """
@@ -481,7 +481,7 @@ def cv_portfolio_perf(cv_results: Dict,
     :param cv_results: Dictionary with keys:
      - first key is cv fold
      - for each cv:
-        - "port" for portfolio weights with each strategy as key: [cv]["port"]["hrp"], [cv]["port"]["rp"], etc.
+        - "port" for portfolio weights with each strategy as key: [cv]["port"], [cv]["port"]["rp"], etc.
         - "train_returns"
         - "returns"
     :param portfolios:
@@ -529,7 +529,7 @@ def cv_portfolio_perf_df(cv_portfolio: Dict, portfolios: List[str] = ['ae_rp_c',
     :param cv_portfolio: Dictionary with keys:
      - first key is cv fold
      - for each cv:
-        - "port" for portfolio weights with each strategy as key: [cv]["port"]["hrp"], [cv]["port"]["rp"], etc.
+        - "port" for portfolio weights with each strategy as key: [cv]["port"], [cv]["port"]["rp"], etc.
         - "train_returns"
         - "returns"
     :poram portfolios: List of portfolio on which to compute weights
