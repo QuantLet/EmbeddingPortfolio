@@ -22,10 +22,7 @@ setup(
         "joblib==1.0.0",
         "scikit-learn==0.24.0",
         "fastcluster==1.2.6",
-        "pytest==6.2.5",
     ],
-    setup_requires=['pytest-runner'],
-    tests_require=['pytest'],
     zip_safe=False,
     packages=find_packages()
 )

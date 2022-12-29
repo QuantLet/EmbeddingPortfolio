@@ -4,7 +4,8 @@ import tensorflow_probability as tfp
 
 
 class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
-    def __init__(self, encoding_dim: int, weightage: float = 1., norm: str = '1/2', use_cov: bool = True, **kwargs):
+    def __init__(self, encoding_dim: int, weightage: float = 1.,
+                 norm: str = '1/2', use_cov: bool = True, **kwargs):
         super(UncorrelatedFeaturesLayer, self).__init__(**kwargs)
         self.encoding_dim = encoding_dim
         self.weightage = weightage
@@ -55,7 +56,12 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
         if self.encoding_dim <= 1:
             return 0.0
         else:
-            output = K.sum(K.square(self.m - tf.math.multiply(self.m, tf.eye(self.encoding_dim)))) / 2
+            output = K.sum(
+                K.square(
+                    self.m - tf.math.multiply(
+                        self.m, tf.eye(self.encoding_dim))
+                )
+            ) / 2
             if self.norm == '1':
                 return output
             elif self.norm == '1/2':
