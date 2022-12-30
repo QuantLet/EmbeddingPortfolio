@@ -569,7 +569,7 @@ def run_nmf(
         else:
             save_path = None
 
-        LOGGER.info(f"Assets order: {assets}")
+        LOGGER.info(f"Assets: {assets}")
         data_spec = config.data_specs[cv]
         (
             train_data,
