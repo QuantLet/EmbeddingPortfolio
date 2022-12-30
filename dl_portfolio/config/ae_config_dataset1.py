@@ -40,7 +40,6 @@ model_type = 'ae_model'
 learning_rate = 1e-3
 epochs = 1000
 batch_size = 32
-drop_remainder_obs = False
 val_size = None
 test_size = 0
 loss = 'mse'
