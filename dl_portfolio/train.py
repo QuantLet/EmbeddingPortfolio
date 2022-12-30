@@ -3,13 +3,11 @@ import numpy as np
 from typing import Dict, List, Optional, Union
 import os
 from dl_portfolio.data import get_features
-from dl_portfolio.data import drop_remainder
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name
 from tensorflow.keras import backend as K
 from tensorboard.plugins import projector
 import matplotlib.pyplot as plt
-from dl_portfolio.data import bb_resample_sample
 
 
 def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.ndarray] = None,
@@ -27,102 +25,10 @@ def build_model_input(data: np.ndarray, model_type: str, features: Optional[np.n
     return data
 
 
-def create_nbb_dataset(n: int, data: np.ndarray, assets: List, model_type: str, batch_size: int,
-                       test_size: float = 0.1,
-                       rescale: Optional[float] = None,
-                       features_config: Optional[Dict] = None,
-                       scaler_func: Optional[Dict] = None,
-                       resample: Optional[Dict] = None,
-                       drop_remainder_obs: bool = False):
-    if features_config:
-        raise NotImplementedError()
-    start = str(data.index[0])[:-9]
-    end = str(data.index[-1])[:-9]
-    features_data, _, _, scaler, dates, features = get_features(data,
-                                                                start,
-                                                                end,
-                                                                assets,
-                                                                val_start=None,
-                                                                test_start=None,
-                                                                rescale=rescale,
-                                                                scaler=scaler_func['name'],
-                                                                features_config=features_config,
-                                                                **scaler_func.get('params',
-                                                                                  {}))
-
-    block_length = resample.get('block_length', 44)
-
-    LOGGER.info('Generate bootstrap series')
-    nbb_series = []
-    for i in range(1000):
-        # LOGGER.info(f"Resampling training data with 'nbb' method with block length {block_length}")
-        nbb_s, _ = bb_resample_sample(features_data, dates['train'], block_length=block_length)
-        nbb_series.append(nbb_s)
-
-    LOGGER.info('Split the series into train, val and test')
-    indices = list(range(n))
-    np.random.shuffle(indices)
-    test_size = int(test_size * n)
-    train_indices = indices[:-2 * test_size]
-    val_indices = indices[-2 * test_size:-test_size]
-    test_indices = indices[-test_size:]
-
-    train_data = nbb_series[train_indices[0]]
-    c = 0
-    for i in train_indices[1:]:
-        c += 1
-        if c % 100 == 0:
-            LOGGER.info(f'Steps to go for train: {len(train_indices) - c}')
-        train_data = np.concatenate([train_data, nbb_series[i]])
-
-    val_data = nbb_series[val_indices[0]]
-    for i in val_indices[1:]:
-        val_data = np.concatenate([val_data, nbb_series[i]])
-
-    test_data = nbb_series[test_indices[0]]
-    for i in val_indices[1:]:
-        test_data = np.concatenate([test_data, nbb_series[i]])
-
-    if drop_remainder_obs:
-        indices = list(range(train_data.shape[0]))
-        indices = drop_remainder(indices, batch_size, last=False)
-        train_data = train_data[indices, :]
-        # features['train'] = features['train'][indices, :]
-
-        indices = list(range(val_data.shape[0]))
-        indices = drop_remainder(indices, batch_size, last=False)
-        val_data = val_data[indices, :]
-        # features['val'] = features['val'][indices, :]
-
-    LOGGER.debug(f'Train shape: {train_data.shape}')
-    LOGGER.debug(f'Validation shape: {val_data.shape}')
-    LOGGER.debug(f'Test shape: {test_data.shape}')
-
-    if features:
-        train_input = build_model_input(train_data, model_type, features=features['train'], assets=assets)
-        val_input = build_model_input(val_data, model_type, features=features['val'])
-        if test_data is not None:
-            test_input = build_model_input(test_data, model_type, features=features['test'], assets=assets)
-    else:
-        train_input = build_model_input(train_data, model_type, features=None, assets=assets)
-        val_input = build_model_input(val_data, model_type, features=None, assets=assets)
-        if test_data is not None:
-            test_input = build_model_input(test_data, model_type, features=None, assets=assets)
-
-    train_dataset = tf.data.Dataset.from_tensor_slices((train_input, train_data))
-    val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
-    test_dataset = tf.data.Dataset.from_tensor_slices((test_input, test_data))
-    train_dataset = train_dataset.batch(batch_size)
-    val_dataset = val_dataset.batch(batch_size)
-    test_dataset = test_dataset.batch(batch_size)
-
-    return train_dataset, val_dataset, test_dataset
-
-
 def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_size: int,
                    rescale: Optional[float] = None, features_config: Optional[Dict] = None,
                    scaler_func: Optional[Dict] = None,
-                   resample: Optional[Dict] = None, drop_remainder_obs: bool = False):
+                   resample: Optional[Dict] = None):
     train_data, val_data, test_data, scaler, dates, features = get_features(data,
                                                                             data_spec['start'],
                                                                             data_spec['end'],
@@ -135,19 +41,6 @@ def create_dataset(data, assets: List, data_spec: Dict, model_type: str, batch_s
                                                                             features_config=features_config,
                                                                             **scaler_func.get('params',
                                                                                               {}))
-
-    if drop_remainder_obs:
-        indices = list(range(train_data.shape[0]))
-        indices = drop_remainder(indices, batch_size, last=False)
-        train_data = train_data[indices, :]
-        features['train'] = features['train'][indices, :]
-        dates['train'] = dates['train'][indices]
-
-        indices = list(range(val_data.shape[0]))
-        indices = drop_remainder(indices, batch_size, last=False)
-        val_data = val_data[indices, :]
-        features['val'] = features['val'][indices, :]
-        dates['val'] = dates['val'][indices]
 
     LOGGER.debug(f'Train shape: {train_data.shape}')
     LOGGER.debug(f'Validation shape: {val_data.shape}')

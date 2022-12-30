@@ -14,7 +14,7 @@ from sklearn.cluster import KMeans
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
-from dl_portfolio.data import drop_remainder, get_features
+from dl_portfolio.data import get_features
 from dl_portfolio.train import fit, embedding_visualization, plot_history, create_dataset, build_model_input
 from dl_portfolio.constant import LOG_DIR
 from dl_portfolio.nmf.semi_nmf import SemiNMF

@@ -9,18 +9,6 @@ from dl_portfolio.sample import id_nb_bootstrap
 DATASETS = ['dataset1', 'dataset2']
 
 
-def drop_remainder(indices, batch_size, last=False):
-    drop = np.remainder(len(indices), batch_size)
-    if len(indices) - drop < batch_size:
-        raise ValueError('After dropping data is too small to generate one batch')
-    if drop > 0:
-        if last:
-            indices = indices[:-drop]
-        else:
-            indices = indices[drop:]
-    return indices
-
-
 def load_data(dataset):
     assert dataset in DATASETS, dataset
     if dataset == 'dataset1':
