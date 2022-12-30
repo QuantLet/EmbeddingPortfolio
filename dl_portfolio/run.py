@@ -81,6 +81,13 @@ def run_ae(
         i: base_asset_order[i] for i in range(len(base_asset_order))
     }
 
+    if config.scaler_func is not None:
+        scaler_method = config.scaler_func["name"]
+        scaler_params = config.scaler_func.get("params", {})
+    else:
+        scaler_method = None
+        scaler_params = {}
+
     for cv in config.data_specs:
         LOGGER.debug(f"Starting with cv: {cv}")
         if config.save:
@@ -117,9 +124,9 @@ def run_ae(
                 val_start=config.data_specs[cv]["val_start"],
                 test_start=config.data_specs[cv].get("test_start"),
                 rescale=config.rescale,
-                scaler=config.scaler_func["name"],
+                scaler=scaler_method,
                 resample=config.resample,
-                **config.scaler_func.get("params", {}),
+                **scaler_params,
             )
 
             LOGGER.info(
@@ -270,9 +277,9 @@ def run_ae(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             rescale=config.rescale,
-            scaler=config.scaler_func["name"],
+            scaler=scaler_method,
             resample=config.resample,
-            **config.scaler_func.get("params", {}),
+            **scaler_params,
         )
 
         LOGGER.debug(f"Train shape: {train_data.shape}")
@@ -302,7 +309,8 @@ def run_ae(
         val_features = pd.DataFrame(val_features, index=dates["val"])
         LOGGER.info(f"Val features correlation:\n{val_features.corr()}")
         val_prediction = model.predict(val_input)
-        val_prediction = scaler.inverse_transform(val_prediction)
+        if scaler:
+            val_prediction = scaler.inverse_transform(val_prediction)
         val_prediction = pd.DataFrame(
             val_prediction, columns=assets, index=dates["val"]
         )
@@ -340,7 +348,8 @@ def run_ae(
         # Get prediction on test_data
         if test_data is not None:
             test_prediction = model.predict(test_input)
-            test_prediction = scaler.inverse_transform(test_prediction)
+            if scaler:
+                test_prediction = scaler.inverse_transform(test_prediction)
             test_prediction = pd.DataFrame(
                 test_prediction, columns=assets, index=dates["test"]
             )
@@ -352,14 +361,17 @@ def run_ae(
             test_features = pd.DataFrame(test_features, index=dates["test"])
 
         # Rescale back input data
-        train_data = scaler.inverse_transform(train_data)
+        if scaler:
+            train_data = scaler.inverse_transform(train_data)
         train_data = pd.DataFrame(
             train_data, index=dates["train"], columns=assets
         )
-        val_data = scaler.inverse_transform(val_data)
+        if scaler:
+            val_data = scaler.inverse_transform(val_data)
         val_data = pd.DataFrame(val_data, index=dates["val"], columns=assets)
         if test_data is not None:
-            test_data = scaler.inverse_transform(test_data)
+            if scaler:
+                test_data = scaler.inverse_transform(test_data)
             test_data = pd.DataFrame(
                 test_data, index=dates["test"], columns=assets
             )
@@ -428,11 +440,11 @@ def run_ae(
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
             if decoder_weights is not None:
                 decoder_weights.to_pickle(f"{save_path}/decoder_weights.p")
-            config.scaler_func["attributes"] = scaler.__dict__
-            pickle.dump(
-                config.scaler_func, open(f"{save_path}/scaler.p", "wb")
-            )
-
+            if config.scaler_func is not None:
+                config.scaler_func["attributes"] = scaler.__dict__
+                pickle.dump(
+                    config.scaler_func, open(f"{save_path}/scaler.p", "wb")
+                )
             if test_data is not None:
                 pass
 

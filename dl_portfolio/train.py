@@ -37,7 +37,14 @@ def create_dataset(
     scaler_func: Optional[Dict] = None,
     resample: Optional[Dict] = None,
 ):
-    train_data, val_data, test_data, scaler, dates, features = get_features(
+    if scaler_func is not None:
+        scaler_method = scaler_func["name"]
+        scaler_params = scaler_func.get("params", {})
+    else:
+        scaler_method = None
+        scaler_params = {}
+
+    train_data, val_data, test_data, scaler, dates = get_features(
         data,
         data_spec["start"],
         data_spec["end"],
@@ -45,57 +52,25 @@ def create_dataset(
         val_start=data_spec["val_start"],
         test_start=data_spec.get("test_start"),
         rescale=rescale,
-        scaler=scaler_func["name"],
+        scaler=scaler_method,
         resample=resample,
-        **scaler_func.get("params", {}),
+        **scaler_params,
     )
 
     LOGGER.debug(f"Train shape: {train_data.shape}")
     LOGGER.debug(f"Validation shape: {val_data.shape}")
 
-    if features:
-        train_input = build_model_input(
-            train_data, model_type, features=features["train"], assets=assets
+    train_input = build_model_input(train_data, model_type)
+    val_input = build_model_input(val_data, model_type)
+    if test_data is not None:
+        test_input = build_model_input(
+            test_data, model_type, features=None
         )
-        val_input = build_model_input(
-            val_data, model_type, features=features["val"]
-        )
-        if test_data is not None:
-            test_input = build_model_input(
-                test_data, model_type, features=features["test"], assets=assets
-            )
-    else:
-        train_input = build_model_input(
-            train_data, model_type, features=None, assets=assets
-        )
-        val_input = build_model_input(
-            val_data, model_type, features=None, assets=assets
-        )
-        if test_data is not None:
-            test_input = build_model_input(
-                test_data, model_type, features=None, assets=assets
-            )
 
-    if features:
-        n_features = features["train"].shape[-1]
-    else:
-        n_features = None
-
-    if n_features:
-        train_dataset = tf.data.Dataset.from_tensor_slices(
-            (train_input[0], train_input[1], train_data)
-        )
-    else:
-        train_dataset = tf.data.Dataset.from_tensor_slices(
+    train_dataset = tf.data.Dataset.from_tensor_slices(
             (train_input, train_data)
-        )
-
-    if n_features:
-        val_dataset = tf.data.Dataset.from_tensor_slices(
-            (val_input[0], val_input[1], val_data)
-        )
-    else:
-        val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
+    )
+    val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
 
     train_dataset = train_dataset.batch(batch_size)
     val_dataset = val_dataset.batch(batch_size)
