@@ -88,13 +88,8 @@ def run_ae(
             os.mkdir(f"{save_dir}/{cv}")
         else:
             save_path = None
-
-        LOGGER.debug(f"Assets order: {assets}")
-        if config.loss == "weighted_mse":
-            # reorder columns
-            df_sample_weights = df_sample_weights[assets]
-
         # Build model
+        LOGGER.debug(f"Assets: {assets}")
         input_dim = len(assets)
         n_features = None
         model, encoder, extra_features = build_model(
@@ -114,7 +109,7 @@ def run_ae(
             weightage=config.weightage,
         )
         if config.nmf_model is not None:
-            train_data, _, _, _, _, _ = get_features(
+            train_data, _, _, _, _ = get_features(
                 data,
                 config.data_specs[cv]["start"],
                 config.data_specs[cv]["end"],
@@ -128,7 +123,8 @@ def run_ae(
             )
 
             LOGGER.info(
-                f"Initilize weights with NMF model from {config.nmf_model}/{cv}"
+                f"Initilize weights with NMF model from {config.nmf_model}/"
+                f"{cv}"
             )
             assert config.model_type in ["ae_model"]
             if config.model_type == "ae_model":
@@ -157,7 +153,7 @@ def run_ae(
                 weights /= np.sum(weights, axis=0)
                 weights = weights.T
                 weights = weights.astype(np.float32)
-                ## set bias
+                # set bias
                 F = nmf_model.transform(train_data)
                 bias = np.mean(train_data) - np.mean(
                     F.dot(nmf_model.components.T), 0
@@ -250,9 +246,7 @@ def run_ae(
             )
 
         if config.save:
-            # tensorboard viz
-            if config.model_type != "ae_model2":
-                embedding_visualization(
+            embedding_visualization(
                     model, assets, log_dir=f"{save_path}/tensorboard/"
                 )
             LOGGER.debug(f"Loading weights from {save_path}/model.h5")
@@ -268,7 +262,6 @@ def run_ae(
             test_data,
             scaler,
             dates,
-            features,
         ) = get_features(
             data,
             data_spec["start"],
@@ -285,34 +278,16 @@ def run_ae(
         LOGGER.debug(f"Train shape: {train_data.shape}")
         LOGGER.debug(f"Validation shape: {val_data.shape}")
 
-        if features:
-            train_input = build_model_input(
-                train_data,
-                config.model_type,
-                features=features["train"],
-                assets=assets,
+        train_input = build_model_input(
+            train_data, config.model_type, features=None,
+        )
+        val_input = build_model_input(
+            val_data, config.model_type, features=None,
+        )
+        if test_data is not None:
+            test_input = build_model_input(
+                test_data, config.model_type, features=None,
             )
-            val_input = build_model_input(
-                val_data, config.model_type, features=features["val"]
-            )
-            if test_data is not None:
-                test_input = build_model_input(
-                    test_data,
-                    config.model_type,
-                    features=features["test"],
-                    assets=assets,
-                )
-        else:
-            train_input = build_model_input(
-                train_data, config.model_type, features=None, assets=assets
-            )
-            val_input = build_model_input(
-                val_data, config.model_type, features=None, assets=assets
-            )
-            if test_data is not None:
-                test_input = build_model_input(
-                    test_data, config.model_type, features=None, assets=assets
-                )
 
         # Get prediction
         if n_features:
@@ -362,10 +337,8 @@ def run_ae(
             LOGGER.debug(f"Decoder weights:\n{decoder_weights}")
 
         LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
-        ## Get prediction on test_data
+        # Get prediction on test_data
         if test_data is not None:
-            if features:
-                test_input = [test_data, features["test"]]
             test_prediction = model.predict(test_input)
             test_prediction = scaler.inverse_transform(test_prediction)
             test_prediction = pd.DataFrame(
@@ -501,7 +474,6 @@ def run_kmeans(config, data, assets, seed=None):
             test_data,
             scaler,
             dates,
-            features,
         ) = get_features(
             data,
             data_spec["start"],
@@ -585,7 +557,6 @@ def run_nmf(
             test_data,
             scaler,
             dates,
-            features,
         ) = get_features(
             data,
             data_spec["start"],

@@ -14,20 +14,13 @@ def build_model_input(
     data: np.ndarray,
     model_type: str,
     features: Optional[np.ndarray] = None,
-    assets: Optional[List] = None,
 ) -> Union[np.ndarray, List]:
-    if model_type == "pca_permut_ae_model":
-        raise NotImplementedError()
-        data = [data[:, i].reshape(-1, 1) for i in range(len(assets))]
-    elif model_type in [
+    assert model_type in [
         "ae_model",
         "ae_model2",
         "pca_ae_model",
         "nl_pca_ae_model",
-    ]:
-        pass
-    else:
-        raise NotImplementedError()
+    ]
     if features:
         data = [data, features]
 
@@ -41,7 +34,6 @@ def create_dataset(
     model_type: str,
     batch_size: int,
     rescale: Optional[float] = None,
-    features_config: Optional[Dict] = None,
     scaler_func: Optional[Dict] = None,
     resample: Optional[Dict] = None,
 ):
@@ -55,7 +47,6 @@ def create_dataset(
         rescale=rescale,
         scaler=scaler_func["name"],
         resample=resample,
-        features_config=features_config,
         **scaler_func.get("params", {}),
     )
 
@@ -158,7 +149,7 @@ def r_square(y_true, y_pred):
 
 def fit(
     model: tf.keras.models.Model,
-    train_dataset: tf.data.Dataset,
+    train_dataset: Optional[tf.data.Dataset],
     epochs,
     learning_rate: float,
     callbacks: Dict = None,

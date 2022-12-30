@@ -1,6 +1,6 @@
 import pandas as pd
 from dl_portfolio.logger import LOGGER
-from typing import List, Optional, Dict, Union
+from typing import List, Dict, Union
 from sklearn import preprocessing
 import numpy as np
 import datetime as dt
@@ -65,7 +65,6 @@ def get_features(
     rescale=None,
     scaler: Union[str, Dict] = "StandardScaler",
     resample=None,
-    features_config: Optional[List] = None,
     **kwargs,
 ):
     """
@@ -81,7 +80,6 @@ def get_features(
     scaler, if Dict, then we use the parameter defined in scaler to
     transform (used for inference)
     :param resample:
-    :param features_config:
     :param kwargs:
     :return:
     """
@@ -194,38 +192,6 @@ def get_features(
 
     dates = {"train": train_dates, "val": val_dates, "test": test_dates}
 
-    if features_config:
-        n_features = len(features_config)
-        features = {
-            "train": [],
-            "val": [],
-            "test": [],
-        }
-        for feature_config in features_config:
-            if feature_config["name"] == "hour_in_week":
-                f = {
-                    "train": hour_in_week(dates["train"]),
-                    "val": hour_in_week(dates["val"]),
-                    "test": hour_in_week(dates["test"])
-                    if test_data is not None
-                    else None,
-                }
-            features["train"].append(f["train"])
-            features["val"].append(f["val"])
-            features["test"].append(f["test"])
-        if n_features == 1:
-            features["train"] = features["train"][0].reshape(-1, 1)
-            features["val"] = features["val"][0].reshape(-1, 1)
-            features["test"] = (
-                features["test"][0].reshape(-1, 1)
-                if test_data is not None
-                else None
-            )
-        else:
-            raise NotImplementedError()
-    else:
-        features = None
-
     if resample is not None:
         if resample["method"] == "nbb":
             where = resample.get("where", ["train"])
@@ -269,4 +235,4 @@ def get_features(
         else:
             raise NotImplementedError(resample)
 
-    return train_data, val_data, test_data, scaler, dates, features
+    return train_data, val_data, test_data, scaler, dates
