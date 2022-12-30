@@ -8,7 +8,6 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import activations
 
-from dl_portfolio.logger import LOGGER
 from dl_portfolio.data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.regularizers import WeightsOrthogonality
@@ -48,136 +47,6 @@ def build_linear_model(ae_config, reg_type: str, **kwargs):
     return model
 
 
-def fit_nnls_one_cv(cv: int, test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str,
-                    ae_config, reg_type: str = 'nn_ridge', **kwargs):
-    model, scaler, dates, test_data, test_features, prediction, embedding, decoding = load_result(ae_config,
-                                                                                                  test_set,
-                                                                                                  data,
-                                                                                                  assets,
-                                                                                                  base_dir,
-                                                                                                  cv)
-    prediction -= scaler['attributes']['mean_']
-    prediction /= np.sqrt(scaler['attributes']['var_'])
-    mse_or = np.mean((test_data - prediction) ** 2, 0)
-
-    relu_activation_layer = tf.keras.Model(inputs=model.input, outputs=model.get_layer('encoder').output)
-    relu_activation = relu_activation_layer.predict(test_data)
-    relu_activation = pd.DataFrame(relu_activation, index=prediction.index)
-
-    # Fit linear encoder to the factors
-    # input_dim = model.layers[0].input_shape[0][-1]
-    # encoding_dim = model.layers[1].output_shape[-1]
-    # vlin_encoder = create_linear_encoder_with_constraint(input_dim, encoding_dim)
-    # lin_encoder.fit(test_data_i, relu_activation_i, batch_size = 1, epochs=500, verbose=2,
-    #                 max_queue_size=20, workers=2*os.cpu_count()-1, use_multiprocessing=True)
-    # factors_nnls_i = lin_encoder.predict(test_data_i)
-    # lin_embedding = pd.DataFrame(encoder.layers[1].weights[0].numpy(), index=embed.index)
-
-    # # Fit non-negative linear least square to the factor
-    reg_nnls = build_linear_model(ae_config, reg_type, **kwargs)
-    x = test_data.copy()
-    mean_ = np.mean(x, 0)
-    # Center the data as we do not fit intercept
-    x = x - mean_
-    reg_nnls.fit(x, relu_activation)
-    # Now compute intercept: it is just the mean of the dependent variable
-    intercept_ = np.mean(relu_activation).values
-    factors_nnls = reg_nnls.predict(x) + intercept_
-    factors_nnls = pd.DataFrame(factors_nnls, index=prediction.index)
-
-    # Get reconstruction error based on nnls embedding
-    if ae_config.model_type == "pca_ae_model":
-        # For PCA AE model encoder and decoder share weights
-        weights = reg_nnls.coef_.copy()
-        # Compute bias (reconstruction intercept)
-        bias = mean_ - np.dot(np.mean(factors_nnls, 0), weights)
-    elif ae_config.model_type == "ae_model":
-        weights = model.get_layer('decoder').get_weights()[0]
-        bias = model.get_layer('decoder').get_weights()[1]
-    else:
-        raise NotImplementedError(ae_config.model_type)
-
-    # Reconstruction
-    pred_nnls_model = np.dot(factors_nnls, weights) + bias
-    mse_nnls_model = np.mean((test_data - pred_nnls_model) ** 2, 0)
-    # pred_nnls_factors = pd.concat([pred_nnls_factors, pd.DataFrame(pred_nnls_factors_i,
-    #                                                                columns=pred.columns,
-    #                                                                index=pred.index)])
-    pred_nnls_model = pd.DataFrame(pred_nnls_model, columns=prediction.columns, index=prediction.index)
-    test_data = pd.DataFrame(test_data, columns=prediction.columns, index=prediction.index)
-    reg_coef = pd.DataFrame(weights.T, index=embedding.index)
-
-    return test_data, embedding, decoding, reg_coef, relu_activation, factors_nnls, prediction, pred_nnls_model, mse_or, mse_nnls_model
-
-
-def get_nnls_analysis(test_set: str, data: pd.DataFrame, assets: List[str], base_dir: str, ae_config,
-                      reg_type: str = 'nn_ridge', **kwargs):
-    """
-
-    :param test_set:
-    :param data:
-    :param assets:
-    :param base_dir:
-    :param ae_config:
-    :param reg_type: regression type to fit "nn_ridge" for non negative Ridge or "nn_ls" for non negative LS
-    :return:
-    """
-
-    test_data = pd.DataFrame()
-    prediction = pd.DataFrame()
-    # pred_nnls_factors = pd.DataFrame()
-    pred_nnls_model = pd.DataFrame()
-    factors_nnls = pd.DataFrame()
-    relu_activation = pd.DataFrame()
-    embedding = {}
-    decoding = {}
-    reg_coef = {}
-    mse = {
-        'original': [],
-        'nnls_factors': [],
-        'nnls_model': []
-    }
-
-    # cv = 0
-    for cv in ae_config.data_specs:
-        LOGGER.info(f'CV: {cv}')
-        test_data_i, embedding_i, decoding_i, reg_coef_i, relu_activation_i, factors_nnls_i, pred, pred_nnls_model_i, mse_or, mse_nnls_model = fit_nnls_one_cv(
-            cv,
-            test_set,
-            data,
-            assets,
-            base_dir,
-            ae_config,
-            reg_type=reg_type,
-            **kwargs)
-
-        embedding[cv] = embedding_i
-        decoding[cv] = decoding_i
-        reg_coef[cv] = reg_coef_i
-        relu_activation = pd.concat([relu_activation, relu_activation_i])
-        factors_nnls = pd.concat([factors_nnls, factors_nnls_i])
-        prediction = pd.concat([prediction, pred])
-        pred_nnls_model = pd.concat([pred_nnls_model, pred_nnls_model_i])
-        test_data = pd.concat([test_data, test_data_i])
-        mse['original'].append(mse_or)
-        mse['nnls_model'].append(mse_nnls_model)
-
-    results = {
-        'test_data': test_data,
-        'prediction': prediction,
-        # 'pred_nnls_factors': pred_nnls_factors,
-        'pred_nnls_model': pred_nnls_model,
-        'factors_nnls': factors_nnls,
-        'relu_activation': relu_activation,
-        'mse': mse,
-        'embedding': embedding,
-        'decoding': decoding,
-        'reg_coef': reg_coef
-    }
-
-    return results
-
-
 def reorder_columns(data, new_order):
     return data.iloc[:, new_order]
 
@@ -206,8 +75,9 @@ def load_result_wrapper(config, test_set: str, data: pd.DataFrame, assets: List[
                                                                                     cv,
                                                                                     reorder_features)
         t_data = pd.DataFrame(t_data, columns=pred.columns, index=pred.index)
-        t_data *= scaler["attributes"]["scale_"]
-        t_data += scaler["attributes"]["mean_"]
+        if scaler:
+            t_data *= scaler["attributes"]["scale_"]
+            t_data += scaler["attributes"]["mean_"]
 
         test_data = pd.concat([test_data, t_data])
         prediction = pd.concat([prediction, pred])
@@ -239,7 +109,10 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
     assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
     assert test_set in ["train", "val", "test"]
 
-    scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    if config.scaler_func:
+        scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    else:
+        scaler = None
     input_dim = len(assets)
 
     model, encoder, extra_features = build_model(config.model_type,
@@ -267,7 +140,7 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
 
     data_spec = config.data_specs[cv]
     if test_set == 'test':
-        _, _, test_data, _, dates, _ = get_features(data,
+        _, _, test_data, _, dates = get_features(data,
                                                     data_spec['start'],
                                                     data_spec['end'],
                                                     assets,
@@ -275,7 +148,7 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
                                                     test_start=data_spec.get('test_start'),
                                                     scaler=scaler)
     elif test_set == 'val':
-        _, test_data, _, _, dates, _ = get_features(data,
+        _, test_data, _, _, dates = get_features(data,
                                                     data_spec['start'],
                                                     data_spec['end'],
                                                     assets,
@@ -284,7 +157,7 @@ def get_linear_encoder(config, test_set: str, data: pd.DataFrame, assets: List[s
                                                     scaler=scaler)
     elif test_set == 'train':
         # For first cv: predict on train data then for the others used previous validation data for prediction
-        test_data, _, _, _, dates, _ = get_features(data,
+        test_data, _, _, _, dates = get_features(data,
                                                     data_spec['start'],
                                                     data_spec['end'],
                                                     assets,
@@ -335,7 +208,10 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
     assert test_set in ["train", "val", "test"]
 
-    scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    if config.scaler_func is not None:
+        scaler = pickle.load(open(f'{base_dir}/{cv}/scaler.p', 'rb'))
+    else:
+        scaler = None
     input_dim = len(assets)
 
     if "ae" in model_type:
@@ -379,7 +255,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
 
     data_spec = config.data_specs[cv]
     if test_set == 'test':
-        _, _, test_data, _, dates, _ = get_features(data,
+        _, _, test_data, _, dates = get_features(data,
                                                     data_spec['start'],
                                                     data_spec['end'],
                                                     assets,
@@ -387,7 +263,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
                                                     test_start=data_spec.get('test_start'),
                                                     scaler=scaler)
     elif test_set == 'val':
-        _, test_data, _, _, dates, _ = get_features(data,
+        _, test_data, _, _, dates = get_features(data,
                                                     data_spec['start'],
                                                     data_spec['end'],
                                                     assets,
@@ -397,7 +273,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     elif test_set == 'train':
         # For first cv: predict on train data then for the others used previous validation data for prediction
         if cv == 0:
-            test_data, _, _, _, dates, _ = get_features(data,
+            test_data, _, _, _, dates = get_features(data,
                                                         data_spec['start'],
                                                         data_spec['end'],
                                                         assets,
@@ -406,7 +282,7 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
                                                         scaler=scaler)
         else:
             data_spec = config.data_specs[cv - 1]
-            _, test_data, _, _, dates, _ = get_features(data,
+            _, test_data, _, _, dates = get_features(data,
                                                         data_spec['start'],
                                                         data_spec['end'],
                                                         assets,
@@ -428,8 +304,9 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
     else:
         raise NotImplementedError(model_type)
 
-    pred *= np.sqrt(scaler['attributes']['var_'])
-    pred += scaler['attributes']['mean_']
+    if scaler is not None:
+        pred *= np.sqrt(scaler['attributes']['var_'])
+        pred += scaler['attributes']['mean_']
     if test_set == "train" and cv > 0:
         index = dates["val"]
     else:

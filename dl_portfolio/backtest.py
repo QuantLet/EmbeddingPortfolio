@@ -592,7 +592,7 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
                                                                                                assets,
                                                                                                base_dir, cv)
 
-    std = np.sqrt(scaler['attributes']['var_'])
+
     data = data.pct_change(1).dropna()
     data = data[assets]
     assert np.sum(data.isna().sum()) == 0
@@ -604,7 +604,10 @@ def one_cv(data, assets, base_dir, cv, test_set, portfolios, market_budget=None,
         train_returns = train_returns.iloc[-window:]
 
     residuals = returns - pred
-    scaled_residuals = residuals * std
+    if scaler:
+        scaled_residuals = residuals * np.sqrt(scaler['attributes']['var_'])
+    else:
+        scaled_residuals = residuals * 1.
 
     res['embedding'] = embedding
     res['loading'] = decoding

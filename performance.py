@@ -32,7 +32,7 @@ if __name__ == "__main__":
                         type=str,
                         help="ae or nmf")
     parser.add_argument("--test_set",
-                        default='val',
+                        default='test',
                         type=str,
                         help="val or test")
     parser.add_argument("--n_jobs",
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     parser.add_argument("--window",
                         default=250,
                         type=int,
-                        help="Window size for portfolio optimisation")
+                        help="Window size for portfolio allocation")
     parser.add_argument("--show",
                         action='store_true',
                         help="Show plots")
@@ -103,7 +103,9 @@ if __name__ == "__main__":
 
     # Load Market budget
     if config.dataset == 'dataset1':
-        market_budget = pd.read_csv('data/market_budget_dataset1.csv', index_col=0)
+        market_budget = pd.read_csv(
+            'data/dataset1/market_budget_dataset1.csv',
+            index_col=0)
         cryptos = ['BTC', 'DASH', 'ETH', 'LTC', 'XRP']
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([['crypto', 1]] * len(cryptos)),
                                                                index=cryptos,
@@ -111,7 +113,9 @@ if __name__ == "__main__":
         # market_budget = market_budget.drop('CRIX')
         market_budget['rc'] = market_budget['rc'].astype(int)
     elif config.dataset == 'dataset2':
-        market_budget = pd.read_csv('data/market_budget_dataset2.csv', index_col=0)
+        market_budget = pd.read_csv(
+            'data/dataset2/market_budget_dataset2.csv',
+            index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
         raise NotImplementedError(config.dataset)

@@ -19,9 +19,11 @@ def average_prediction(cv_results: Dict):
     n_cv = len(cv_results[0])
     for cv in range(n_cv):
         ret = cv_results[0][cv]['returns'].copy()
-
         scaler = cv_results[0][cv]['scaler']
-        scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+        if scaler:
+            scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+        else:
+            scaled_ret = ret * 1.
 
         returns = pd.concat([returns, ret])
         scaled_returns = pd.concat([scaled_returns, scaled_ret])
@@ -36,7 +38,11 @@ def average_prediction(cv_results: Dict):
             test_pred = cv_results[p][cv]['test_pred']
 
             scaler = cv_results[p][cv]['scaler']
-            scaled_test_pred = (test_pred - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+            if scaler:
+                scaled_test_pred = (test_pred - scaler['attributes'][
+                    'mean_']) / np.sqrt(scaler['attributes']['var_'])
+            else:
+                scaled_test_pred = test_pred * 1.
 
             ppred = pd.concat([ppred, test_pred])
             sspred = pd.concat([sspred, scaled_test_pred])
@@ -69,7 +75,11 @@ def average_prediction_cv(cv_results: Dict):
 
         ret = cv_results[0][cv]['returns'].copy()
         scaler = cv_results[0][cv]['scaler']
-        scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+        if scaler:
+            scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(
+                scaler['attributes']['var_'])
+        else:
+            scaled_ret = ret * 1.
         returns[cv] = ret
         scaled_returns[cv] = scaled_ret
 
@@ -81,7 +91,11 @@ def average_prediction_cv(cv_results: Dict):
             temp_pred = pd.concat([temp_pred, p_pred], 1)
 
             scaler = cv_results[p][cv]['scaler']
-            temp_p_pred = (p_pred - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+            if scaler:
+                temp_p_pred = (p_pred - scaler['attributes']['mean_']) / \
+                              np.sqrt(scaler['attributes']['var_'])
+            else:
+                temp_p_pred = p_pred * 1.
             temp_scaled_pred = pd.concat([temp_scaled_pred, temp_p_pred], 1)
 
         pred = pd.DataFrame()
