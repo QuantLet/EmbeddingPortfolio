@@ -70,14 +70,17 @@ callbacks = {
     }
 }
 
-val_start = pd.date_range('2019-11-01', '2021-08-01', freq='1MS') + dt.timedelta(days=12)
+val_start = pd.date_range(
+    '2019-11-01', '2021-08-01', freq='1MS') + dt.timedelta(days=12)
 val_start = [str(d.date()) for d in val_start]
 
-test_start = pd.date_range('2019-12-01', '2021-09-01', freq='1MS') + dt.timedelta(days=11)
+test_start = pd.date_range(
+    '2019-12-01', '2021-09-01', freq='1MS') + dt.timedelta(days=11)
 test_start = [str(d.date()) for d in test_start]
 
 
-test_end = pd.date_range('2020-01-01', '2021-10-01', freq='MS') + dt.timedelta(days=10)
+test_end = pd.date_range(
+    '2020-01-01', '2021-10-01', freq='MS') + dt.timedelta(days=10)
 test_end = [str(d.date()) for d in test_end]
 
 n_data_specs = {}
