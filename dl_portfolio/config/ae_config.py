@@ -8,7 +8,7 @@ from dl_portfolio.regularizers import WeightsOrthogonality
 dataset = 'dataset1'
 show_plot = False
 save = True
-nmf_model = "./final_models/nmf/dataset1/m_0_seed_7_20220322_122627"
+nmf_model = "./new_models_non_centered/nmf/dataset1/m_0_seed_0_20221230_175924"
 
 resample = {
     'method': 'nbb',
