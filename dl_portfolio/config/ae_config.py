@@ -36,7 +36,7 @@ scaler_func = None
 model_type = 'ae_model'
 
 learning_rate = 1e-3
-epochs = 1
+epochs = 1000
 batch_size = 32
 val_size = None
 test_size = 0
