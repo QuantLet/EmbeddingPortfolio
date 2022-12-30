@@ -478,7 +478,7 @@ def run_kmeans(config, data, assets, seed=None):
         else:
             save_path = None
 
-        LOGGER.info(f"Assets order: {assets}")
+        LOGGER.info(f"Assets: {assets}")
         data_spec = config.data_specs[cv]
         (
             train_data,
@@ -552,6 +552,14 @@ def run_nmf(
             "./dl_portfolio/config/nmf_config.py",
             os.path.join(save_dir, "nmf_config.py"),
         )
+
+    if config.scaler_func is not None:
+        scaler_method = config.scaler_func["name"]
+        scaler_params = config.scaler_func.get("params", {})
+    else:
+        scaler_method = None
+        scaler_params = {}
+
     mse = {}
     for cv in config.data_specs:
         LOGGER.info(f"Starting with cv: {cv}")
@@ -576,8 +584,9 @@ def run_nmf(
             assets,
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
-            scaler="StandardScaler",
+            scaler=scaler_method,
             resample={"method": "nbb", "where": ["train"], "block_length": 60},
+            **scaler_params,
         )
         if config.model_type == "convex_nmf":
             LOGGER.debug("Initiate convex NMF model")
@@ -610,10 +619,11 @@ def run_nmf(
             LOGGER.debug(f"Saving result at cv {cv} at {save_path} ...")
             nmf.save(f"{save_path}/model.p")
             encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
-            config.scaler_func["attributes"] = scaler.__dict__
-            pickle.dump(
-                config.scaler_func, open(f"{save_path}/scaler.p", "wb")
-            )
+            if scaler:
+                config.scaler_func["attributes"] = scaler.__dict__
+                pickle.dump(
+                    config.scaler_func, open(f"{save_path}/scaler.p", "wb")
+                )
             LOGGER.debug("Done")
 
         if config.show_plot:
