@@ -82,9 +82,9 @@ test_end = pd.date_range(
     '2020-01-01', '2021-10-01', freq='MS') + dt.timedelta(days=10)
 test_end = [str(d.date()) for d in test_end]
 
-n_data_specs = {}
+data_specs = {}
 for i in range(len(val_start)):
-    n_data_specs[i] = {
+    data_specs[i] = {
         'start': '2016-06-30',
         'val_start': val_start[i],
         'test_start': test_start[i],
