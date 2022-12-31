@@ -305,7 +305,10 @@ def load_result(config, test_set: str, data: pd.DataFrame, assets: List[str], ba
         raise NotImplementedError(model_type)
 
     if scaler is not None:
-        pred *= np.sqrt(scaler['attributes']['var_'])
+        std = scaler['attributes']['scale_']
+        if std is None:
+            std = 1.
+        pred *= std
         pred += scaler['attributes']['mean_']
     if test_set == "train" and cv > 0:
         index = dates["val"]

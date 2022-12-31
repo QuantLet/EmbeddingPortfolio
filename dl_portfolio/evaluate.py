@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 from typing import Dict, Optional
 from dl_portfolio.logger import LOGGER
-import pickle, os
+import os
 import pandas as pd
 import numpy as np
 from joblib import Parallel, delayed
@@ -21,7 +21,10 @@ def average_prediction(cv_results: Dict):
         ret = cv_results[0][cv]['returns'].copy()
         scaler = cv_results[0][cv]['scaler']
         if scaler:
-            scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(scaler['attributes']['var_'])
+            std = scaler['attributes']['scale_']
+            if std is None:
+                std = 1.
+            scaled_ret = (ret - scaler['attributes']['mean_']) / std
         else:
             scaled_ret = ret * 1.
 
@@ -39,8 +42,11 @@ def average_prediction(cv_results: Dict):
 
             scaler = cv_results[p][cv]['scaler']
             if scaler:
+                std = scaler['attributes']['scale_']
+                if std is None:
+                    std = 1.
                 scaled_test_pred = (test_pred - scaler['attributes'][
-                    'mean_']) / np.sqrt(scaler['attributes']['var_'])
+                    'mean_']) / std
             else:
                 scaled_test_pred = test_pred * 1.
 
@@ -76,8 +82,10 @@ def average_prediction_cv(cv_results: Dict):
         ret = cv_results[0][cv]['returns'].copy()
         scaler = cv_results[0][cv]['scaler']
         if scaler:
-            scaled_ret = (ret - scaler['attributes']['mean_']) / np.sqrt(
-                scaler['attributes']['var_'])
+            std = scaler['attributes']['scale_']
+            if std is None:
+                std = 1.
+            scaled_ret = (ret - scaler['attributes']['mean_']) / std
         else:
             scaled_ret = ret * 1.
         returns[cv] = ret
@@ -92,8 +100,10 @@ def average_prediction_cv(cv_results: Dict):
 
             scaler = cv_results[p][cv]['scaler']
             if scaler:
-                temp_p_pred = (p_pred - scaler['attributes']['mean_']) / \
-                              np.sqrt(scaler['attributes']['var_'])
+                std = scaler['attributes']['scale_']
+                if std is None:
+                    std = 1.
+                temp_p_pred = (p_pred - scaler['attributes']['mean_']) / std
             else:
                 temp_p_pred = p_pred * 1.
             temp_scaled_pred = pd.concat([temp_scaled_pred, temp_p_pred], 1)
