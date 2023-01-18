@@ -94,17 +94,19 @@ def get_inner_cluster_weights(cov, loading, clusters, market_budget=None):
     n_clusters = len(clusters)
     for c in clusters:
         cluster_items = clusters[c]
-
         if cluster_items:
-            if market_budget is not None:
-                budget = market_budget.loc[cluster_items, 'rc']
+            if len(cluster_items) == 1:
+                weights[c] = pd.Series([1.], index=cluster_items)
             else:
-                budget = loading.loc[cluster_items, c] ** 2 / np.sum(loading.loc[cluster_items, c] ** 2)
-            cov_slice = cov.loc[cluster_items, cluster_items]
-            weights[c] = pd.Series(
-                rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
-                index=cluster_items
-            )
+                if market_budget is not None:
+                    budget = market_budget.loc[cluster_items, 'rc']
+                else:
+                    budget = loading.loc[cluster_items, c] ** 2 / np.sum(loading.loc[cluster_items, c] ** 2)
+                cov_slice = cov.loc[cluster_items, cluster_items]
+                weights[c] = pd.Series(
+                    rp.RiskParityPortfolio(covariance=cov_slice, budget=budget.values).weights,
+                    index=cluster_items
+                )
     reorder_weights = {}
     i = 0
     for c in weights:
@@ -224,8 +226,12 @@ def ae_riskparity_weights(returns, embedding, loading, market_budget, risk_parit
     cluster_returns.columns = list(inner_cluster_weights.keys())
 
     # Now get risk contribution of each cluster defined by user
-    cluster_rc = {c: (inner_cluster_weights[c]).idxmax() for c in inner_cluster_weights}
-    cluster_rc = {c: market_budget.loc[cluster_rc[c], 'rc'] for c in cluster_rc}
+    cluster_rc = {
+        c: (inner_cluster_weights[c]).idxmax() for c in inner_cluster_weights
+    }
+    cluster_rc = {
+        c: market_budget.loc[cluster_rc[c], 'rc'] for c in cluster_rc
+    }
 
     # Compute cluster weights with risk parity portfolio
     cov = cluster_returns.cov()
