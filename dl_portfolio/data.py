@@ -41,9 +41,17 @@ def load_dataset2():
 
 
 def load_risk_free():
-    data = pd.read_csv("data/risk_free.csv", index_col="date",
-                       parse_dates=True)
+    data = pd.read_csv(
+        "data/risk_free.csv", index_col="date", parse_dates=True
+    )
     data = data.astype(np.float32)
+    return data
+
+
+def impute_missing_risk_free(data):
+    data = data.interpolate(method="polynomial", order=2)
+    data.fillna(method="ffill", inplace=True)
+    data.fillna(method="bfill", inplace=True)
     return data
 
 
@@ -145,7 +153,7 @@ def get_features(
     if excess_ret:
         risk_free_rate = load_risk_free()
         train_rf = risk_free_rate.reindex(train_dates)
-        train_rf = train_rf.interpolate(method="polynomial", order=2)
+        train_rf = impute_missing_risk_free(train_rf)
         train_data = train_data - train_rf.values
 
     train_data = train_data.values
@@ -157,6 +165,7 @@ def get_features(
         if excess_ret:
             val_rf = risk_free_rate.reindex(val_dates)
             val_rf = val_rf.interpolate(method="polynomial", order=2)
+            val_rf = impute_missing_risk_free(val_rf)
             val_data = val_data - val_rf.values
 
         val_data = val_data.values
@@ -170,6 +179,7 @@ def get_features(
         if excess_ret:
             test_rf = risk_free_rate.reindex(test_dates)
             test_rf = test_rf.interpolate(method="polynomial", order=2)
+            test_rf = impute_missing_risk_free(test_rf)
             test_data = test_data - test_rf.values
 
         test_data = test_data.values
@@ -249,7 +259,7 @@ def get_features(
                 "scale_"
             ]  # same as np.sqrt(scaler['attributes']['var_'])
             if std is None:
-                std = 1.
+                std = 1.0
             train_data = (train_data - mean_) / std
             if val_data is not None:
                 val_data = (val_data - mean_) / std
@@ -265,5 +275,11 @@ def get_features(
             val_data = val_data * rescale
         if test_data is not None:
             test_data = test_data * rescale
+
+    assert not np.isnan(train_data).any()
+    if val_data is not None:
+        assert not np.isnan(val_data).any()
+    if test_data is not None:
+        assert not np.isnan(test_data).any()
 
     return train_data, val_data, test_data, scaler, dates
