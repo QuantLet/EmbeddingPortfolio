@@ -7,7 +7,8 @@ from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.data import load_data
+from dl_portfolio.data import load_data, load_risk_free, \
+    impute_missing_risk_free
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import (
     DATA_SPECS_BOND,
@@ -732,6 +733,7 @@ def one_cv(
     market_budget=None,
     compute_weights=True,
     window: Optional[int] = 250,
+    excess_ret=True,
     **kwargs,
 ):
     ae_config = kwargs.get("ae_config")
@@ -755,11 +757,21 @@ def one_cv(
     train_returns = data.loc[dates["train"]]
     returns = data.loc[dates[test_set]]
 
+    if excess_ret:
+        risk_free_rate = load_risk_free()
+        train_rf = risk_free_rate.reindex(train_returns.index)
+        train_rf = impute_missing_risk_free(train_rf)
+        excess_train_returns = train_returns - train_rf.values
+
+        rf = risk_free_rate.reindex(returns.index)
+        rf = impute_missing_risk_free(rf)
+        excess_returns = returns - rf.values
+
     if window is not None:
         assert isinstance(window, int)
         train_returns = train_returns.iloc[-window:]
 
-    residuals = returns - pred
+    residuals = excess_returns - pred
     if scaler:
         std = scaler["attributes"]["scale_"]
         if std is None:
@@ -777,6 +789,8 @@ def one_cv(
     res["w"] = decoding
     res["train_returns"] = train_returns
     res["returns"] = returns
+    res["excess_train_returns"] = excess_train_returns
+    res["excess_returns"] = excess_returns
     if compute_weights:
         assert market_budget is not None
         res["port"] = portfolio_weights(

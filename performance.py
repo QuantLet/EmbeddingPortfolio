@@ -16,7 +16,8 @@ from dl_portfolio.cluster import get_cluster_labels, consensus_matrix, rand_scor
     assign_cluster_from_consmat
 from dl_portfolio.evaluate import average_prediction, average_prediction_cv
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET2, BASE_FACTOR_ORDER_DATASET1
+from dl_portfolio.constant import BASE_FACTOR_ORDER_DATASET1_3, \
+    BASE_FACTOR_ORDER_DATASET1_4, BASE_FACTOR_ORDER_DATASET2_5
 
 PORTFOLIOS = ['equal', 'equal_class', 'aerp', 'aeerc', 'ae_rp_c', 'aeaa', 'kmaa']
 
@@ -121,12 +122,21 @@ if __name__ == "__main__":
         raise NotImplementedError(config.dataset)
 
     if config.dataset == "dataset1":
-        CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1
+        if config.encoding_dim == 3:
+            CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_3
+        elif config.encoding_dim == 4:
+            CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_4
+        else:
+            raise NotImplementedError()
+
     elif config.dataset == "dataset2":
-        CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET2
+        if config.encoding_dim == 5:
+            CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET2_5
+        else:
+            raise NotImplementedError()
     else:
         raise NotImplementedError()
-
+    assert config.encoding_dim == len(CLUSTER_NAMES)
     LOGGER.info("Main loop to get results and portfolio weights...")
     # Main loop to get results
     cv_results = {}
@@ -333,7 +343,8 @@ if __name__ == "__main__":
     # Model evaluation
     # Average prediction across runs for each cv
     LOGGER.info("Starting with evaluation...")
-    returns, scaled_returns, pred, scaled_pred = average_prediction_cv(cv_results)
+    returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
+        cv_results, excess_returns=True)
 
     LOGGER.info("Prediction metric")
     # Compute pred metric
@@ -350,7 +361,9 @@ if __name__ == "__main__":
     EVALUATION['model']['cv_total_r2'] = total_r2
 
     # Average prediction across runs
-    returns, scaled_returns, pred, scaled_pred = average_prediction(cv_results)
+    returns, scaled_returns, pred, scaled_pred = average_prediction(
+        cv_results, excess_returns=True)
+
     # Compute pred metric
     scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
     same_ret = pd.DataFrame(scaler.fit_transform(returns), index=returns.index, columns=returns.columns)
