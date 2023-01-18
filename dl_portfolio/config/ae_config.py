@@ -8,7 +8,8 @@ from dl_portfolio.regularizers import WeightsOrthogonality
 dataset = 'dataset1'
 show_plot = False
 save = True
-nmf_model = "./new_models_non_centered/nmf/dataset1/m_0_seed_0_20221230_175924"
+nmf_model = "./final_models/nmf/dataset1/m_0_seed_7_20220322_122627"
+
 
 resample = {
     'method': 'nbb',
@@ -32,7 +33,9 @@ model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
 model_name = model_name.replace('.', 'd')
 
 shuffle_columns = False
-scaler_func = None
+scaler_func = {
+    'name': 'StandardScaler'
+}
 model_type = 'ae_model'
 
 learning_rate = 1e-3

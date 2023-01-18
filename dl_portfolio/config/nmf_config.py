@@ -17,7 +17,9 @@ resample = {
     'block_length': 60,
     'when': 'each_epoch'
 }
-scaler_func = None
+scaler_func = {
+    'name': 'StandardScaler'
+}
 
 # Model name
 model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
