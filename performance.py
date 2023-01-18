@@ -199,6 +199,7 @@ if __name__ == "__main__":
             window=args.window,
             n_jobs=args.n_jobs,
             ae_config=config,
+            excess_ret=config.excess_ret,
         )
     LOGGER.info("Done.")
 

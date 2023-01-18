@@ -36,6 +36,7 @@ def create_dataset(
     rescale: Optional[float] = None,
     scaler_func: Optional[Dict] = None,
     resample: Optional[Dict] = None,
+    excess_ret=True,
 ):
     if scaler_func is not None:
         scaler_method = scaler_func["name"]
@@ -54,6 +55,7 @@ def create_dataset(
         rescale=rescale,
         scaler=scaler_method,
         resample=resample,
+        excess_ret=excess_ret,
         **scaler_params,
     )
 
@@ -236,6 +238,7 @@ def fit(
                 rescale=config.rescale,
                 scaler_func=config.scaler_func,
                 resample=config.resample,
+                excess_ret=config.excess_ret,
             )
 
         # Iterate over the batches of the dataset.

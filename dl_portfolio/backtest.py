@@ -769,12 +769,14 @@ def one_cv(
         rf = risk_free_rate.reindex(returns.index)
         rf = impute_missing_risk_free(rf)
         excess_returns = returns - rf.values
+        residuals = excess_returns - pred
+    else:
+        residuals = returns - pred
 
     if window is not None:
         assert isinstance(window, int)
         train_returns = train_returns.iloc[-window:]
 
-    residuals = excess_returns - pred
     if scaler:
         std = scaler["attributes"]["scale_"]
         if std is None:

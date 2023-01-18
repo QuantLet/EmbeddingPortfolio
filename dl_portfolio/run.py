@@ -126,6 +126,7 @@ def run_ae(
                 rescale=config.rescale,
                 scaler=scaler_method,
                 resample=config.resample,
+                excess_ret=config.excess_ret,
                 **scaler_params,
             )
 
@@ -217,6 +218,7 @@ def run_ae(
                     rescale=config.rescale,
                     scaler_func=config.scaler_func,
                     resample=config.resample,
+                    excess_ret=config.excess_ret,
                 )
 
             else:
@@ -279,6 +281,7 @@ def run_ae(
             rescale=config.rescale,
             scaler=scaler_method,
             resample=config.resample,
+            excess_ret=config.excess_ret,
             **scaler_params,
         )
 
@@ -495,6 +498,7 @@ def run_kmeans(config, data, assets, seed=None):
             test_start=data_spec.get("test_start"),
             scaler="StandardScaler",
             resample={"method": "nbb", "where": ["train"], "block_length": 60},
+            excess_ret=config.excess_ret,
         )
         kmeans = KMeans(n_clusters=config.encoding_dim, random_state=seed)
         kmeans.fit(train_data.T)
@@ -586,6 +590,7 @@ def run_nmf(
             test_start=data_spec.get("test_start"),
             scaler=scaler_method,
             resample={"method": "nbb", "where": ["train"], "block_length": 60},
+            excess_ret=config.excess_ret,
             **scaler_params,
         )
         if config.model_type == "convex_nmf":

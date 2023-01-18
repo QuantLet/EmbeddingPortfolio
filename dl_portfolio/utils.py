@@ -190,6 +190,7 @@ def get_linear_encoder(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler,
+            excess_ret=config.excess_ret,
         )
     elif test_set == "val":
         _, test_data, _, _, dates = get_features(
@@ -200,6 +201,7 @@ def get_linear_encoder(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler,
+            excess_ret=config.excess_ret,
         )
     elif test_set == "train":
         # For first cv: predict on train data then for the others used previous validation data for prediction
@@ -211,6 +213,7 @@ def get_linear_encoder(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler,
+            excess_ret=config.excess_ret,
         )
     else:
         raise NotImplementedError(test_set)
@@ -338,6 +341,7 @@ def load_result(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler,
+            excess_ret=config.excess_ret,
         )
     elif test_set == "val":
         _, test_data, _, _, dates = get_features(
@@ -348,6 +352,7 @@ def load_result(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler,
+            excess_ret=config.excess_ret,
         )
     elif test_set == "train":
         # For first cv: predict on train data then for the others used previous validation data for prediction
@@ -360,6 +365,7 @@ def load_result(
                 val_start=data_spec["val_start"],
                 test_start=data_spec.get("test_start"),
                 scaler=scaler,
+                excess_ret=config.excess_ret,
             )
         else:
             data_spec = config.data_specs[cv - 1]
@@ -371,6 +377,7 @@ def load_result(
                 val_start=data_spec["val_start"],
                 test_start=data_spec.get("test_start"),
                 scaler=scaler,
+                excess_ret=config.excess_ret,
             )
     else:
         raise NotImplementedError(test_set)
