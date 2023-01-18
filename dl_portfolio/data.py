@@ -40,6 +40,13 @@ def load_dataset2():
     return data, assets
 
 
+def load_risk_free():
+    data = pd.read_csv("data/risk_free.csv", index_col="date",
+                       parse_dates=True)
+    data = data.astype(np.float32)
+    return data
+
+
 def bb_resample_sample(data: np.ndarray, dates: List, block_length: int = 44):
     nbb_id = id_nb_bootstrap(len(data), block_length=block_length)
     data = data[nbb_id]
@@ -65,6 +72,7 @@ def get_features(
     rescale=None,
     scaler: Union[str, Dict] = "StandardScaler",
     resample=None,
+    excess_ret=True,
     **kwargs,
 ):
     """
@@ -80,6 +88,7 @@ def get_features(
     scaler, if Dict, then we use the parameter defined in scaler to
     transform (used for inference)
     :param resample:
+    :param excess_ret:
     :param kwargs:
     :return:
     """
@@ -132,11 +141,24 @@ def get_features(
     # featurization
     train_data = train_data.pct_change(1).dropna()
     train_dates = train_data.index
+
+    if excess_ret:
+        risk_free_rate = load_risk_free()
+        train_rf = risk_free_rate.reindex(train_dates)
+        train_rf = train_rf.interpolate(method="polynomial", order=2)
+        train_data = train_data - train_rf.values
+
     train_data = train_data.values
 
     if val_data is not None:
         val_data = val_data.pct_change(1).dropna()
         val_dates = val_data.index
+
+        if excess_ret:
+            val_rf = risk_free_rate.reindex(val_dates)
+            val_rf = val_rf.interpolate(method="polynomial", order=2)
+            val_data = val_data - val_rf.values
+
         val_data = val_data.values
     else:
         val_dates = None
@@ -144,6 +166,12 @@ def get_features(
     if test_data is not None:
         test_data = test_data.pct_change(1).dropna()
         test_dates = test_data.index
+
+        if excess_ret:
+            test_rf = risk_free_rate.reindex(test_dates)
+            test_rf = test_rf.interpolate(method="polynomial", order=2)
+            test_data = test_data - test_rf.values
+
         test_data = test_data.values
     else:
         test_dates = None
