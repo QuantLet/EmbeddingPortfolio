@@ -114,6 +114,7 @@ def run_ae(
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
             weightage=config.weightage,
+            decoder_bias=config.decoder_bias,
         )
         if config.nmf_model is not None:
             train_data, _, _, _, _ = get_features(
@@ -161,17 +162,19 @@ def run_ae(
                 weights /= np.sum(weights, axis=0)
                 weights = weights.T
                 weights = weights.astype(np.float32)
-                # set bias
-                F = nmf_model.transform(train_data)
-                bias = np.mean(train_data) - np.mean(
-                    F.dot(nmf_model.components.T), 0
-                )
-                model.layers[-1].set_weights([weights, bias])
+                if config.decoder_bias:
+                    # set bias
+                    F = nmf_model.transform(train_data)
+                    bias = np.mean(train_data) - np.mean(
+                        F.dot(nmf_model.components.T), 0
+                    )
+                    model.layers[-1].set_weights([weights, bias])
+                else:
+                    model.layers[-1].set_weights([weights])
             elif config.model_type == "pca_ae_model":
                 nmf_model = pickle.load(
                     open(f"{config.nmf_model}/{cv}/model.p", "rb")
                 )
-
                 # Set encoder weights
                 weights = nmf_model.components.copy()
                 # Add small constant to avoid 0 weights at beginning of
@@ -194,14 +197,17 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                # set bias
-                F = nmf_model.transform(train_data)
-                bias = np.mean(train_data) - np.mean(
-                    F.dot(nmf_model.components.T), 0
-                )
-                layer_weights[0] = bias
-                layer_weights[1] = weights
-                model.layers[-1].set_weights(layer_weights)
+                if config.decoder_bias:
+                    # set bias
+                    F = nmf_model.transform(train_data)
+                    bias = np.mean(train_data) - np.mean(
+                        F.dot(nmf_model.components.T), 0
+                    )
+                    layer_weights[0] = bias
+                    layer_weights[1] = weights
+                    model.layers[-1].set_weights(layer_weights)
+                else:
+                    model.layers[-1].set_weights([weights])
 
         # LOGGER.info(model.summary())
 

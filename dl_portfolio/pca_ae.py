@@ -88,6 +88,7 @@ def ae_model(
     activity_regularizer=None,
     kernel_constraint=None,
     kernel_regularizer=None,
+    decoder_bias=True,
     **kwargs,
 ):
     uncorrelated_features = kwargs.get("uncorrelated_features", True)
@@ -130,7 +131,7 @@ def ae_model(
             kernel_initializer=kernel_initializer,
             kernel_regularizer=dkernel_regularizer,
             kernel_constraint=dkernel_constraint,
-            use_bias=True,
+            use_bias=decoder_bias,
             name="decoder",
             dtype=tf.float32,
         )
