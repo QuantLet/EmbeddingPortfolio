@@ -148,50 +148,8 @@ def get_features(
     else:
         test_dates = None
 
-    # standardization
-    if scaler is not None:
-        if isinstance(scaler, str):
-            if scaler == "StandardScaler":
-                kwargs["with_std"] = kwargs.get("with_std", True)
-                kwargs["with_mean"] = kwargs.get("with_mean", True)
-                scaler = preprocessing.StandardScaler(**kwargs)
-            elif scaler == "MinMaxScaler":
-                assert "feature_range" in kwargs
-                scaler = preprocessing.MinMaxScaler(**kwargs)
-            else:
-                raise NotImplementedError(scaler)
-
-            scaler.fit(train_data)
-            train_data = scaler.transform(train_data)
-            if val_data is not None:
-                val_data = scaler.transform(val_data)
-
-            if test_data is not None:
-                test_data = scaler.transform(test_data)
-
-        elif isinstance(scaler, dict):
-            mean_ = scaler["attributes"]["mean_"]
-            std = scaler["attributes"][
-                "scale_"
-            ]  # same as np.sqrt(scaler['attributes']['var_'])
-            train_data = (train_data - mean_) / std
-            if val_data is not None:
-                val_data = (val_data - mean_) / std
-            if test_data is not None:
-                test_data = (test_data - mean_) / std
-
-        else:
-            raise NotImplementedError(scaler)
-
-    if rescale is not None:
-        train_data = train_data * rescale
-        if val_data is not None:
-            val_data = val_data * rescale
-        if test_data is not None:
-            test_data = test_data * rescale
-
+    # Resample
     dates = {"train": train_dates, "val": val_dates, "test": test_dates}
-
     if resample is not None:
         if resample["method"] == "nbb":
             where = resample.get("where", ["train"])
@@ -234,5 +192,50 @@ def get_features(
                 )
         else:
             raise NotImplementedError(resample)
+
+    # standardization
+    if scaler is not None:
+        if isinstance(scaler, str):
+            if scaler == "StandardScaler":
+                kwargs["with_std"] = kwargs.get("with_std", True)
+                kwargs["with_mean"] = kwargs.get("with_mean", True)
+                scaler = preprocessing.StandardScaler(**kwargs)
+            elif scaler == "MinMaxScaler":
+                assert "feature_range" in kwargs
+                scaler = preprocessing.MinMaxScaler(**kwargs)
+            else:
+                raise NotImplementedError(scaler)
+
+            scaler.fit(train_data)
+            train_data = scaler.transform(train_data)
+
+            if val_data is not None:
+                val_data = scaler.transform(val_data)
+
+            if test_data is not None:
+                test_data = scaler.transform(test_data)
+
+        elif isinstance(scaler, dict):
+            mean_ = scaler["attributes"]["mean_"]
+            std = scaler["attributes"][
+                "scale_"
+            ]  # same as np.sqrt(scaler['attributes']['var_'])
+            if std is None:
+                std = 1.
+            train_data = (train_data - mean_) / std
+            if val_data is not None:
+                val_data = (val_data - mean_) / std
+            if test_data is not None:
+                test_data = (test_data - mean_) / std
+
+        else:
+            raise NotImplementedError(scaler)
+
+    if rescale is not None:
+        train_data = train_data * rescale
+        if val_data is not None:
+            val_data = val_data * rescale
+        if test_data is not None:
+            test_data = test_data * rescale
 
     return train_data, val_data, test_data, scaler, dates
