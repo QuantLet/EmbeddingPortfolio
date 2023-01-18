@@ -60,7 +60,6 @@ if __name__ == "__main__":
         run = run_kmeans
     elif args.run == "nmf":
         from dl_portfolio.config import nmf_config as config
-
         run = run_nmf
     else:
         raise ValueError(

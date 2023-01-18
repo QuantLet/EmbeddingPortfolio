@@ -193,9 +193,9 @@ if __name__ == "__main__":
             args.test_set,
             n_folds,
             dataset=config.dataset,
-            portfolios=None,  # portfolios,
-            market_budget=None,  # market_budget,
-            compute_weights=False,
+            portfolios=portfolios,
+            market_budget=market_budget,
+            compute_weights=True,
             window=args.window,
             n_jobs=args.n_jobs,
             ae_config=config,
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     # Average prediction across runs for each cv
     LOGGER.info("Starting with evaluation...")
     returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
-        cv_results, excess_returns=True
+        cv_results, excess_ret=config.excess_ret
     )
 
     LOGGER.info("Prediction metric")
@@ -245,7 +245,7 @@ if __name__ == "__main__":
 
     # Average prediction across runs
     returns, scaled_returns, pred, scaled_pred = average_prediction(
-        cv_results, excess_returns=True
+        cv_results, excess_ret=config.excess_ret
     )
 
     # Compute pred metric
@@ -485,7 +485,6 @@ if __name__ == "__main__":
         json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
     LOGGER.info("Done.")
 
-    exit()
     ##########################
     # Portfolio performance
     LOGGER.info("Backtest weights...")

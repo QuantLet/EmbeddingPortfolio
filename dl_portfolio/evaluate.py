@@ -7,15 +7,15 @@ import numpy as np
 from joblib import Parallel, delayed
 
 
-def average_prediction(cv_results: Dict, excess_returns=True):
+def average_prediction(cv_results: Dict, excess_ret=True):
     """
 
-    :param excess_returns:
     :param cv_results: Dict with shape {run_1: {cv_0: {}, cv_1: {}}, run_2: {...} ...}
+    :param excess_ret:
     :return:
     """
     assert len(cv_results) >= 2
-    if excess_returns:
+    if excess_ret:
         target_key = "excess_returns"
     else:
         target_key = "returns"
@@ -75,15 +75,15 @@ def average_prediction(cv_results: Dict, excess_returns=True):
     return returns, scaled_returns, pred, scaled_pred
 
 
-def average_prediction_cv(cv_results: Dict, excess_returns=True):
+def average_prediction_cv(cv_results: Dict, excess_ret=True):
     """
 
-    :param excess_returns:
     :param cv_results: Dict with shape {run_1: {cv_0: {}, cv_1: {}}, run_2: {...} ...}
+    :param excess_ret:
     :return:
     """
     assert len(cv_results) >= 2
-    if excess_returns:
+    if excess_ret:
         target_key = "excess_returns"
     else:
         target_key = "returns"

@@ -794,8 +794,9 @@ def one_cv(
     res["w"] = decoding
     res["train_returns"] = train_returns
     res["returns"] = returns
-    res["excess_train_returns"] = excess_train_returns
-    res["excess_returns"] = excess_returns
+    if excess_ret:
+        res["excess_train_returns"] = excess_train_returns
+        res["excess_returns"] = excess_returns
     if compute_weights:
         assert market_budget is not None
         res["port"] = portfolio_weights(
