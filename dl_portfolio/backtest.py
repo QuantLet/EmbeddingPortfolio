@@ -7,8 +7,11 @@ from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.data import load_data, load_risk_free, \
-    impute_missing_risk_free
+from dl_portfolio.data import (
+    load_data,
+    load_risk_free,
+    impute_missing_risk_free,
+)
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import (
     DATA_SPECS_BOND,
