@@ -752,6 +752,7 @@ def one_cv(
         embedding,
         decoding,
         _,
+        decoder_bias,
     ) = load_result(ae_config, test_set, data, assets, base_dir, cv)
 
     data = data.pct_change(1).dropna()
@@ -794,6 +795,7 @@ def one_cv(
     res["w"] = decoding
     res["train_returns"] = train_returns
     res["returns"] = returns
+    res["decoder_bias"] = decoder_bias
     if excess_ret:
         res["excess_train_returns"] = excess_train_returns
         res["excess_returns"] = excess_returns

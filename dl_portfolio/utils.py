@@ -87,6 +87,7 @@ def load_result_wrapper(
             embed,
             decod,
             relu_act,
+            decoder_bias,
         ) = load_result(
             config, test_set, data, assets, base_dir, cv, reorder_features
         )
@@ -113,6 +114,7 @@ def load_result_wrapper(
         embedding,
         decoding,
         relu_activation,
+        decoder_bias,
     )
 
 
@@ -284,6 +286,7 @@ def load_result(
         scaler = None
     input_dim = len(assets)
 
+    decoder_bias = None
     if "ae" in model_type:
         embedding = pd.read_pickle(f"{base_dir}/{cv}/encoder_weights.p")
         if model_type == "pca_ae_model":
@@ -319,6 +322,8 @@ def load_result(
         encoder = tf.keras.Model(
             inputs=model.input, outputs=model.get_layer(layer_name).output
         )
+        if config.use_bias:
+            decoder_bias = model.get_weights()[-1]
     elif model_type == "convex_nmf":
         model = pickle.load(open(f"{base_dir}/{cv}/model.p", "rb"))
         embedding = model.encoding.copy()
@@ -452,6 +457,7 @@ def load_result(
         embedding,
         decoding,
         relu_activation,
+        decoder_bias,
     )
 
 
