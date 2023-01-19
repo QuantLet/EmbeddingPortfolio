@@ -16,10 +16,11 @@ resample = {
     'block_length': 60,
     'when': 'each_epoch'
 }
-
+excess_ret = False
 seed = None
 
 encoding_dim = 4
+use_bias = True
 batch_normalization = True
 uncorrelated_features = True
 weightage = 1e-2

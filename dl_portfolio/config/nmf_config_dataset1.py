@@ -20,6 +20,7 @@ resample = {
 scaler_func = {
     'name': 'StandardScaler'
 }
+excess_ret = False
 
 # Model name
 model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
