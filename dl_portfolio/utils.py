@@ -161,6 +161,7 @@ def get_linear_encoder(
         loss=config.loss,
         uncorrelated_features=config.uncorrelated_features,
         weightage=config.weightage,
+        use_bias=config.use_bias,
     )
     model.load_weights(f"{base_dir}/{cv}/model.h5")
     layer_name = list(
@@ -306,6 +307,7 @@ def load_result(
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
             weightage=config.weightage,
+            use_bias=config.use_bias,
         )
         model.load_weights(f"{base_dir}/{cv}/model.h5")
         layer_name = list(

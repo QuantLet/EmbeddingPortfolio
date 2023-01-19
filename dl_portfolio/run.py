@@ -114,7 +114,7 @@ def run_ae(
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
             weightage=config.weightage,
-            decoder_bias=config.decoder_bias,
+            use_bias=config.use_bias,
         )
         if config.nmf_model is not None:
             train_data, _, _, _, _ = get_features(
@@ -149,8 +149,12 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                bias = model.layers[1].get_weights()[1]
-                model.layers[1].set_weights([weights, bias])
+                if config.use_bias:
+                    # set bias
+                    bias = model.layers[1].get_weights()[1]
+                    model.layers[1].set_weights([weights, bias])
+                else:
+                    model.layers[1].set_weights([weights])
 
                 # Set decoder weights
                 weights = nmf_model.components.copy()
@@ -162,7 +166,7 @@ def run_ae(
                 weights /= np.sum(weights, axis=0)
                 weights = weights.T
                 weights = weights.astype(np.float32)
-                if config.decoder_bias:
+                if config.use_bias:
                     # set bias
                     F = nmf_model.transform(train_data)
                     bias = np.mean(train_data) - np.mean(
@@ -184,8 +188,12 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                bias = model.layers[1].get_weights()[1]
-                model.layers[1].set_weights([weights, bias])
+                if config.use_bias:
+                    # set bias
+                    bias = model.layers[1].get_weights()[1]
+                    model.layers[1].set_weights([weights, bias])
+                else:
+                    model.layers[1].set_weights([weights])
 
                 # Set decoder weights
                 layer_weights = model.layers[-1].get_weights()
@@ -197,7 +205,7 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                if config.decoder_bias:
+                if config.use_bias:
                     # set bias
                     F = nmf_model.transform(train_data)
                     bias = np.mean(train_data) - np.mean(
