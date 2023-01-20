@@ -5,14 +5,34 @@ from typing import Optional
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.semi_nmf import SemiNMF
-from dl_portfolio.nmf.utils import negative_matrix, positive_matrix, reconstruction_error
+from dl_portfolio.nmf.utils import (
+    negative_matrix,
+    positive_matrix,
+    reconstruction_error,
+)
 
 
 class ConvexNMF(SemiNMF):
-    def __init__(self, n_components, G=None, max_iter=200, tol=1e-6, random_state=None, verbose=0, loss="mse",
-                 shuffle=False):
-        super(ConvexNMF, self).__init__(n_components, max_iter=max_iter, tol=tol, random_state=random_state,
-                                        verbose=verbose, loss=loss, shuffle=shuffle)
+    def __init__(
+        self,
+        n_components,
+        G=None,
+        max_iter=200,
+        tol=1e-6,
+        random_state=None,
+        verbose=0,
+        loss="mse",
+        shuffle=False,
+    ):
+        super(ConvexNMF, self).__init__(
+            n_components,
+            max_iter=max_iter,
+            tol=tol,
+            random_state=random_state,
+            verbose=verbose,
+            loss=loss,
+            shuffle=shuffle,
+        )
         self.G = G
         self.encoding = None
 
@@ -42,7 +62,7 @@ class ConvexNMF(SemiNMF):
 
             if n_iter == self.max_iter - 1:
                 if self.verbose:
-                    LOGGER.info('Reached max iteration number, stopping')
+                    LOGGER.info("Reached max iteration number, stopping")
 
             if self.tol > 0 and n_iter % 10 == 0:
                 error = reconstruction_error(X, F, G, loss=self.loss)
@@ -56,7 +76,10 @@ class ConvexNMF(SemiNMF):
 
                 if (previous_error - error) / error_at_init < self.tol:
                     if self.verbose:
-                        LOGGER.info(f"Converged at iteration: {n_iter} with tolerance: {self.tol}")
+                        LOGGER.info(
+                            f"Converged at iteration: {n_iter} with "
+                            f"tolerance: {self.tol}"
+                        )
                     break
                 previous_error = error
 
