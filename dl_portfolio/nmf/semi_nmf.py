@@ -8,13 +8,26 @@ from sklearn.base import BaseEstimator
 from sklearn.cluster import KMeans
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.nmf.utils import negative_matrix, positive_matrix, reconstruction_error
+from dl_portfolio.nmf.utils import (
+    negative_matrix,
+    positive_matrix,
+    reconstruction_error,
+)
 
 EPSILON = 1e-12
 
 
 class SemiNMF(BaseEstimator):
-    def __init__(self, n_components, max_iter=200, tol=1e-6, random_state=None, verbose=0, loss="mse", shuffle=False):
+    def __init__(
+        self,
+        n_components,
+        max_iter=200,
+        tol=1e-6,
+        random_state=None,
+        verbose=0,
+        loss="mse",
+        shuffle=False,
+    ):
         self.n_components = n_components
         self.tol = tol
         self.max_iter = max_iter
@@ -31,8 +44,8 @@ class SemiNMF(BaseEstimator):
         if self._n_components is None:
             self._n_components = X.shape[1]
         if (
-                not isinstance(self._n_components, numbers.Integral)
-                or self._n_components <= 0
+            not isinstance(self._n_components, numbers.Integral)
+            or self._n_components <= 0
         ):
             raise ValueError(
                 "Number of components must be a positive integer; got "
@@ -40,7 +53,10 @@ class SemiNMF(BaseEstimator):
             )
 
         # max_iter
-        if not isinstance(self.max_iter, numbers.Integral) or self.max_iter < 0:
+        if (
+            not isinstance(self.max_iter, numbers.Integral)
+            or self.max_iter < 0
+        ):
             raise ValueError(
                 "Maximum number of iterations must be a positive "
                 f"integer; got (max_iter={self.max_iter!r})"
@@ -79,7 +95,7 @@ class SemiNMF(BaseEstimator):
 
             if n_iter == self.max_iter - 1:
                 if self.verbose:
-                    LOGGER.info('Reached max iteration number, stopping')
+                    LOGGER.info("Reached max iteration number, stopping")
 
             if self.tol > 0 and n_iter % 10 == 0:
                 error = reconstruction_error(X, F, G, loss=self.loss)
@@ -93,7 +109,10 @@ class SemiNMF(BaseEstimator):
 
                 if (previous_error - error) / error_at_init < self.tol:
                     if self.verbose:
-                        LOGGER.info(f"Converged at iteration: {n_iter} with tolerance: {self.tol}")
+                        LOGGER.info(
+                            f"Converged at iteration: {n_iter} with "
+                            f"tolerance: {self.tol}"
+                        )
                     break
                 previous_error = error
 
@@ -113,7 +132,9 @@ class SemiNMF(BaseEstimator):
     def _initilize_g(self, X):
         d = X.shape[-1]
         G = np.zeros((d, self._n_components))
-        kmeans = KMeans(n_clusters=self._n_components, random_state=self.random_state).fit(X.T)
+        kmeans = KMeans(
+            n_clusters=self._n_components, random_state=self.random_state
+        ).fit(X.T)
         for i in range(d):
             G[i, kmeans.labels_[i]] = 1
         # add constant
@@ -126,7 +147,10 @@ class SemiNMF(BaseEstimator):
 
     def save(self, path):
         assert self._is_fitted, "Fit the model before dumping it"
-        assert path.split('.')[-1] in ["p", "pkl"], f"Extension must be 'p' or 'pkl', not: {path.split('.')[-1]}"
+        assert path.split(".")[-1] in [
+            "p",
+            "pkl",
+        ], f"Extension must be 'p' or 'pkl', not: {path.split('.')[-1]}"
         pickle.dump(self, open(path, "wb"))
 
     @staticmethod
