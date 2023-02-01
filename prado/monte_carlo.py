@@ -117,16 +117,11 @@ def getNMF(train_data, n_components, market_budget, method="ae_rp_c"):
     loading = pd.DataFrame(model.components.copy())
 
     if method == "ae_rp_c":
-        try:
-            weights = ae_riskparity_weights(pd.DataFrame(train_data),
-                                            embedding, loading,
-                                            market_budget=market_budget,
-                                            risk_parity="cluster")
-        except Exception as _exc:
-            LOGGER.exception(f"An error occured, setting weights to NaN..."
-                             f"\n{_exc}")
-            weights = pd.Series([np.nan] * len(embedding),
-                                index=embedding.index)
+        weights = ae_riskparity_weights(pd.DataFrame(train_data),
+                                        embedding, loading,
+                                        market_budget=market_budget,
+                                        risk_parity="cluster",
+                                        threshold=0.)
     else:
         raise NotImplementedError()
 
@@ -363,15 +358,15 @@ def mc_from_corr(methods_mapper, batch, n_jobs=8,
     return
 
 
+METHODS_MAPPER = {
+    "IVP": getIVP_mc,
+    "HRP": getHRP,
+    "NMF": getNMF
+}
+
 if __name__ == '__main__':
     import datetime as dt
     import argparse
-
-    METHODS_MAPPER = {
-        "IVP": getIVP_mc,
-        "HRP": getHRP,
-        "NMF": getNMF
-    }
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--dgp",

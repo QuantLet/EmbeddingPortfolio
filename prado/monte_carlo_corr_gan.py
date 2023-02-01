@@ -4,15 +4,11 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.nmf.convex_nmf import ConvexNMF
-from dl_portfolio.weights import ae_riskparity_weights
-from prado.constants import METHODS_MAPPER
 from prado.corrgan import generate_returns_from_gan
-from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
 
 import json
 
-from prado.monte_carlo import worker, create_art_market_budget
+from prado.monte_carlo import worker, create_art_market_budget, METHODS_MAPPER
 
 
 def generate_data_corrgan(corr_path, n_obs=520, min_sigma=0.0025,
@@ -69,7 +65,8 @@ def worker(steps, methods_mapper, dgp_params=None, sLength=260,
         # p_ = (1 + r_).cumprod()
         # stats[func_name] = p_.iloc[-1] - 1  # terminal return
         port_returns[func_name] = r_
-        print(func_name, (1 + r_).cumprod().values[-1])
+        if steps % 10 == 0:
+            LOGGER.info(f"{func_name:}, {(1 + r_).cumprod().values[-1]}")
 
     return port_returns, weights, cluster_mapper  # , stats
 
@@ -166,6 +163,14 @@ if __name__ == '__main__':
     import datetime as dt
     import argparse
 
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--n_jobs",
+                        default=os.cpu_count(),
+                        type=int,
+                        help="Number of parallel jobs")
+
+    args = parser.parse_args()
+
     dgp_name = "corrgan"
     corr_paths = (f"prado/corr_matrix/{corr_path}" for corr_path in filter(
         lambda x: "corr" in x, os.listdir("prado/corr_matrix")))
@@ -181,10 +186,15 @@ if __name__ == '__main__':
     batch_size = 100
     num_iters = len(dgp_params)
     n_batch = num_iters // batch_size + 1
+
+    base_dir = f"prado/results_{dgp_name}_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if not os.path.isdir(base_dir):
+        os.mkdir(base_dir)
+
     for b in range(n_batch):
-        save_dir = f"prado/results_{dgp_name}" \
-                   f"_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}_batch_{b}"
+        LOGGER.info(f"Steps to go {num_iters - b*batch_size}")
+        save_dir = f"{base_dir}/batch_{b}"
         if not os.path.isdir(save_dir):
             os.mkdir(save_dir)
         mc_gan(METHODS_MAPPER, dgp_params[b*batch_size:(b+1)*batch_size],
-               n_jobs=1, sLength=260, rebal=22,  save_dir=save_dir)
+               n_jobs=args.n_jobs, save_dir=save_dir)
