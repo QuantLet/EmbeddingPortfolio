@@ -1,36 +1,49 @@
 # From lopez de prado
 
 # On 20151231 by MLdP <lopezdeprado@lbl.gov>
+import os
+
+import fastcluster
 import scipy.cluster.hierarchy as sch
 import random
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+import tensorflow as tf
+from scipy.cluster import hierarchy
+from statsmodels.stats.correlation_tools import corr_nearest
 
 import prado.cla.CLA as CLA
+from dl_portfolio.logger import LOGGER
+from dl_portfolio.nmf.convex_nmf import ConvexNMF
+from dl_portfolio.weights import ae_riskparity_weights
 from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
+
+import json
 
 
 # ------------------------------------------------------------------------------
-def generateData(nObs, sLength, size0, size1, mu0, sigma0, sigma1F):
+def generate_data_hrp(n_obs, sLength, size0, size1, mu0, sigma0, sigma1F):
     # Time series of correlated variables
     # 1) generate random uncorrelated data: each row is a variable
-    x = np.random.normal(mu0, sigma0, size=(nObs, size0))
+    x = np.random.normal(mu0, sigma0, size=(n_obs, size0))
 
     # 2) create correlation between the variables
     cols = [random.randint(0, size0 - 1) for i in range(size1)]
     y = x[:, cols] + np.random.normal(0, sigma0 * sigma1F,
-                                      size=(nObs, len(cols)))
+                                      size=(n_obs, len(cols)))
     x = np.append(x, y, axis=1)
     # 3) add common random shock
-    point = np.random.randint(sLength, nObs - 1, size=2)
+    point = np.random.randint(sLength, n_obs - 1, size=2)
     x[np.ix_(point, [cols[0], size0])] = np.array([[-.5, -.5], [2, 2]])
 
     # 4) add specific random shock
-    point = np.random.randint(sLength, nObs - 1, size=2)
+    point = np.random.randint(sLength, n_obs - 1, size=2)
     x[point, cols[-1]] = np.array([-.5, 2])
+    cluster_mapper, col_cluster_mapper = get_cluster_mapper(size0, x.shape[-1],
+                                                            cols)
 
-    return x, cols
+    return x, col_cluster_mapper, cluster_mapper
 
 
 def get_cluster_mapper(size0, nvars, cols):
@@ -57,6 +70,10 @@ def getHRP(cov, corr):
     return hrp.sort_index()
 
 
+def getIVP_mc(cov, **kargs):
+    return pd.Series(getIVP(cov))
+
+
 def getCLA(cov, **kargs):
     # Compute CLA's minimum variance portfolio
     mean = np.arange(cov.shape[0]).reshape(-1, 1)  # Not used by C portf
@@ -67,77 +84,471 @@ def getCLA(cov, **kargs):
     return cla.w[-1].flatten()
 
 
-def worker(steps, methods_mapper, nObs=520, size0=5, size1=5, mu0=0,
-           sigma0=1e-2, sigma1F=.25, sLength=260, rebal=22):
+def create_art_market_budget(col_cluster_mapper):
+    market_budget = pd.DataFrame(col_cluster_mapper, columns=["market"])
+    market_budget = market_budget.reset_index(drop=False)
+    market_budget["rc"] = 1.
+    market_budget.columns = ["assets", "market", "rc"]
+    market_budget["assets"] = market_budget["assets"].astype(str)
+    market_budget["market"] = market_budget["market"].astype(str)
+    return market_budget
 
-    if steps % 10 == 0:
-        print(f"Steps to go: {steps}")
 
-    stats = {i: pd.Series() for i in methods_mapper}
+def getNMF(train_data, n_components, market_budget, method="ae_rp_c"):
+    model = ConvexNMF(
+        n_components=n_components,
+        random_state=None,
+        verbose=0,
+    )
+    model.fit(train_data)
+
+    embedding = pd.DataFrame(model.encoding.copy())
+    loading = pd.DataFrame(model.components.copy())
+
+    if method == "ae_rp_c":
+        weights = ae_riskparity_weights(pd.DataFrame(train_data), embedding,
+                                        loading, market_budget=market_budget,
+                                        risk_parity="cluster")
+    else:
+        raise NotImplementedError()
+
+    return weights
+
+
+def dgp_mapper(dgp_name, dgp_params):
+    if dgp_name == "hrp_mc":
+        return generate_data_hrp(**dgp_params)
+    elif dgp_name == "corrgan":
+        return generate_data_corrgan(**dgp_params)
+    elif dgp_name == "from_corr":
+        return generate_data_from_corr_mat(**dgp_params)
+    else:
+        raise NotImplementedError(dgp_name)
+
+
+def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
+           rebal=22, **kwargs):
+    if steps % 1 == 0:
+        LOGGER.info(f"Steps to go: {steps}")
+
+    stats = {i: pd.Series(dtype=np.float32) for i in methods_mapper}
     # 1) Prepare data for one experiment
-    x, _ = generateData(nObs, sLength, size0, size1, mu0, sigma0, sigma1F)
-    r = {i: pd.Series() for i in methods_mapper}
-    pointers = range(sLength, nObs, rebal)
+    if dgp_name:
+        returns, col_cluster_mapper, cluster_mapper = dgp_mapper(
+            dgp_name, dgp_params)
+
+    r = {i: pd.Series(dtype=np.float32) for i in methods_mapper}
+    weights = {i: pd.DataFrame() for i in methods_mapper}
+
+    pointers = range(sLength, len(returns), rebal)
+
+    n_components = len(cluster_mapper)
+    market_budget = create_art_market_budget(col_cluster_mapper)
 
     # 2) Compute portfolios in-sample
     for pointer in pointers:
-        x_ = x[pointer - sLength:pointer]
-        cov_, corr_ = np.cov(x_, rowvar=0), np.corrcoef(x_, rowvar=0)
+        in_x_ = returns[pointer - sLength:pointer]
+        cov_, corr_ = np.cov(in_x_, rowvar=0), np.corrcoef(in_x_, rowvar=0)
 
         # 3) Compute performance out-of-sample
-        x_ = x[pointer:pointer + rebal]
+        x_ = returns[pointer:pointer + rebal]
         for func_name in methods_mapper:
-            w_ = methods_mapper[func_name](cov=cov_, corr=corr_)  # callback
+            if func_name == "NMF":
+                w_ = methods_mapper[func_name](in_x_, n_components,
+                                               market_budget=market_budget)
+            else:
+                assert func_name in ["IVP", "HRP"]
+                w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
             r_ = pd.Series(np.dot(x_, w_))
             r[func_name] = r[func_name].append(r_)
+            weights[func_name] = pd.concat([weights[func_name], w_], axis=0)
 
     # 4) Evaluate and store results
+    returns = {}
     for func_name in methods_mapper:
         r_ = r[func_name].reset_index(drop=True)
         p_ = (1 + r_).cumprod()
         stats[func_name] = p_.iloc[-1] - 1  # terminal return
 
-    return stats
+        returns[func_name] = r_
+
+    return returns, weights, cluster_mapper  # , stats
 
 
-def hrpMC(n_jobs=1, numIters=1e4, nObs=520, size0=5, size1=5, mu0=0,
-          sigma0=1e-2, sigma1F=.25, sLength=260, rebal=22):
+def generate_batch_corr_mat(n_batch, n_assets, generator=None, seed=None):
+    if seed:
+        tf.random.set_seed(seed)
+    noise = tf.random.normal([n_batch, 100])
+    # Sample with gan
+    if generator is None:
+        generator = tf.keras.models.load_model(
+            "prado/corrgan-models/saved_model/generator_100d")
+    corr_mats = generator(noise, training=False)
+
+    # Make correlation matrix
+    a, b = np.triu_indices(n_assets, k=1)
+    batch = {}
+    for i in range(n_batch):
+        print(n_batch - i)
+        corr_mat = np.array(corr_mats[i, :, :, 0])
+        # set diag to 1
+        np.fill_diagonal(corr_mat, 1)
+        # symmetrize
+        corr_mat[b, a] = corr_mat[a, b]
+        # nearest corr
+        nearest_corr_mat = corr_nearest(corr_mat)
+        # set diag to 1
+        np.fill_diagonal(nearest_corr_mat, 1)
+        # symmetrize
+        nearest_corr_mat[b, a] = nearest_corr_mat[a, b]
+
+        # arrange with hierarchical clustering
+        dist = 1 - nearest_corr_mat
+        dim = len(dist)
+        tri_a, tri_b = np.triu_indices(dim, k=1)
+        Z = fastcluster.linkage(dist[tri_a, tri_b], method='ward')
+        permutation = hierarchy.leaves_list(
+            hierarchy.optimal_leaf_ordering(Z, dist[tri_a, tri_b]))
+
+        dend = hierarchy.dendrogram(Z)
+        corr_mat = nearest_corr_mat[permutation, :][:, permutation]
+
+        col_cluster_mapper = dend["leaves_color_list"]
+        cluster_mapper = pd.DataFrame(
+            col_cluster_mapper, columns=["cluster"]
+        ).reset_index(drop=False).groupby("cluster")[
+            "index"].unique().to_dict()
+        cluster_mapper = {c: cluster_mapper[c].tolist() for c in
+                          cluster_mapper}
+
+        batch[i] = [corr_mat, col_cluster_mapper, cluster_mapper]
+
+    return batch
+
+
+def generate_corr_mat(n_assets, generator=None, seed=None):
+    """
+    Source: https://gmarti.gitlab.io/qfin/2020/08/11/corrgan-pretrained-models.html
+
+    :param n_assets:
+    :param seed:
+    :return:
+    """
+    if seed:
+        tf.random.set_seed(seed)
+    noise = tf.random.normal([1, 100])
+    # Sample with gan
+    if generator is None:
+        generator = tf.keras.models.load_model(
+            "prado/corrgan-models/saved_model/generator_100d")
+    corr_mat = generator(noise, training=False)
+
+    # Make correlation matrix
+    a, b = np.triu_indices(n_assets, k=1)
+    corr_mat = np.array(corr_mat[0, :, :, 0])
+    # set diag to 1
+    np.fill_diagonal(corr_mat, 1)
+    # symmetrize
+    corr_mat[b, a] = corr_mat[a, b]
+    # nearest corr
+    nearest_corr_mat = corr_nearest(corr_mat)
+    # set diag to 1
+    np.fill_diagonal(nearest_corr_mat, 1)
+    # symmetrize
+    nearest_corr_mat[b, a] = nearest_corr_mat[a, b]
+
+    # arrange with hierarchical clustering
+    dist = 1 - nearest_corr_mat
+    dim = len(dist)
+    tri_a, tri_b = np.triu_indices(dim, k=1)
+    Z = fastcluster.linkage(dist[tri_a, tri_b], method='ward')
+    permutation = hierarchy.leaves_list(
+        hierarchy.optimal_leaf_ordering(Z, dist[tri_a, tri_b]))
+
+    dend = hierarchy.dendrogram(Z)
+    corr_mat = nearest_corr_mat[permutation, :][:, permutation]
+    col_cluster_mapper = dend["leaves_color_list"]
+    cluster_mapper = pd.DataFrame(
+        col_cluster_mapper,  columns=["cluster"]
+    ).reset_index( drop=False).groupby("cluster")["index"].unique().to_dict()
+    cluster_mapper = {c: cluster_mapper[c].tolist() for c in cluster_mapper}
+
+    return corr_mat, col_cluster_mapper, cluster_mapper
+
+
+def generate_data_corrgan(n_assets, n_obs, generator=None, min_sigma=0.0025,
+                          max_sigma=0.015, seed=None):
+    """
+    - First generate a correlation matrix with CorrGAN with n_assets
+    - Generate n_assets volatilies between 0.0025 and 0.015 to get a
+    covariance matrix
+    - Generate (n_obs, n_assets) returns from log-normal with the generated
+    covariance matrix
+    :param n_assets:
+    :param n_obs:
+    :param min_sigma:
+    :param max_sigma:
+    :param seed:
+    :return:
+    """
+    corr_mat, col_cluster_mapper, cluster_mapper = generate_corr_mat(
+        n_assets, generator, seed=seed)
+    sigmas = np.random.uniform(min_sigma, max_sigma, n_assets).reshape(n_assets, 1)
+    den = np.dot(sigmas, sigmas.T)
+    cov_mat = corr_mat * den
+    returns = np.exp(np.random.multivariate_normal(
+        np.zeros(n_assets), cov_mat, size=n_obs)) - 1
+
+    return returns, col_cluster_mapper, cluster_mapper
+
+
+def generate_data_from_corr_mat(n_assets, n_obs, corr_mat, sigmas):
+    den = np.dot(sigmas, sigmas.T)
+    cov_mat = corr_mat * den
+    returns = np.exp(np.random.multivariate_normal(
+        np.zeros(n_assets), cov_mat, size=n_obs)) - 1
+
+    return returns
+
+
+def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
+           num_iters=int(1e4), sLength=260, rebal=22,  save_dir=None):
+    assert save_dir is not None
     # Monte Carlo experiment on HRP
-    methods_mapper = {
-        "getIVP": getIVP,
-        "getHRP": getHRP
-    }
-    stats = {i: pd.Series() for i in methods_mapper}
+    # stats = {i: pd.Series() for i in methods_mapper}
+    returns = {k: pd.DataFrame() for k in methods_mapper}
+    weights = {k: pd.DataFrame() for k in methods_mapper}
 
     if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
-            stats_iters = _parallel_pool(
+            results = _parallel_pool(
                 delayed(worker)(
-                    numIters - numIter, methods_mapper, nObs=nObs,
-                    size0=size0, size1=size1, mu0=mu0, sigma0=sigma0,
-                    sigma1F=sigma1F, sLength=sLength, rebal=rebal
+                    num_iters - numIter, methods_mapper, dgp_name,
+                    dgp_params, sLength=sLength, rebal=rebal
                 )
-                for numIter in range(numIters)
+                for numIter in range(num_iters)
             )
-        for numIter in range(numIters):
-            for func_name in stats:
-                stats[func_name].loc[numIter] = stats_iters[numIter][func_name]
+        # for numIter in range(numIters):
+        #     for func_name in methods_mapper:
+        #         stats[func_name].loc[numIter] = stats_iter[numIter][
+        #         func_name]
+
+        clusters = []
+        for numIter in range(num_iters):
+            for func_name in methods_mapper:
+                returns[func_name] = pd.concat(
+                    [
+                        returns[func_name],
+                        results[numIter][0][func_name]
+                    ],
+                    axis=1
+                )
+                weights[func_name] = pd.concat(
+                    [
+                        weights[func_name],
+                        results[numIter][1][func_name]
+                    ],
+                    axis=1
+                )
+            clusters.append(results[numIter][2])
+
     else:
-        for numIter in range(numIters):
-            stats_iter = worker(numIters - numIter, methods_mapper, nObs=nObs,
-                        size0=size0, size1=size1,  mu0=mu0, sigma0=sigma0,
-                        sigma1F=sigma1F, sLength=sLength, rebal=rebal)
-            for func_name in stats:
-                stats[func_name].loc[numIter] = stats_iter[func_name]
+        clusters = []
+        for numIter in range(num_iters):
+            returns_iter, weights_iter, cluster_iter = worker(
+                num_iters - numIter, methods_mapper, dgp_name, dgp_params,
+                sLength=sLength, rebal=rebal)
+            clusters.append(cluster_iter)
+            # for func_name in methods_mapper:
+            #     stats[func_name].loc[numIter] = stats_iter[func_name]
+            for func_name in methods_mapper:
+                returns[func_name] = pd.concat(
+                    [
+                        returns[func_name],
+                        returns_iter[func_name]
+                    ],
+                    axis=1
+                )
+                weights[func_name] = pd.concat(
+                    [
+                        weights[func_name],
+                        weights_iter[func_name]
+                    ],
+                    axis=1
+                )
+
+    for func_name in methods_mapper:
+        returns[func_name].columns = list(range(num_iters))
+        weights[func_name].columns = list(range(num_iters))
 
     # 5) Report results
-    stats = pd.DataFrame.from_dict(stats, orient='columns')
-    stats.to_csv('stats.csv')
-    df0, df1 = stats.std(), stats.var()
-    print(stats)
-    print(pd.concat([df0, df1, df1 / df1['getHRP'] - 1], axis=1))
+    # stats = pd.DataFrame.from_dict(returns, orient='columns')
+    # stats.to_csv('stats.csv')
+    # df0, df1 = stats.std(), stats.var()
+    # print(stats)
+    # print(pd.concat([df0, df1, df1 / df1['getHRP'] - 1], axis=1))
+    for func_name in methods_mapper:
+        returns[func_name].to_csv(f"{save_dir}/returns_{func_name}.csv")
+        weights[func_name].to_csv(f"{save_dir}/weights_{func_name}.csv")
+
+    json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
     return
 
 
-if __name__=='__main__':
-    hrpMC(n_jobs=8, numIters=10)
+def mc_from_corr(methods_mapper, batch, n_jobs=8,
+                 num_iters=int(1e4), sLength=260, rebal=22,  save_dir=None):
+    assert save_dir is not None
+    generator = tf.keras.models.load_model(
+        "prado/corrgan-models/saved_model/generator_100d")
+
+    # Monte Carlo experiment on HRP
+    # stats = {i: pd.Series() for i in methods_mapper}
+    returns = {k: pd.DataFrame() for k in methods_mapper}
+    weights = {k: pd.DataFrame() for k in methods_mapper}
+
+    counter = 0
+    if n_jobs > 1:
+        with Parallel(n_jobs=n_jobs) as _parallel_pool:
+            results = _parallel_pool(
+                    delayed(worker)(
+                        num_iters - counter, methods_mapper, dgp_name=None,
+                        dgp_params=None, sLength=sLength, rebal=rebal,
+                        returns=batch[numIter][0], col_cluster_mapper=batch[
+                            numIter][1],
+                        cluster_mapper=batch[numIter][2]
+                    )
+                    for numIter in range(num_iters)
+            )
+        # for numIter in range(numIters):
+        #     for func_name in methods_mapper:
+        #         stats[func_name].loc[numIter] = stats_iter[numIter][
+        #         func_name]
+
+    clusters = []
+    for numIter in range(num_iters):
+        for func_name in methods_mapper:
+            returns[func_name] = pd.concat(
+                [
+                    returns[func_name],
+                    results[numIter][0][func_name]
+                ],
+                axis=1
+            )
+            weights[func_name] = pd.concat(
+                [
+                    weights[func_name],
+                    results[numIter][1][func_name]
+                ],
+                axis=1
+            )
+        clusters.append(results[numIter][2])
+
+
+
+    for func_name in methods_mapper:
+        returns[func_name].columns = list(range(num_iters))
+        weights[func_name].columns = list(range(num_iters))
+
+    # 5) Report results
+    # stats = pd.DataFrame.from_dict(returns, orient='columns')
+    # stats.to_csv('stats.csv')
+    # df0, df1 = stats.std(), stats.var()
+    # print(stats)
+    # print(pd.concat([df0, df1, df1 / df1['getHRP'] - 1], axis=1))
+    for func_name in methods_mapper:
+        returns[func_name].to_csv(f"{save_dir}/returns_{func_name}.csv")
+        weights[func_name].to_csv(f"{save_dir}/weights_{func_name}.csv")
+
+    json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
+    return
+
+
+
+if __name__ == '__main__':
+    import datetime as dt
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dgp",
+                        type=str,
+                        help="DGP name: hrp_mc or corrgan")
+    parser.add_argument("--n_jobs",
+                        default=os.cpu_count(),
+                        type=int,
+                        help="Number of parallel jobs")
+    parser.add_argument("--num_iters",
+                        default=int(1e4),
+                        type=int,
+                        help="Number of MC iterations")
+
+    args = parser.parse_args()
+
+
+    methods_mapper = {
+        "IVP": getIVP_mc,
+        "HRP": getHRP,
+        "NMF": getNMF
+    }
+    save_dir = f"prado/results_{dt.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if not os.path.isdir(save_dir):
+        os.mkdir(save_dir)
+
+    if args.dgp == "hrp_mc":
+        dgp_params = {
+            "n_obs": 520,
+            "size0": 6,
+            "size1": 9,
+            "mu0": 0,
+            "sigma0": 1e-2,
+            "sigma1F": 0.25,
+            "sLength": 260,
+        }
+    elif args.dgp == "corrgan":
+        dgp_params = {
+            "n_assets": 100,
+            "n_obs": 520,
+            "min_sigma": 0.0025,
+            "max_sigma": 0.015,
+            "seed": 1234,
+            # "sLength": 260,
+        }
+    elif args.dgp == "from_corr":
+
+        dgp_params = {
+            "n_assets": 100,
+            "n_obs": 520,
+            "min_sigma": 0.0025,
+            "max_sigma": 0.015,
+            "seed": 1234,
+            # "sLength": 260,
+        }
+        generator = tf.keras.models.load_model(
+            "prado/corrgan-models/saved_model/generator_100d")
+        batch = generate_batch_corr_mat(args.num_iters,
+                                        dgp_params["n_assets"],
+                                        generator=generator,
+                                        seed=None)
+        batch = [
+            [
+                generate_data_from_corr_mat(
+                    dgp_params["n_assets"],
+                    dgp_params["n_obs"],
+                    batch[i][0],
+                    np.random.uniform(dgp_params["min_sigma"],
+                                      dgp_params["max_sigma"],
+                                      dgp_params["n_assets"]).reshape(
+                        dgp_params["n_assets"], 1)
+                ),
+                batch[i][1],
+                batch[i][2],
+            ] for i in range(args.num_iters)
+        ]
+
+        mc_from_corr(methods_mapper, batch, n_jobs=8,
+                     num_iters=args.num_iters, sLength=260, rebal=22,
+                     save_dir=save_dir)
+    else:
+        raise NotImplementedError(args.dgp_name)
+
+    # mc_hrp(methods_mapper, args.dgp,  dgp_params, n_jobs=args.n_jobs,
+    #        num_iters=args.num_iters, save_dir=save_dir)
