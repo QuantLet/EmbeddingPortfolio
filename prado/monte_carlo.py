@@ -222,8 +222,8 @@ def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
                     axis=1
                 )
             clusters.append(results[numIter][2])
-            inner_weights.append(results[numIter][3])
-
+            inner_weights.append(
+                results[numIter][3].reset_index().to_json(orient="index"))
     else:
         clusters = []
         inner_weights = []
