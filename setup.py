@@ -22,6 +22,7 @@ setup(
         "joblib==1.0.0",
         "scikit-learn==0.24.0",
         "fastcluster==1.2.6",
+        "statsmodels==0.13.5"
     ],
     zip_safe=False,
     packages=find_packages()
