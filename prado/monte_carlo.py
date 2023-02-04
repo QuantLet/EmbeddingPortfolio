@@ -22,6 +22,8 @@ import json
 def dgp_mapper(dgp_name, dgp_params):
     if dgp_name == "hrp_mc":
         return generate_data_hrp(**dgp_params)
+    if dgp_name == "cluster_mc":
+        return generate_data_cluster(**dgp_params)
     else:
         raise NotImplementedError(dgp_name)
 
@@ -43,6 +45,45 @@ def generate_data_hrp(n_obs, sLength, size0, size1, mu0, sigma0, sigma1F):
     # 4) add specific random shock
     point = np.random.randint(sLength, n_obs - 1, size=2)
     x[point, cols[-1]] = np.array([-.5, 2])
+    cluster_mapper, col_cluster_mapper = get_cluster_mapper(size0, x.shape[-1],
+                                                            cols)
+
+    return x, col_cluster_mapper, cluster_mapper
+
+
+def generate_data_cluster(
+        n_obs, sLength, size1: int = 15, mu0: list = [0] * 5,
+        sigma0: list = [0.08, 0.003, 0.01, 0.005, 0.007],
+        sigma1F: float = 0.25,
+):
+    # Time series of correlated variables
+    # 1) generate random uncorrelated data: each row is a variable
+    assert len(mu0) == len(sigma0)
+    size0 = len(mu0)
+    x = np.random.normal(mu0, sigma0, size=(n_obs, size0))
+
+    # 2) create correlation between the variables
+    cols = [random.randint(0, size0 - 1) for i in range(size1)]
+    while len(np.unique(cols)) != size0:
+        cols = [random.randint(0, size0 - 1) for i in range(size1)]
+
+    y = np.zeros((n_obs, size1))
+    for i, c in enumerate(cols):
+        y[:, i] = x[:, c] + np.random.normal(0, sigma0[c] * sigma1F,
+                                             size=n_obs)
+    x = np.append(x, y, axis=1)
+    # 3) add common random shock
+    point = np.random.randint(sLength, n_obs - 1, size=4)
+    down = - sigma0[cols[0]] * 15
+    up = sigma0[cols[0]] * 25
+    x[np.ix_(point, [cols[0], size0])] = np.array([[down, down], [up, up],
+                                                   [up, up], [down, down]])
+
+    # 4) add specific random shock
+    point = np.random.randint(sLength, n_obs - 1, size=4)
+    down = - sigma0[cols[-1]] * 25
+    up = sigma0[cols[-1]] * 15
+    x[point, cols[-1]] = np.array([down, up, down, up])
     cluster_mapper, col_cluster_mapper = get_cluster_mapper(size0, x.shape[-1],
                                                             cols)
 
@@ -97,7 +138,8 @@ def create_art_market_budget(col_cluster_mapper):
     return market_budget
 
 
-def getNMF(train_data, n_components, market_budget, method="ae_rp_c"):
+def getNMF(train_data, n_components, market_budget, threshold,
+           method="ae_rp_c"):
     model = ConvexNMF(
         n_components=n_components,
         random_state=None,
@@ -114,7 +156,7 @@ def getNMF(train_data, n_components, market_budget, method="ae_rp_c"):
                                         embedding, loading,
                                         market_budget=market_budget,
                                         risk_parity="cluster",
-                                        threshold=0.)
+                                        threshold=threshold)
 
         max_cluster = embedding.shape[-1] - 1
         # First get cluster allocation to forget about small contribution
@@ -159,14 +201,16 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
         x_ = returns[pointer:pointer + rebal]
         for func_name in methods_mapper:
             if func_name == "NMF":
-                w_, in_w_ = methods_mapper[func_name](in_x_, n_components,
-                                                      market_budget=market_budget)
+                w_, in_w_ = methods_mapper[func_name](
+                    in_x_, n_components, market_budget=market_budget,
+                    threshold=1e-2
+                )
                 inner_weights = pd.concat([inner_weights, in_w_])
             else:
                 assert func_name in ["IVP", "HRP"]
                 w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
             r_ = pd.Series(np.dot(x_, w_))
-            r[func_name] = r[func_name].append(r_)
+            r[func_name] = r[func_name].append(r_, ignore_index=True)
             weights[func_name] = pd.concat([weights[func_name], w_])
 
     # 4) Evaluate and store results
@@ -283,6 +327,10 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--dgp",
+                        default="hrp_mc",
+                        type=str,
+                        help="Data generating process")
     parser.add_argument("--n_jobs",
                         default=os.cpu_count(),
                         type=int,
@@ -300,15 +348,27 @@ if __name__ == '__main__':
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
-    dgp_params = {
-        "n_obs": 520,
-        "size0": 6,
-        "size1": 9,
-        "mu0": 0,
-        "sigma0": 1e-2,
-        "sigma1F": 0.25,
-        "sLength": 260,
-    }
+    if args.dgp == "hrp_mc":
+        dgp_params = {
+            "n_obs": 520,
+            "size0": 6,
+            "size1": 9,
+            "mu0": 0,
+            "sigma0": 1e-2,
+            "sigma1F": 0.25,
+            "sLength": 260,
+        }
+    elif args.dgp == "cluster_mc":
+        dgp_params = {
+            "n_obs": 520,
+            "size1": 15,
+            "mu0": [0] * 5,
+            "sigma0": [0.08, 0.003, 0.01, 0.005, 0.007],
+            "sigma1F": 0.25,
+            "sLength": 260,
+        }
+    else:
+        raise NotImplementedError(args.dgp)
 
-    mc_hrp(METHODS_MAPPER, "hrp_mc",  dgp_params, n_jobs=args.n_jobs,
+    mc_hrp(METHODS_MAPPER, args.dgp,  dgp_params, n_jobs=args.n_jobs,
            num_iters=args.num_iters, save_dir=save_dir)
