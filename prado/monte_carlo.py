@@ -199,7 +199,7 @@ def getNMF(train_data, n_components, market_budget, threshold,
 
         max_cluster = embedding.shape[-1] - 1
         # First get cluster allocation to forget about small contribution
-        clusters, _ = get_cluster_labels(embedding, threshold=0.)
+        clusters, _ = get_cluster_labels(embedding, threshold=threshold)
         clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
         inner_weights = get_inner_cluster_weights(returns.cov(), loading,
                                                   clusters, market_budget)
