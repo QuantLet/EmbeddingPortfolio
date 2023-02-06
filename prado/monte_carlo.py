@@ -15,6 +15,7 @@ from dl_portfolio.nmf.convex_nmf import ConvexNMF
 from dl_portfolio.weights import ae_riskparity_weights, \
     get_inner_cluster_weights
 from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
+from arch import arch_model
 
 import json
 
@@ -51,18 +52,54 @@ def generate_data_hrp(n_obs, sLength, size0, size1, mu0, sigma0, sigma1F):
     return x, col_cluster_mapper, cluster_mapper
 
 
+def generate_garch(assets = ["BTC", "US_B", "SPX_X", "EUR_FX", "GOLDS_C"],
+                   sigmas: list = [0.08, 0.003, 0.01, 0.005, 0.007]):
+    """
+    Fit a GARCH process to the selected assets and generate data. Rescaled
+    the data to match the volatilities.
+
+    :param assets:
+    :param sigmas:
+    :return:
+    """
+    data = pd.read_csv("data/dataset1/dataset1.csv", index_col=0,
+                       parse_dates=True)
+    generated = pd.DataFrame()
+    for i, c in enumerate(assets):
+        # define model
+        model = arch_model(data[c], mean='Zero', vol='GARCH', p=1, q=1,
+                           rescale=True)
+        model_fit = model.fit()
+        sim = model.simulate(params=model_fit.params, nobs=520) / 10
+        generated = pd.concat([generated, sim["data"]], axis=1)
+
+    generated.columns = ["BTC", "US_B", "EUR_FX", "GOLDS_C", "SPX_X"]
+    for i, c in enumerate(generated.columns):
+        ostd = np.std(generated[c])
+        generated[c] *= sigmas[i] / ostd
+
+    return generated.values
+
+
 def generate_data_cluster(
         n_obs, sLength, size1: int = 15, mu0: list = [0] * 5,
         sigma0: list = [0.08, 0.003, 0.01, 0.005, 0.007],
         sigma1F: float = 0.25,
+        process="garch"
 ):
     # Time series of correlated variables
-    # 1) generate random uncorrelated data: each row is a variable
-    assert len(mu0) == len(sigma0)
-    size0 = len(mu0)
-    x = np.random.normal(mu0, sigma0, size=(n_obs, size0))
+    # 1) generate random uncorrelated data
+    size0 = len(sigma0)
+    if process == "garch":
+        assert len(sigma0) == 5
+        x = generate_garch(sigmas=sigma0)
+    elif process == "norm":
+        assert len(mu0) == len(sigma0)
+        x = np.random.normal(mu0, sigma0, size=(n_obs, size0))
+    else:
+        raise NotImplementedError(process)
 
-    # 2) create correlation between the variables
+    # 2) create new correlated variables
     cols = [random.randint(0, size0 - 1) for i in range(size1)]
     while len(np.unique(cols)) != size0:
         cols = [random.randint(0, size0 - 1) for i in range(size1)]
@@ -73,17 +110,19 @@ def generate_data_cluster(
                                              size=n_obs)
     x = np.append(x, y, axis=1)
     # 3) add common random shock
-    point = np.random.randint(sLength, n_obs - 1, size=4)
+    point = np.random.randint(sLength, n_obs - 1, size=2)
     down = - sigma0[cols[0]] * 15
     up = sigma0[cols[0]] * 25
-    x[np.ix_(point, [cols[0], size0])] = np.array([[down, down], [up, up],
-                                                   [up, up], [down, down]])
+
+    x[np.ix_(point, [cols[0], size0])] = np.array([[-.5, -.5], [2,
+                                                                2]])
+    # np.array([[down, down], [up, up]])
 
     # 4) add specific random shock
-    point = np.random.randint(sLength, n_obs - 1, size=4)
+    point = np.random.randint(sLength, n_obs - 1, size=2)
     down = - sigma0[cols[-1]] * 25
     up = sigma0[cols[-1]] * 15
-    x[point, cols[-1]] = np.array([down, up, down, up])
+    x[point, cols[-1]] = np.array([-.5, 2])  # np.array([down, up])
     cluster_mapper, col_cluster_mapper = get_cluster_mapper(size0, x.shape[-1],
                                                             cols)
 
@@ -200,16 +239,22 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
         # 3) Compute performance out-of-sample
         x_ = returns[pointer:pointer + rebal]
         for func_name in methods_mapper:
-            if func_name == "NMF":
-                w_, in_w_ = methods_mapper[func_name](
-                    in_x_, n_components, market_budget=market_budget,
-                    threshold=1e-2
-                )
-                inner_weights = pd.concat([inner_weights, in_w_])
-            else:
-                assert func_name in ["IVP", "HRP"]
-                w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
-            r_ = pd.Series(np.dot(x_, w_))
+            try:
+                if func_name == "NMF":
+                    w_, in_w_ = methods_mapper[func_name](
+                        in_x_, n_components, market_budget=market_budget,
+                        threshold=1e-2
+                    )
+                    inner_weights = pd.concat([inner_weights, in_w_])
+                else:
+                    assert func_name in ["IVP", "HRP"]
+                    w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
+                r_ = pd.Series(np.dot(x_, w_))
+            except Exception as _exc:
+                LOGGER.exception(f"Error with {func_name}...{_exc}")
+                r_ = pd.Series([np.nan] * len(x_))
+                w_ = pd.Series([np.nan] * x_.shape[-1])
+
             r[func_name] = r[func_name].append(r_, ignore_index=True)
             weights[func_name] = pd.concat([weights[func_name], w_])
 
@@ -363,9 +408,10 @@ if __name__ == '__main__':
             "n_obs": 520,
             "size1": 15,
             "mu0": [0] * 5,
-            "sigma0": [0.08, 0.003, 0.01, 0.005, 0.007],
+            "sigma0": [0.08, 0.003, 0.01, 0.005, 0.007], # (crypto, bond, stock, forex, commodities)
             "sigma1F": 0.25,
             "sLength": 260,
+            "process": "garch",
         }
     else:
         raise NotImplementedError(args.dgp)
