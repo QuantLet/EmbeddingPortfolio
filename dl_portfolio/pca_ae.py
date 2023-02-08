@@ -88,7 +88,8 @@ def ae_model(
     activity_regularizer=None,
     kernel_constraint=None,
     kernel_regularizer=None,
-    use_bias=True,
+    encoder_bias=True,
+    decoder_bias=True,
     **kwargs,
 ):
     uncorrelated_features = kwargs.get("uncorrelated_features", True)
@@ -98,8 +99,17 @@ def ae_model(
     dropout = kwargs.get("dropout", None)
 
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
+        reg_params = kernel_regularizer.regularizer.get_config()
+        reg_name = list(reg_params.keys())[0]
+        assert reg_name in ["l1", "l2"]
         dkernel_regularizer = WeightsOrthogonality(
-            input_dim, weightage=kernel_regularizer.weightage, axis=0
+            input_dim,
+            weightage=kernel_regularizer.weightage,
+            axis=0,
+            regularizer={
+                'name': reg_name,
+                'params': reg_params
+            }
         )
         dkernel_regularizer.regularizer = dkernel_regularizer.regularizer
 
@@ -121,7 +131,7 @@ def ae_model(
             kernel_initializer=kernel_initializer,
             activity_regularizer=activity_regularizer,
             kernel_constraint=kernel_constraint,
-            use_bias=use_bias,
+            use_bias=encoder_bias,
             name="encoder",
             dtype=tf.float32,
         )
@@ -131,7 +141,7 @@ def ae_model(
             kernel_initializer=kernel_initializer,
             kernel_regularizer=dkernel_regularizer,
             kernel_constraint=dkernel_constraint,
-            use_bias=use_bias,
+            use_bias=decoder_bias,
             name="decoder",
             dtype=tf.float32,
         )
