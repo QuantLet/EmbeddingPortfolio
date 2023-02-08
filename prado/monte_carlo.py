@@ -111,18 +111,11 @@ def generate_data_cluster(
     x = np.append(x, y, axis=1)
     # 3) add common random shock
     point = np.random.randint(sLength, n_obs - 1, size=2)
-    down = - sigma0[cols[0]] * 15
-    up = sigma0[cols[0]] * 25
-
-    x[np.ix_(point, [cols[0], size0])] = np.array([[-.5, -.5], [2,
-                                                                2]])
-    # np.array([[down, down], [up, up]])
+    x[np.ix_(point, [cols[0], size0])] = np.array([[-.5, -.5], [2, 2]])
 
     # 4) add specific random shock
     point = np.random.randint(sLength, n_obs - 1, size=2)
-    down = - sigma0[cols[-1]] * 25
-    up = sigma0[cols[-1]] * 15
-    x[point, cols[-1]] = np.array([-.5, 2])  # np.array([down, up])
+    x[point, cols[-1]] = np.array([-.5, 2])
     cluster_mapper, col_cluster_mapper = get_cluster_mapper(size0, x.shape[-1],
                                                             cols)
 
@@ -212,7 +205,7 @@ def getNMF(train_data, n_components, market_budget, threshold,
 
 def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
            rebal=22, returns=None, col_cluster_mapper=None,
-           cluster_mapper=None):
+           cluster_mapper=None, vol_target: float = 0.05):
     if steps % 10 == 0:
         LOGGER.info(f"Steps to go: {steps}")
 
@@ -238,6 +231,7 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
 
         # 3) Compute performance out-of-sample
         x_ = returns[pointer:pointer + rebal]
+        in_x_ = returns[:pointer]
         for func_name in methods_mapper:
             try:
                 if func_name == "NMF":
@@ -250,6 +244,18 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
                     assert func_name in ["IVP", "HRP"]
                     w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
                 r_ = pd.Series(np.dot(x_, w_))
+
+                # Vol target leverage (Jaeger et al 2021):
+                if base_vol is not None:
+                    in_r_ = np.dot(in_x_, w_)
+                    base_vol = np.max(
+                        (np.std(in_r_[-20:]),
+                         np.std(in_r_[-60:]))
+                    ) * np.sqrt(252)
+                    assert not np.isinf(base_vol)
+                    assert not np.isnan(base_vol)
+                    leverage = vol_target / base_vol
+                    r_ = leverage * r_
             except Exception as _exc:
                 LOGGER.exception(f"Error with {func_name}...{_exc}")
                 r_ = pd.Series([np.nan] * len(x_))
