@@ -274,7 +274,7 @@ def ae_riskparity_weights(
         weights = pd.concat(
             [weights, inner_cluster_weights[c] * cluster_weight[c]]
         )
-    weights = weights.reindex(returns.columns)  # rerorder
+    weights = weights.reindex(returns.columns)  # reorder
     weights.fillna(0.0, inplace=True)
 
     return weights

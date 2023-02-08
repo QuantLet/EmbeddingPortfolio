@@ -23,33 +23,6 @@ from sklearn.linear_model import LinearRegression, Lasso
 LOG_BASE_DIR = "./dl_portfolio/log"
 
 
-def build_linear_model(ae_config, reg_type: str, **kwargs):
-    if reg_type == "nn_ridge":
-        if ae_config.l_name == "l2":
-            alpha = kwargs.get("alpha", ae_config.l)
-            kwargs["alpha"] = alpha
-        else:
-            alpha = kwargs.get("alpha")
-            assert alpha is not None
-        model = NonnegativeRidge(**kwargs)
-    elif reg_type == "nn_ls_custom":
-        model = NonnegativeLinear()
-    elif reg_type == "nn_ls":
-        model = LinearRegression(positive=True, fit_intercept=False, **kwargs)
-    elif reg_type == "nn_lasso":
-        if ae_config.l_name == "l1":
-            alpha = kwargs.get("alpha", ae_config.l)
-            kwargs["alpha"] = alpha
-        else:
-            alpha = kwargs.get("alpha")
-            assert alpha is not None
-        model = Lasso(positive=True, fit_intercept=False, **kwargs)
-    else:
-        raise NotImplementedError(reg_type)
-
-    return model
-
-
 def reorder_columns(data, new_order):
     return data.iloc[:, new_order]
 
@@ -163,7 +136,8 @@ def get_linear_encoder(
         loss=config.loss,
         uncorrelated_features=config.uncorrelated_features,
         weightage=config.weightage,
-        use_bias=config.use_bias,
+        encoder_bias = config.encoder_bias,
+        decoder_bias = config.decoder_bias,
     )
     model.load_weights(f"{base_dir}/{cv}/model.h5")
     layer_name = list(
@@ -310,7 +284,8 @@ def load_result(
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
             weightage=config.weightage,
-            use_bias=config.use_bias,
+            encoder_bias = config.encoder_bias,
+            decoder_bias = config.decoder_bias,
         )
         model.load_weights(f"{base_dir}/{cv}/model.h5")
         layer_name = list(
@@ -322,7 +297,7 @@ def load_result(
         encoder = tf.keras.Model(
             inputs=model.input, outputs=model.get_layer(layer_name).output
         )
-        if config.use_bias:
+        if config.decoder_bias:
             decoder_bias = model.get_weights()[-1]
     elif model_type == "convex_nmf":
         model = pickle.load(open(f"{base_dir}/{cv}/model.p", "rb"))
@@ -478,33 +453,3 @@ def get_best_model_from_dir(dir_):
     files.sort(key=lambda x: x[1])
     file = files[-1][0]
     return file
-
-
-def config_setter(run, config, params: Dict):
-    if run == "ae":
-        for k in params:
-            if k == "encoding_dim":
-                config.encoding_dim = params[k]
-            elif k == "ortho_weightage":
-                config.ortho_weightage = params[k]
-                config.kernel_regularizer = WeightsOrthogonality(
-                    config.encoding_dim,
-                    weightage=config.ortho_weightage,
-                    axis=0,
-                    regularizer={
-                        "name": config.l_name,
-                        "params": {config.l_name: config.l},
-                    },
-                )
-            elif k == "weightage":
-                config.weightage = params[k]
-            else:
-                raise NotImplementedError()
-    elif run == "nmf":
-        for k in params:
-            if k == "encoding_dim":
-                config.encoding_dim = params[k]
-    else:
-        raise NotImplementedError(run)
-
-    return config
