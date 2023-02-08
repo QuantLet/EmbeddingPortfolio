@@ -216,6 +216,7 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
             dgp_name, dgp_params)
 
     r = {i: pd.Series(dtype=np.float32) for i in methods_mapper}
+    leverage = {i: [] for i in methods_mapper}
     weights = {i: pd.DataFrame() for i in methods_mapper}
     inner_weights = pd.DataFrame()
 
@@ -254,13 +255,16 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
                     ) * np.sqrt(252)
                     assert not np.isinf(base_vol)
                     assert not np.isnan(base_vol)
-                    leverage = vol_target / base_vol
-                    r_ = leverage * r_
+                    lev = vol_target / base_vol
+                    r_ = lev * r_
+                else:
+                    lev = None
             except Exception as _exc:
                 LOGGER.exception(f"Error with {func_name}...{_exc}")
                 r_ = pd.Series([np.nan] * len(x_))
                 w_ = pd.Series([np.nan] * x_.shape[-1])
 
+            leverage[func_name].append(lev)
             r[func_name] = r[func_name].append(r_, ignore_index=True)
             weights[func_name] = pd.concat([weights[func_name], w_])
 
@@ -273,7 +277,7 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
 
         port_returns[func_name] = r_
 
-    return port_returns, weights, cluster_mapper, inner_weights
+    return port_returns, weights, cluster_mapper, inner_weights, leverage
 
 
 def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
@@ -283,6 +287,7 @@ def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
     # stats = {i: pd.Series() for i in methods_mapper}
     returns = {k: pd.DataFrame() for k in methods_mapper}
     weights = {k: pd.DataFrame() for k in methods_mapper}
+    leverage = {k: [] for k in methods_mapper}
 
     if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
@@ -297,7 +302,6 @@ def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
         #     for func_name in methods_mapper:
         #         stats[func_name].loc[numIter] = stats_iter[numIter][
         #         func_name]
-
         clusters = []
         inner_weights = []
         for numIter in range(num_iters):
@@ -316,14 +320,17 @@ def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
                     ],
                     axis=1
                 )
+                leverage[func_name].append(results[numIter][4][func_name])
+
             clusters.append(results[numIter][2])
             inner_weights.append(
                 results[numIter][3].reset_index().to_json(orient="index"))
+
     else:
         clusters = []
         inner_weights = []
         for numIter in range(num_iters):
-            returns_iter, weights_iter, cluster_iter, inner_weights_iter = \
+            returns_iter, weights_iter, cluster_iter, inner_weights_iter, _ = \
                 worker(
                 num_iters - numIter, methods_mapper, dgp_name, dgp_params,
                 sLength=sLength, rebal=rebal)
@@ -364,6 +371,7 @@ def mc_hrp(methods_mapper,  dgp_name,  dgp_params, n_jobs=1,
 
     json.dump(inner_weights, open(f"{save_dir}/inner_weights_NMF.json", "w"))
     json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
+    json.dump(leverage, open(f"{save_dir}/leverage.json", "w"))
     return
 
 
