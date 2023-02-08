@@ -106,10 +106,7 @@ def ae_model(
             input_dim,
             weightage=kernel_regularizer.weightage,
             axis=0,
-            regularizer={
-                'name': reg_name,
-                'params': reg_params
-            }
+            regularizer={"name": reg_name, "params": reg_params},
         )
         dkernel_regularizer.regularizer = dkernel_regularizer.regularizer
 

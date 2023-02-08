@@ -4,8 +4,14 @@ import tensorflow_probability as tfp
 
 
 class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
-    def __init__(self, encoding_dim: int, weightage: float = 1.,
-                 norm: str = '1/2', use_cov: bool = True, **kwargs):
+    def __init__(
+        self,
+        encoding_dim: int,
+        weightage: float = 1.0,
+        norm: str = "1/2",
+        use_cov: bool = True,
+        **kwargs,
+    ):
         super(UncorrelatedFeaturesLayer, self).__init__(**kwargs)
         self.encoding_dim = encoding_dim
         self.weightage = weightage
@@ -21,9 +27,7 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
 
         x_centered = tf.stack(x_centered_list)
         x_centered = K.transpose(x_centered)
-        covariance = tfp.stats.covariance(
-            x_centered
-        )
+        covariance = tfp.stats.covariance(x_centered)
 
         return covariance
 
@@ -33,9 +37,7 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
             x_centered_list.append(x[:, i] - K.mean(x[:, i]))
         x_centered = tf.stack(x_centered_list)
         x_centered = K.transpose(x_centered)
-        correlation = tfp.stats.correlation(
-            x_centered
-        )
+        correlation = tfp.stats.correlation(x_centered)
 
         return correlation
 
@@ -44,7 +46,7 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
             "encoding_dim": self.encoding_dim,
             "weightage": self.weightage,
             "norm": self.norm,
-            "use_cov": self.use_cov
+            "use_cov": self.use_cov,
         }
 
     def uncorrelated_feature(self, x):
@@ -56,15 +58,18 @@ class UncorrelatedFeaturesLayer(tf.keras.layers.Layer):
         if self.encoding_dim <= 1:
             return 0.0
         else:
-            output = K.sum(
-                K.square(
-                    self.m - tf.math.multiply(
-                        self.m, tf.eye(self.encoding_dim))
+            output = (
+                K.sum(
+                    K.square(
+                        self.m
+                        - tf.math.multiply(self.m, tf.eye(self.encoding_dim))
+                    )
                 )
-            ) / 2
-            if self.norm == '1':
+                / 2
+            )
+            if self.norm == "1":
                 return output
-            elif self.norm == '1/2':
+            elif self.norm == "1/2":
                 # avoid overweighting fat tails
                 return K.sqrt(output)
             else:

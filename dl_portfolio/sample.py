@@ -17,9 +17,9 @@ def id_nb_bootstrap(n_obs, block_length):
     n_blocks = int(np.ceil(n_obs / block_length))
     nexts = np.repeat([np.arange(0, block_length)], n_blocks, axis=0)
 
-    blocks = np.random.permutation(
-        np.arange(0, n_obs, block_length)
-    ).reshape(-1, 1)
+    blocks = np.random.permutation(np.arange(0, n_obs, block_length)).reshape(
+        -1, 1
+    )
 
     _id = (blocks + nexts).ravel()[:n_obs]
     _id = _id[_id < n_obs]

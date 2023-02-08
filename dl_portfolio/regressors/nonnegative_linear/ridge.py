@@ -24,11 +24,11 @@ def _solve_ridge_nnls(A, b, alpha, solver, **solver_kwargs):
     """Solves nonnegative ridge regressiond through quadratic programming."""
     # compute R^T R is more numerically stable than A^T A
     # 'r' mode returns tuple: (R,)
-    R = linalg.qr(A, overwrite_a=False, mode='r', check_finite=False)[0]
+    R = linalg.qr(A, overwrite_a=False, mode="r", check_finite=False)[0]
 
     # x^T Q x + C_col x
-    Q = R.T.dot(R) + np.diag(alpha**2)
-    C = -2*A.T.dot(b)
+    Q = R.T.dot(R) + np.diag(alpha ** 2)
+    C = -2 * A.T.dot(b)
 
     # define loss and gradient functions
     loss = lambda x: x.T.dot(Q).dot(x) + c.dot(x)
@@ -39,7 +39,7 @@ def _solve_ridge_nnls(A, b, alpha, solver, **solver_kwargs):
 
     # sopt.minimize params
     x0 = np.ones(n_features)
-    bounds = tuple(zip(n_features*[0.0], n_features*[None]))
+    bounds = tuple(zip(n_features * [0.0], n_features * [None]))
 
     # return arrays
     coef = np.empty((n_targets, n_features), dtype=A.dtype)
@@ -47,12 +47,15 @@ def _solve_ridge_nnls(A, b, alpha, solver, **solver_kwargs):
 
     for i in range(n_targets):
         c = C[:, i]
-        sol = sopt.minimize(loss, x0, jac=grad, method=solver, bounds=bounds,
-                            **solver_kwargs)
+        sol = sopt.minimize(
+            loss, x0, jac=grad, method=solver, bounds=bounds, **solver_kwargs
+        )
 
         if not sol.success:
-            warnings.warn('Optimization was not a success for column %d, '
-                          'treat results accordingly' % i)
+            warnings.warn(
+                "Optimization was not a success for column %d, "
+                "treat results accordingly" % i
+            )
 
         coef[i] = sol.x
         res[i] = sol.fun + b[:, i].T.dot(b[:, i])
@@ -60,8 +63,9 @@ def _solve_ridge_nnls(A, b, alpha, solver, **solver_kwargs):
     return coef, res
 
 
-def nonnegative_ridge_regression(X, y, alpha, sample_weight=None,
-                                 solver='SLSQP', **solver_kwargs):
+def nonnegative_ridge_regression(
+    X, y, alpha, sample_weight=None, solver="SLSQP", **solver_kwargs
+):
     r"""Solve the nonnegative least squares estimate ridge regression problem.
 
     Solves
@@ -130,9 +134,10 @@ def nonnegative_ridge_regression(X, y, alpha, sample_weight=None,
     --------
     nonnegative_regression
     """
-    if solver not in ('L-BFGS-B', 'TNC', 'SLSQP'):
-        raise ValueError('solver must be one of L-BFGS-B, TNC, SLSQP, '
-                         'not %s' % solver)
+    if solver not in ("L-BFGS-B", "TNC", "SLSQP"):
+        raise ValueError(
+            "solver must be one of L-BFGS-B, TNC, SLSQP, " "not %s" % solver
+        )
 
     # TODO accept_sparse=['csr', 'csc', 'coo']? check sopt.nnls
     # TODO order='F'?
@@ -150,8 +155,10 @@ def nonnegative_ridge_regression(X, y, alpha, sample_weight=None,
     n_samples_, n_targets = y.shape
 
     if n_samples != n_samples_:
-        raise ValueError("Number of samples in X and y does not correspond:"
-                         " %d != %d" % (n_samples, n_samples_))
+        raise ValueError(
+            "Number of samples in X and y does not correspond:"
+            " %d != %d" % (n_samples, n_samples_)
+        )
 
     has_sw = sample_weight is not None
 
@@ -164,9 +171,10 @@ def nonnegative_ridge_regression(X, y, alpha, sample_weight=None,
     # there should be either 1 or n_targets penalties
     alpha = np.asarray(alpha, dtype=X.dtype).ravel()
     if alpha.size not in [1, n_features]:
-        raise ValueError("Number of targets and number of L2 penalties "
-                         "do not correspond: %d != %d"
-                         % (alpha.size, n_features))
+        raise ValueError(
+            "Number of targets and number of L2 penalties "
+            "do not correspond: %d != %d" % (alpha.size, n_features)
+        )
 
     # NOTE: different from sklearn.linear_model.ridge
     if alpha.size == 1 and n_features > 1:
@@ -243,10 +251,12 @@ class NonnegativeRidge(NonnegativeLinear):
     NonnegativeLinear
     """
 
-    def __init__(self, alpha=1.0, solver='SLSQP', **solver_kwargs):
-        if solver not in ('L-BFGS-B', 'TNC', 'SLSQP'):
-            raise ValueError('solver must be one of L-BFGS-B, TNC, SLSQP, '
-                             'not %s' % solver)
+    def __init__(self, alpha=1.0, solver="SLSQP", **solver_kwargs):
+        if solver not in ("L-BFGS-B", "TNC", "SLSQP"):
+            raise ValueError(
+                "solver must be one of L-BFGS-B, TNC, SLSQP, "
+                "not %s" % solver
+            )
         self.alpha = alpha
         self.solver = solver
         self.solver_kwargs = solver_kwargs
@@ -275,13 +285,19 @@ class NonnegativeRidge(NonnegativeLinear):
         if X.ndim == 1:
             X = X.reshape(-1, 1)
 
-        if ((sample_weight is not None) and
-                np.atleast_1d(sample_weight).ndim > 1):
+        if (sample_weight is not None) and np.atleast_1d(
+            sample_weight
+        ).ndim > 1:
             raise ValueError("Sample weights must be 1D array or scalar")
 
         # fit weights
         self.coef_, self.res_ = nonnegative_ridge_regression(
-            X, y, self.alpha, sample_weight=sample_weight,
-            solver=self.solver, **self.solver_kwargs)
+            X,
+            y,
+            self.alpha,
+            sample_weight=sample_weight,
+            solver=self.solver,
+            **self.solver_kwargs,
+        )
 
         return self

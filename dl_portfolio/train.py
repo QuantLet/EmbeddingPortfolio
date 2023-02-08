@@ -65,12 +65,10 @@ def create_dataset(
     train_input = build_model_input(train_data, model_type)
     val_input = build_model_input(val_data, model_type)
     if test_data is not None:
-        test_input = build_model_input(
-            test_data, model_type, features=None
-        )
+        test_input = build_model_input(test_data, model_type, features=None)
 
     train_dataset = tf.data.Dataset.from_tensor_slices(
-            (train_input, train_data)
+        (train_input, train_data)
     )
     val_dataset = tf.data.Dataset.from_tensor_slices((val_input, val_data))
 

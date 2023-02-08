@@ -133,8 +133,9 @@ class SemiNMF(BaseEstimator):
         d = X.shape[-1]
         G = np.zeros((d, self._n_components))
         kmeans = KMeans(
-            n_clusters=self._n_components, random_state=self.random_state,
-            n_init=10
+            n_clusters=self._n_components,
+            random_state=self.random_state,
+            n_init=10,
         ).fit(X.T)
         for i in range(d):
             G[i, kmeans.labels_[i]] = 1

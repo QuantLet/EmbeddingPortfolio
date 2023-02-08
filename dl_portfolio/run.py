@@ -28,11 +28,11 @@ from dl_portfolio.nmf.convex_nmf import ConvexNMF
 
 
 def run_ae(
-        config,
-        data,
-        assets,
-        log_dir: Optional[str] = None,
-        seed: Optional[int] = None,
+    config,
+    data,
+    assets,
+    log_dir: Optional[str] = None,
+    seed: Optional[int] = None,
 ):
     """
 
@@ -64,10 +64,9 @@ def run_ae(
         else:
             subdir = f"m_{iter}_"
         subdir = (
-                subdir
-                + "_"
-                + str(dt.datetime.timestamp(dt.datetime.now())).replace(".",
-                                                                        "")
+            subdir
+            + "_"
+            + str(dt.datetime.timestamp(dt.datetime.now())).replace(".", "")
         )
         save_dir = f"{log_dir}/{subdir}"
         os.makedirs(save_dir)
@@ -272,8 +271,8 @@ def run_ae(
 
         if config.save:
             embedding_visualization(
-                    model, assets, log_dir=f"{save_path}/tensorboard/"
-                )
+                model, assets, log_dir=f"{save_path}/tensorboard/"
+            )
             LOGGER.debug(f"Loading weights from {save_path}/model.h5")
             model.load_weights(f"{save_path}/model.h5")
 
@@ -281,13 +280,7 @@ def run_ae(
 
         # Get results for later analysis
         data_spec = config.data_specs[cv]
-        (
-            train_data,
-            val_data,
-            test_data,
-            scaler,
-            dates,
-        ) = get_features(
+        (train_data, val_data, test_data, scaler, dates,) = get_features(
             data,
             data_spec["start"],
             data_spec["end"],
@@ -305,14 +298,20 @@ def run_ae(
         LOGGER.debug(f"Validation shape: {val_data.shape}")
 
         train_input = build_model_input(
-            train_data, config.model_type, features=None,
+            train_data,
+            config.model_type,
+            features=None,
         )
         val_input = build_model_input(
-            val_data, config.model_type, features=None,
+            val_data,
+            config.model_type,
+            features=None,
         )
         if test_data is not None:
             test_input = build_model_input(
-                test_data, config.model_type, features=None,
+                test_data,
+                config.model_type,
+                features=None,
             )
 
         # Get prediction
@@ -435,13 +434,15 @@ def run_ae(
                 )
 
         LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
-        LOGGER.debug("Orthogonality constraint:\n"
-                     f"{np.dot(encoder_weights.T, encoder_weights)}"
-                     )
+        LOGGER.debug(
+            "Orthogonality constraint:\n"
+            f"{np.dot(encoder_weights.T, encoder_weights)}"
+        )
         if decoder_weights is not None:
-            LOGGER.debug("Unit norm constraint (decoder):\n"
-                         f"{(decoder_weights ** 2).sum(0)}"
-                         )
+            LOGGER.debug(
+                "Unit norm constraint (decoder):\n"
+                f"{(decoder_weights ** 2).sum(0)}"
+            )
             LOGGER.debug(
                 f"Orthogonality constraint (decoder)"
                 f"\n{np.dot(decoder_weights.T, encoder_weights)}"
@@ -497,8 +498,10 @@ def run_kmeans(config, data, assets, seed=None):
         if not os.path.isdir("log_kmeans"):
             os.mkdir("log_kmeans")
         iter = len(os.listdir("log_kmeans"))
-        save_dir = f"log_kmeans/m_{iter}_seed_{seed}" \
-                   f"_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+        save_dir = (
+            f"log_kmeans/m_{iter}_seed_{seed}"
+            f"_{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+        )
         os.makedirs(save_dir)
         copyfile(
             "./dl_portfolio/config/ae_config.py",
@@ -515,13 +518,7 @@ def run_kmeans(config, data, assets, seed=None):
 
         LOGGER.info(f"Assets: {assets}")
         data_spec = config.data_specs[cv]
-        (
-            train_data,
-            val_data,
-            test_data,
-            scaler,
-            dates,
-        ) = get_features(
+        (train_data, val_data, test_data, scaler, dates,) = get_features(
             data,
             data_spec["start"],
             data_spec["end"],
@@ -551,12 +548,12 @@ def run_kmeans(config, data, assets, seed=None):
 
 
 def run_nmf(
-        config,
-        data,
-        assets,
-        log_dir: Optional[str] = None,
-        seed: Optional[int] = None,
-        verbose=0,
+    config,
+    data,
+    assets,
+    log_dir: Optional[str] = None,
+    seed: Optional[int] = None,
+    verbose=0,
 ):
     if config.model_type == "convex_nmf":
         LOG_DIR = "log_convex_nmf"
@@ -581,8 +578,10 @@ def run_nmf(
             os.mkdir(log_dir)
 
         iter = len(os.listdir(log_dir))
-        save_dir = f"{log_dir}/m_{iter}_seed_{seed}_" \
-                   f"{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+        save_dir = (
+            f"{log_dir}/m_{iter}_seed_{seed}_"
+            f"{dt.datetime.strftime(dt.datetime.now(), '%Y%m%d_%H%M%S')}"
+        )
         os.makedirs(save_dir)
         copyfile(
             "./dl_portfolio/config/nmf_config.py",
@@ -607,13 +606,7 @@ def run_nmf(
 
         LOGGER.info(f"Assets: {assets}")
         data_spec = config.data_specs[cv]
-        (
-            train_data,
-            val_data,
-            test_data,
-            scaler,
-            dates,
-        ) = get_features(
+        (train_data, val_data, test_data, scaler, dates,) = get_features(
             data,
             data_spec["start"],
             data_spec["end"],

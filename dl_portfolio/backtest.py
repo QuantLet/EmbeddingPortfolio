@@ -878,4 +878,3 @@ def get_cv_results(
             )
 
     return cv_results
-

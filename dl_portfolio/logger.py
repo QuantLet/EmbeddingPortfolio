@@ -3,7 +3,7 @@ import logging
 
 class ColorFormatter(logging.Formatter):
     grey = "\x1b[38;20m"
-    blue = '\x1b[38;5;39m'
+    blue = "\x1b[38;5;39m"
     green = "\x1b[32;20m"
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
@@ -16,7 +16,7 @@ class ColorFormatter(logging.Formatter):
         logging.INFO: green + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
     }
 
     def format(self, record):
