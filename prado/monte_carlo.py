@@ -246,7 +246,7 @@ def worker(steps, methods_mapper, dgp_name=None, dgp_params=None, sLength=260,
                 r_ = pd.Series(np.dot(x_, w_))
 
                 # Vol target leverage (Jaeger et al 2021):
-                if base_vol is not None:
+                if vol_target is not None:
                     in_r_ = np.dot(in_x_, w_)
                     base_vol = np.max(
                         (np.std(in_r_[-20:]),
