@@ -114,7 +114,8 @@ def run_ae(
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
             weightage=config.weightage,
-            use_bias=config.use_bias,
+            encoder_bias=config.encoder_bias,
+            decoder_bias=config.decoder_bias,
         )
         if config.nmf_model is not None:
             train_data, _, _, _, _ = get_features(
@@ -149,7 +150,8 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                if config.use_bias:
+
+                if config.encoder_bias:
                     # set bias
                     bias = model.layers[1].get_weights()[1]
                     model.layers[1].set_weights([weights, bias])
@@ -166,7 +168,7 @@ def run_ae(
                 weights /= np.sum(weights, axis=0)
                 weights = weights.T
                 weights = weights.astype(np.float32)
-                if config.use_bias:
+                if config.decoder_bias:
                     # set bias
                     F = nmf_model.transform(train_data)
                     bias = np.mean(train_data) - np.mean(
@@ -188,7 +190,7 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                if config.use_bias:
+                if config.encoder_bias:
                     # set bias
                     bias = model.layers[1].get_weights()[1]
                     model.layers[1].set_weights([weights, bias])
@@ -205,7 +207,7 @@ def run_ae(
                 weights = weights ** 2
                 weights /= np.sum(weights, axis=0)
                 weights = weights.astype(np.float32)
-                if config.use_bias:
+                if config.decoder_bias:
                     # set bias
                     F = nmf_model.transform(train_data)
                     bias = np.mean(train_data) - np.mean(
@@ -446,6 +448,12 @@ def run_ae(
             )
 
         if config.show_plot:
+            if val_data is not None:
+                for c in val_data.columns:
+                    plt.plot(val_data[c], label="true")
+                    plt.plot(val_prediction[c], label="pred")
+                    plt.title(c)
+                    plt.show()
             if test_data is not None:
                 for c in test_data.columns:
                     plt.plot(test_data[c], label="true")
@@ -464,6 +472,16 @@ def run_ae(
                 )
             if test_data is not None:
                 pass
+
+        if config.show_plot:
+            for c in train_features.columns:
+                plt.plot(train_features[c], label="true")
+                plt.title(c)
+                plt.show()
+            for c in val_features.columns:
+                plt.plot(val_features[c], label="true")
+                plt.title(c)
+                plt.show()
 
 
 def run_kmeans(config, data, assets, seed=None):
