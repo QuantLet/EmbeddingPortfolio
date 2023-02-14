@@ -233,6 +233,7 @@ def worker(
     col_cluster_mapper=None,
     cluster_mapper=None,
     vol_target: float = 0.05,
+    max_leverage: float = 5,
 ):
     if steps % 10 == 0:
         LOGGER.info(f"Steps to go: {steps}")
@@ -261,7 +262,7 @@ def worker(
         cov_, corr_ = np.cov(in_x_, rowvar=0), np.corrcoef(in_x_, rowvar=0)
 
         # 3) Compute performance out-of-sample
-        x_ = returns[pointer : pointer + rebal]
+        x_ = returns[pointer: pointer + rebal]
         in_x_ = returns[:pointer]
         for func_name in methods_mapper:
             try:
@@ -288,6 +289,10 @@ def worker(
                     assert not np.isinf(base_vol)
                     assert not np.isnan(base_vol)
                     lev = vol_target / base_vol
+                    if lev > max_leverage:
+                        LOGGER.warning(f"leverage={lev}>{max_leverage}. "
+                                       f"Setting to {max_leverage}")
+                        lev = max_leverage
                     r_ = lev * r_
                 else:
                     lev = None
