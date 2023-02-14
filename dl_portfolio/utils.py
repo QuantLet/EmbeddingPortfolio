@@ -3,6 +3,7 @@ import os
 import pickle
 from typing import Dict, List
 
+import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import activations
@@ -453,3 +454,24 @@ def get_best_model_from_dir(dir_):
     files.sort(key=lambda x: x[1])
     file = files[-1][0]
     return file
+
+
+def optimal_target_vol_test(returns: pd.Series):
+    """
+    cf On the Optimality of Target Volatility Strategies, Kais Dachraoui,
+    The Journal of Portfolio Management Apr 2018, 44 (5) 58-67;
+    DOI: 10.3905/jpm.2018.44.5.058
+
+    :param returns:
+    :return:
+    """
+    assert isinstance(returns, pd.Series)
+    std_ = pd.DataFrame([returns.rolling(22).std(),
+                         returns.rolling(60).std()]).T
+    std_ = std_.dropna(how="all", axis=0).fillna(0.).max(1)
+    sr_ = returns / std_
+    sr_.dropna(inplace=True)
+
+    tvs = np.cov(sr_.values, std_.values)[0, 1]
+
+    return tvs

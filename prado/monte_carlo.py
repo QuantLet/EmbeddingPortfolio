@@ -12,6 +12,7 @@ import prado.cla.CLA as CLA
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
+from dl_portfolio.utils import optimal_target_vol_test
 from dl_portfolio.weights import (
     ae_riskparity_weights,
     get_inner_cluster_weights,
@@ -245,6 +246,7 @@ def worker(
 
     r = {i: pd.Series(dtype=np.float32) for i in methods_mapper}
     leverage = {i: [] for i in methods_mapper}
+    test_target_vol = {i: [] for i in methods_mapper}
     weights = {i: pd.DataFrame() for i in methods_mapper}
     inner_weights = pd.DataFrame()
 
@@ -279,6 +281,7 @@ def worker(
                 # Vol target leverage (Jaeger et al 2021):
                 if vol_target is not None:
                     in_r_ = np.dot(in_x_, w_)
+                    tvs = optimal_target_vol_test(pd.Series(in_r_))
                     base_vol = np.max(
                         (np.std(in_r_[-20:]), np.std(in_r_[-60:]))
                     ) * np.sqrt(252)
@@ -294,6 +297,7 @@ def worker(
                 w_ = pd.Series([np.nan] * x_.shape[-1])
 
             leverage[func_name].append(lev)
+            test_target_vol[func_name].append(tvs)
             r[func_name] = r[func_name].append(r_, ignore_index=True)
             weights[func_name] = pd.concat([weights[func_name], w_])
 
@@ -306,7 +310,7 @@ def worker(
 
         port_returns[func_name] = r_
 
-    return port_returns, weights, cluster_mapper, inner_weights, leverage
+    return port_returns, weights, cluster_mapper, inner_weights, leverage, test_target_vol
 
 
 def mc_hrp(
@@ -325,6 +329,7 @@ def mc_hrp(
     returns = {k: pd.DataFrame() for k in methods_mapper}
     weights = {k: pd.DataFrame() for k in methods_mapper}
     leverage = {k: [] for k in methods_mapper}
+    test_target_vol = {k: [] for k in methods_mapper}
 
     if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
@@ -356,6 +361,8 @@ def mc_hrp(
                     axis=1,
                 )
                 leverage[func_name].append(results[numIter][4][func_name])
+                test_target_vol[func_name].append(results[numIter][5][
+                                                      func_name])
 
             clusters.append(results[numIter][2])
             inner_weights.append(
@@ -371,6 +378,7 @@ def mc_hrp(
                 weights_iter,
                 cluster_iter,
                 inner_weights_iter,
+                _,
                 _,
             ) = worker(
                 num_iters - numIter,
@@ -411,6 +419,7 @@ def mc_hrp(
     json.dump(inner_weights, open(f"{save_dir}/inner_weights_NMF.json", "w"))
     json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
     json.dump(leverage, open(f"{save_dir}/leverage.json", "w"))
+    json.dump(test_target_vol, open(f"{save_dir}/test_target_vol.json", "w"))
     return
 
 
@@ -422,7 +431,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dgp", default="hrp_mc", type=str, help="Data generating process"
+        "--dgp", default="cluster_mc", type=str, help="Data generating process"
     )
     parser.add_argument(
         "--n_jobs",
