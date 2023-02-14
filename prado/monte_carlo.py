@@ -283,7 +283,7 @@ def worker(
                 if vol_target is not None:
                     in_r_ = np.dot(in_x_, w_)
                     tvs = optimal_target_vol_test(pd.Series(in_r_))
-                    if len(r[func_name]) >= 60:
+                    if len(r[func_name]) >= 20:
                         base_vol = np.max(
                             (np.std(r[func_name][-20:]),
                              np.std(r[func_name][-60:]))
