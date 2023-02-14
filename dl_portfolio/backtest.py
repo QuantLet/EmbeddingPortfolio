@@ -387,7 +387,7 @@ def sspw(weights):
 def average_turnover(weights):
     """
     compute average turnover per rebalancing
-    :param weights: pd.DataFrame
+    :param weights: pd.DataFrame of shape (n_obs, n_assets)
     :return:
     """
     return weights.diff().abs().dropna().mean()
@@ -396,10 +396,10 @@ def average_turnover(weights):
 def total_average_turnover(weights):
     """
     compute total average turnover per rebalancing
-    :param weights: pd.DataFrame
+    :param weights: pd.DataFrame of shape (n_obs, n_assets)
     :return:
     """
-    return weights.diff().abs().dropna().mean().sum()
+    return np.sum(np.mean(np.abs(np.diff(weights, axis=0)), axis=0))
 
 
 def adjusted_sharpe_ratio(perf, period: int = 1):
