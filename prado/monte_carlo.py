@@ -233,7 +233,7 @@ def worker(
     col_cluster_mapper=None,
     cluster_mapper=None,
     vol_target: float = 0.05,
-    max_leverage: float = 5,
+    max_leverage: float = 3,
 ):
     if steps % 10 == 0:
         LOGGER.info(f"Steps to go: {steps}")
