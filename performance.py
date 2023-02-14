@@ -36,6 +36,7 @@ from dl_portfolio.constant import (
 PORTFOLIOS = [
     "equal",
     "equal_class",
+    "hrp",
     "aerp",
     "aeerc",
     "ae_rp_c",
@@ -69,6 +70,10 @@ if __name__ == "__main__":
     parser.add_argument("--eval_only", action="store_true", help="Perform "
                                                                  "model"
                                                                  "evaluation only")
+    parser.add_argument("--backtest_only", action="store_true", help="Perform "
+                                                                 "model"
+                                                                 "backtest "
+                                                                     "only")
     parser.add_argument("--show", action="store_true", help="Show plots")
     parser.add_argument("--save", action="store_true", help="Save results")
     parser.add_argument(
@@ -212,110 +217,267 @@ if __name__ == "__main__":
         for cv in range(n_folds)
     ]
     ASSETS = list(cv_results[i][0]["returns"].columns)
-    ##########################
-    # Model evaluation
-    # Average prediction across runs for each cv
-    LOGGER.info("Starting with evaluation...")
-    returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
-        cv_results, excess_ret=config.excess_ret
-    )
 
-    LOGGER.info("Prediction metric")
-    # Compute pred metric
-    total_rmse = []
-    total_r2 = []
-    for cv in returns.keys():
-        # scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
-        # scaler.fit(returns[cv])
-        # same_ret = pd.DataFrame(scaler.transform(returns[cv]), index=returns.index, columns=returns.columns)
-        # same_pred = pd.DataFrame(scaler.transform(pred[cv]), index=returns.index, columns=returns.columns)
-        total_rmse.append(
-            float(
-                np.sqrt(
-                    np.mean(
-                        np.mean((returns[cv] - pred[cv]).values ** 2, axis=-1)
+    if not args.backtest_only:
+        ##########################
+        # Model evaluation
+        # Average prediction across runs for each cv
+        LOGGER.info("Starting with evaluation...")
+        returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
+            cv_results, excess_ret=config.excess_ret
+        )
+
+        LOGGER.info("Prediction metric")
+        # Compute pred metric
+        total_rmse = []
+        total_r2 = []
+        for cv in returns.keys():
+            # scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
+            # scaler.fit(returns[cv])
+            # same_ret = pd.DataFrame(scaler.transform(returns[cv]), index=returns.index, columns=returns.columns)
+            # same_pred = pd.DataFrame(scaler.transform(pred[cv]), index=returns.index, columns=returns.columns)
+            total_rmse.append(
+                float(
+                    np.sqrt(
+                        np.mean(
+                            np.mean((returns[cv] - pred[cv]).values ** 2, axis=-1)
+                        )
                     )
                 )
             )
-        )
-        total_r2.append(
-            metrics.r2_score(
-                returns[cv], pred[cv], multioutput="uniform_average"
+            total_r2.append(
+                metrics.r2_score(
+                    returns[cv], pred[cv], multioutput="uniform_average"
+                )
             )
+        EVALUATION["model"]["cv_total_rmse"] = total_rmse
+        EVALUATION["model"]["cv_total_r2"] = total_r2
+
+        # Average prediction across runs
+        returns, scaled_returns, pred, scaled_pred = average_prediction(
+            cv_results, excess_ret=config.excess_ret
         )
-    EVALUATION["model"]["cv_total_rmse"] = total_rmse
-    EVALUATION["model"]["cv_total_r2"] = total_r2
 
-    # Average prediction across runs
-    returns, scaled_returns, pred, scaled_pred = average_prediction(
-        cv_results, excess_ret=config.excess_ret
-    )
-
-    # Compute pred metric
-    scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
-    same_ret = pd.DataFrame(
-        scaler.fit_transform(returns),
-        index=returns.index,
-        columns=returns.columns,
-    )
-    same_pred = pd.DataFrame(
-        scaler.transform(pred), index=returns.index, columns=returns.columns
-    )
-    EVALUATION["model"]["scaled_rmse"] = np.sqrt(
-        np.mean((same_ret - same_pred) ** 2)
-    ).to_dict()
-    EVALUATION["model"]["rmse"] = np.sqrt(
-        np.mean((returns - pred) ** 2)
-    ).to_dict()
-    EVALUATION["model"]["total_rmse"] = float(
-        np.sqrt(np.mean(np.mean((returns - pred).values ** 2, axis=-1)))
-    )
-    EVALUATION["model"]["r2"] = {
-        a: metrics.r2_score(returns[a], pred[a]) for a in returns.columns
-    }
-    EVALUATION["model"]["total_r2"] = metrics.r2_score(
-        returns, pred, multioutput="uniform_average"
-    )
-
-    LOGGER.info("Done.")
-
-    if False:
-        # loading analysis
-        # loading over cv folds
-        LOGGER.info("CV loadings plots")
-        p = 0
-        n_cv = len(cv_results[p])
-        n_cols = 6
-        n_rows = n_cv // n_cols + 1
-        figsize = (15, int(n_rows * 6))
-        fig, axs = plt.subplots(
-            n_rows, n_cols, figsize=figsize, sharex=True, sharey=True
+        # Compute pred metric
+        scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
+        same_ret = pd.DataFrame(
+            scaler.fit_transform(returns),
+            index=returns.index,
+            columns=returns.columns,
         )
-        cbar_ax = fig.add_axes([0.91, 0.3, 0.03, 0.4])
-        row = -1
-        col = 0
-        for cv in cv_results[p]:
-            loading = cv_results[p][cv]["loading"].copy()
-            if cv % n_cols == 0:
-                col = 0
-                row += 1
-            sns.heatmap(
-                loading,
-                ax=axs[row, col],
-                vmin=0,
-                vmax=1,
-                cbar=cv == 0,
-                cbar_ax=None if cv else cbar_ax,
-                cmap="Reds",
+        same_pred = pd.DataFrame(
+            scaler.transform(pred), index=returns.index, columns=returns.columns
+        )
+        EVALUATION["model"]["scaled_rmse"] = np.sqrt(
+            np.mean((same_ret - same_pred) ** 2)
+        ).to_dict()
+        EVALUATION["model"]["rmse"] = np.sqrt(
+            np.mean((returns - pred) ** 2)
+        ).to_dict()
+        EVALUATION["model"]["total_rmse"] = float(
+            np.sqrt(np.mean(np.mean((returns - pred).values ** 2, axis=-1)))
+        )
+        EVALUATION["model"]["r2"] = {
+            a: metrics.r2_score(returns[a], pred[a]) for a in returns.columns
+        }
+        EVALUATION["model"]["total_r2"] = metrics.r2_score(
+            returns, pred, multioutput="uniform_average"
+        )
+
+        LOGGER.info("Done.")
+
+        if False:
+            # loading analysis
+            # loading over cv folds
+            LOGGER.info("CV loadings plots")
+            p = 0
+            n_cv = len(cv_results[p])
+            n_cols = 6
+            n_rows = n_cv // n_cols + 1
+            figsize = (15, int(n_rows * 6))
+            fig, axs = plt.subplots(
+                n_rows, n_cols, figsize=figsize, sharex=True, sharey=True
             )
-            date = str(cv_results[p][cv]["returns"].index[0].date())
-            axs[row, col].set_title(date)
-            col += 1
+            cbar_ax = fig.add_axes([0.91, 0.3, 0.03, 0.4])
+            row = -1
+            col = 0
+            for cv in cv_results[p]:
+                loading = cv_results[p][cv]["loading"].copy()
+                if cv % n_cols == 0:
+                    col = 0
+                    row += 1
+                sns.heatmap(
+                    loading,
+                    ax=axs[row, col],
+                    vmin=0,
+                    vmax=1,
+                    cbar=cv == 0,
+                    cbar_ax=None if cv else cbar_ax,
+                    cmap="Reds",
+                )
+                date = str(cv_results[p][cv]["returns"].index[0].date())
+                axs[row, col].set_title(date)
+                col += 1
 
-        fig.tight_layout(rect=[0, 0, 0.9, 1])
+            fig.tight_layout(rect=[0, 0, 0.9, 1])
+            if args.save:
+                plt.savefig(
+                    f"{save_dir}/cv_loading_weights.png",
+                    bbox_inches="tight",
+                    transparent=True,
+                )
+            if args.show:
+                plt.show()
+            plt.close()
+            LOGGER.info("Done.")
+
+        # Correlation
+        LOGGER.info("Correlation...")
+        avg_cv_corr = []
+        for cv in range(n_folds):
+            cv_corr = []
+            for i in cv_results.keys():
+                corr = cv_results[i][cv]["test_features"].corr().values
+                corr = corr[np.triu_indices(len(corr), k=1)]
+                cv_corr.append(corr)
+            cv_corr = np.array(cv_corr)
+            cv_corr = cv_corr.mean(0)
+            avg_cv_corr.append(cv_corr)
+        avg_cv_corr = np.array(avg_cv_corr)
+        avg_cv_corr = np.mean(avg_cv_corr, axis=1).tolist()
+        EVALUATION["cluster"]["corr"] = {}
+        EVALUATION["cluster"]["corr"]["cv"] = avg_cv_corr
+        EVALUATION["cluster"]["corr"]["avg_corr"] = np.mean(avg_cv_corr)
+
+        # Ex factor correlation cv = 0
+        corr_0 = cv_results[i][0]["test_features"].corr()
+        sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
         if args.save:
             plt.savefig(
-                f"{save_dir}/cv_loading_weights.png",
+                f"{save_dir}/corr_factors_heatmap_0.png",
+                bbox_inches="tight",
+                transparent=True,
+            )
+        if args.show:
+            plt.show()
+        plt.close()
+
+        # Ex pred correlation cv = 0
+        corr_0 = cv_results[i][0]["test_pred"].corr()
+        plt.figure(figsize=(10, 10))
+        sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
+        if args.save:
+            plt.savefig(
+                f"{save_dir}/corr_pred_heatmap_0.png",
+                bbox_inches="tight",
+                transparent=True,
+            )
+        if args.show:
+            plt.show()
+        plt.close()
+
+        my_cmap = plt.get_cmap("bwr")
+        rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
+        plt.figure(figsize=(10, 6))
+        plt.bar(
+            range(len(avg_cv_corr)),
+            avg_cv_corr,
+            color=my_cmap(rescale(avg_cv_corr)),
+            width=0.5,
+        )
+        if len(avg_cv_corr) > 22:
+            xticks = range(0, len(avg_cv_corr), 6)
+        else:
+            xticks = range(len(avg_cv_corr))
+        xticks_labels = np.array(CV_DATES)[xticks].tolist()
+        _ = plt.xticks(xticks, xticks_labels, rotation=45)
+        _ = plt.ylim([-1, 1])
+
+        if args.save:
+            plt.savefig(
+                f"{save_dir}/avg_corr.png", bbox_inches="tight", transparent=True
+            )
+        if args.show:
+            plt.show()
+        plt.close()
+        LOGGER.info("Done.")
+
+        LOGGER.info("Cluster analysis...")
+        # Cluster analysis
+        LOGGER.info("Get cluster labels...")
+        cv_labels = {}
+        for cv in range(n_folds):
+            cv_labels[cv] = {}
+            for i in cv_results:
+                c, cv_labels[cv][i] = get_cluster_labels(
+                    cv_results[i][cv]["embedding"]
+                )
+        LOGGER.info("Done.")
+
+        LOGGER.info("Compute Rand Index...")
+        EVALUATION["cluster"]["rand_index"] = {}
+        n_runs = len(cv_results)
+        cv_rand = {}
+        for cv in range(n_folds):
+            cv_rand[cv] = rand_score_permutation(cv_labels[cv])
+        LOGGER.info("Done.")
+
+        LOGGER.info("Rand Index heatmap...")
+        # Plot heatmap
+        trii = np.triu_indices(n_runs, k=1)
+        EVALUATION["cluster"]["rand_index"]["cv"] = [
+            np.mean(cv_rand[cv][trii]) for cv in cv_rand
+        ]
+        # Plot heatmap of average rand
+        avg_rand = np.zeros_like(cv_rand[0])
+        trii = np.triu_indices(n_runs, k=1)
+        for cv in cv_rand:
+            triu = np.triu(cv_rand[cv], k=1)
+            avg_rand = avg_rand + triu
+        avg_rand = avg_rand / len(cv_rand)
+
+        mean = np.mean(avg_rand[trii])
+        std = np.std(avg_rand[trii])
+        EVALUATION["cluster"]["rand_index"]["mean"] = mean
+
+        sns.heatmap(avg_rand, vmin=0, vmax=1)
+        plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
+        if args.save:
+            plt.savefig(
+                f"{save_dir}/rand_avg.png", bbox_inches="tight", transparent=True
+            )
+        if args.show:
+            plt.show()
+        plt.close()
+        LOGGER.info("Done.")
+
+        LOGGER.info("Consensus matrix...")
+        # Consensus matrix
+        assets = cv_labels[cv][0]["label"].index
+        avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
+        cluster_assignment = {}
+        for cv in cv_labels:
+            cons_mat = consensus_matrix(
+                cv_labels[cv], reorder=True, method="single"
+            )
+            cluster_assignment[cv] = assign_cluster_from_consmat(
+                cons_mat, CLUSTER_NAMES, t=0
+            )
+
+            if cv == 0:
+                order0 = cons_mat.index
+                avg_cons_mat = avg_cons_mat.loc[order0, :]
+                avg_cons_mat = avg_cons_mat.loc[:, order0]
+            else:
+                cons_mat = cons_mat.loc[order0, :]
+            avg_cons_mat += cons_mat
+
+        avg_cons_mat = avg_cons_mat / len(cv_labels)
+        plt.figure(figsize=(10, 10))
+        sns.heatmap(avg_cons_mat, square=True)
+        if args.save:
+            plt.savefig(
+                f"{save_dir}/avg_cons_mat.png",
                 bbox_inches="tight",
                 transparent=True,
             )
@@ -324,169 +486,14 @@ if __name__ == "__main__":
         plt.close()
         LOGGER.info("Done.")
 
-    # Correlation
-    LOGGER.info("Correlation...")
-    avg_cv_corr = []
-    for cv in range(n_folds):
-        cv_corr = []
-        for i in cv_results.keys():
-            corr = cv_results[i][cv]["test_features"].corr().values
-            corr = corr[np.triu_indices(len(corr), k=1)]
-            cv_corr.append(corr)
-        cv_corr = np.array(cv_corr)
-        cv_corr = cv_corr.mean(0)
-        avg_cv_corr.append(cv_corr)
-    avg_cv_corr = np.array(avg_cv_corr)
-    avg_cv_corr = np.mean(avg_cv_corr, axis=1).tolist()
-    EVALUATION["cluster"]["corr"] = {}
-    EVALUATION["cluster"]["corr"]["cv"] = avg_cv_corr
-    EVALUATION["cluster"]["corr"]["avg_corr"] = np.mean(avg_cv_corr)
-
-    # Ex factor correlation cv = 0
-    corr_0 = cv_results[i][0]["test_features"].corr()
-    sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
-    if args.save:
-        plt.savefig(
-            f"{save_dir}/corr_factors_heatmap_0.png",
-            bbox_inches="tight",
-            transparent=True,
-        )
-    if args.show:
-        plt.show()
-    plt.close()
-
-    # Ex pred correlation cv = 0
-    corr_0 = cv_results[i][0]["test_pred"].corr()
-    plt.figure(figsize=(10, 10))
-    sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
-    if args.save:
-        plt.savefig(
-            f"{save_dir}/corr_pred_heatmap_0.png",
-            bbox_inches="tight",
-            transparent=True,
-        )
-    if args.show:
-        plt.show()
-    plt.close()
-
-    my_cmap = plt.get_cmap("bwr")
-    rescale = lambda y: (y - np.min(y)) / (np.max(y) - np.min(y))
-    plt.figure(figsize=(10, 6))
-    plt.bar(
-        range(len(avg_cv_corr)),
-        avg_cv_corr,
-        color=my_cmap(rescale(avg_cv_corr)),
-        width=0.5,
-    )
-    if len(avg_cv_corr) > 22:
-        xticks = range(0, len(avg_cv_corr), 6)
-    else:
-        xticks = range(len(avg_cv_corr))
-    xticks_labels = np.array(CV_DATES)[xticks].tolist()
-    _ = plt.xticks(xticks, xticks_labels, rotation=45)
-    _ = plt.ylim([-1, 1])
-
-    if args.save:
-        plt.savefig(
-            f"{save_dir}/avg_corr.png", bbox_inches="tight", transparent=True
-        )
-    if args.show:
-        plt.show()
-    plt.close()
-    LOGGER.info("Done.")
-
-    LOGGER.info("Cluster analysis...")
-    # Cluster analysis
-    LOGGER.info("Get cluster labels...")
-    cv_labels = {}
-    for cv in range(n_folds):
-        cv_labels[cv] = {}
-        for i in cv_results:
-            c, cv_labels[cv][i] = get_cluster_labels(
-                cv_results[i][cv]["embedding"]
+        LOGGER.info("Saving final results...")
+        # Save final result
+        if args.save:
+            pickle.dump(
+                cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb")
             )
-    LOGGER.info("Done.")
-
-    LOGGER.info("Compute Rand Index...")
-    EVALUATION["cluster"]["rand_index"] = {}
-    n_runs = len(cv_results)
-    cv_rand = {}
-    for cv in range(n_folds):
-        cv_rand[cv] = rand_score_permutation(cv_labels[cv])
-    LOGGER.info("Done.")
-
-    LOGGER.info("Rand Index heatmap...")
-    # Plot heatmap
-    trii = np.triu_indices(n_runs, k=1)
-    EVALUATION["cluster"]["rand_index"]["cv"] = [
-        np.mean(cv_rand[cv][trii]) for cv in cv_rand
-    ]
-    # Plot heatmap of average rand
-    avg_rand = np.zeros_like(cv_rand[0])
-    trii = np.triu_indices(n_runs, k=1)
-    for cv in cv_rand:
-        triu = np.triu(cv_rand[cv], k=1)
-        avg_rand = avg_rand + triu
-    avg_rand = avg_rand / len(cv_rand)
-
-    mean = np.mean(avg_rand[trii])
-    std = np.std(avg_rand[trii])
-    EVALUATION["cluster"]["rand_index"]["mean"] = mean
-
-    sns.heatmap(avg_rand, vmin=0, vmax=1)
-    plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
-    if args.save:
-        plt.savefig(
-            f"{save_dir}/rand_avg.png", bbox_inches="tight", transparent=True
-        )
-    if args.show:
-        plt.show()
-    plt.close()
-    LOGGER.info("Done.")
-
-    LOGGER.info("Consensus matrix...")
-    # Consensus matrix
-    assets = cv_labels[cv][0]["label"].index
-    avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
-    cluster_assignment = {}
-    for cv in cv_labels:
-        cons_mat = consensus_matrix(
-            cv_labels[cv], reorder=True, method="single"
-        )
-        cluster_assignment[cv] = assign_cluster_from_consmat(
-            cons_mat, CLUSTER_NAMES, t=0
-        )
-
-        if cv == 0:
-            order0 = cons_mat.index
-            avg_cons_mat = avg_cons_mat.loc[order0, :]
-            avg_cons_mat = avg_cons_mat.loc[:, order0]
-        else:
-            cons_mat = cons_mat.loc[order0, :]
-        avg_cons_mat += cons_mat
-
-    avg_cons_mat = avg_cons_mat / len(cv_labels)
-    plt.figure(figsize=(10, 10))
-    sns.heatmap(avg_cons_mat, square=True)
-    if args.save:
-        plt.savefig(
-            f"{save_dir}/avg_cons_mat.png",
-            bbox_inches="tight",
-            transparent=True,
-        )
-    if args.show:
-        plt.show()
-    plt.close()
-    LOGGER.info("Done.")
-
-    LOGGER.info("Saving final results...")
-    # Save final result
-    if args.save:
-        pickle.dump(
-            cluster_assignment, open(f"{save_dir}/cluster_assignment.p", "wb")
-        )
-        json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
-    LOGGER.info("Done.")
+            json.dump(EVALUATION, open(f"{save_dir}/evaluation.json", "w"))
+        LOGGER.info("Done.")
 
     if not args.eval_only:
         ##########################
