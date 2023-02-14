@@ -13,6 +13,21 @@ from pypfopt import risk_models
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.constant import PORTFOLIOS
+from prado.hrp import correlDist, getQuasiDiag, getRecBipart
+import scipy.cluster.hierarchy as sch
+
+
+def getHRP(cov, corr, index):
+    # Construct a hierarchical portfolio
+    corr, cov = pd.DataFrame(corr), pd.DataFrame(cov)
+    dist = correlDist(corr)
+    link = sch.linkage(dist, "single")
+    sortIx = getQuasiDiag(link)
+    sortIx = corr.index[sortIx].tolist()  # recover labels
+    hrp = getRecBipart(cov, sortIx)
+    hrp = hrp.sort_index()
+    hrp.index = index
+    return hrp
 
 
 def portfolio_weights(
@@ -79,6 +94,10 @@ def portfolio_weights(
     if "aeaa" in portfolio:
         LOGGER.info("Computing AE Asset Allocation weights...")
         port_w["aeaa"] = aeaa_weights(returns, embedding)
+
+    if "hrp" in portfolio:
+        port_w["hrp"] = getHRP(cov=S.values, corr=returns.corr().values,
+                               index=returns.columns)
 
     return port_w
 
