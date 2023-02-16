@@ -9,14 +9,10 @@ import pandas as pd
 from joblib import Parallel, delayed
 
 import prado.cla.CLA as CLA
-from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
 from dl_portfolio.utils import optimal_target_vol_test
-from dl_portfolio.weights import (
-    ae_riskparity_weights,
-    get_inner_cluster_weights,
-)
+from dl_portfolio.weights import ae_riskparity_weights
 from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
 from arch import arch_model
 
@@ -207,19 +203,65 @@ def getNMF(
             risk_parity="cluster",
             threshold=threshold,
         )
-
-        max_cluster = embedding.shape[-1] - 1
-        # First get cluster allocation to forget about small contribution
-        clusters, _ = get_cluster_labels(embedding, threshold=threshold)
-        clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
-        inner_weights = get_inner_cluster_weights(
-            returns.cov(), loading, clusters, market_budget
-        )
-        inner_weights = pd.DataFrame(inner_weights)
     else:
         raise NotImplementedError()
 
-    return weights, inner_weights
+    return weights  # , inner_weights
+
+
+def rebalance(train_returns, returns, methods_mapper,
+              vol_target=0.05, max_leverage=3, n_components=None,
+              market_budget=None):
+    cov_ = np.cov(train_returns, rowvar=0)
+    corr_ = np.corrcoef(train_returns, rowvar=0)
+
+    res = {func_name: {} for func_name in methods_mapper}
+
+    # 3) Compute performance out-of-sample
+    for func_name in methods_mapper:
+        try:
+            if func_name == "NMF":
+                w_ = methods_mapper[func_name](
+                    train_returns,
+                    n_components,
+                    market_budget=market_budget,
+                    threshold=1e-2,
+                )
+                # inner_weights = pd.concat([inner_weights, in_w_])
+            else:
+                assert func_name in ["IVP", "HRP"]
+                w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
+            r_ = pd.Series(np.dot(returns, w_))
+
+            # Vol target leverage (Jaeger et al 2021):
+            if vol_target is not None:
+                in_r_ = np.dot(train_returns, w_)
+                tvs = optimal_target_vol_test(pd.Series(in_r_))
+                base_vol = np.max(
+                    (np.std(in_r_[-20:]), np.std(in_r_[-60:]))
+                ) * np.sqrt(252)
+                assert not np.isinf(base_vol)
+                assert not np.isnan(base_vol)
+                lev = vol_target / base_vol
+                if lev > max_leverage:
+                    LOGGER.warning(f"leverage={lev}>{max_leverage}. "
+                                   f"Setting to {max_leverage}")
+                    lev = max_leverage
+                r_ = lev * r_
+            else:
+                lev = None
+        except Exception as _exc:
+            LOGGER.exception(f"Error with {func_name}...{_exc}")
+            r_ = pd.Series([np.nan] * len(returns))
+            w_ = pd.Series([np.nan] * returns.shape[-1])
+            lev = None
+
+        res[func_name]["leverage"] = lev
+        res[func_name]["test_target_vol"] = tvs
+        res[func_name]["returns"] = r_
+        res[func_name]["weights"] = w_
+
+    return res
 
 
 def worker(
@@ -249,7 +291,6 @@ def worker(
     leverage = {i: [] for i in methods_mapper}
     test_target_vol = {i: [] for i in methods_mapper}
     weights = {i: pd.DataFrame() for i in methods_mapper}
-    inner_weights = pd.DataFrame()
 
     pointers = range(sLength, len(returns), rebal)
 
@@ -259,52 +300,20 @@ def worker(
     # 2) Compute portfolios in-sample
     for pointer in pointers:
         in_x_ = returns[pointer - sLength : pointer]
-        cov_, corr_ = np.cov(in_x_, rowvar=0), np.corrcoef(in_x_, rowvar=0)
-
-        # 3) Compute performance out-of-sample
         x_ = returns[pointer: pointer + rebal]
-        in_x_ = returns[:pointer]
+        # 3) Compute performance out-of-sample
+        rebal_res = rebalance(in_x_, x_, methods_mapper,
+                              vol_target=vol_target, max_leverage=max_leverage,
+                              n_components=n_components,
+                              market_budget=market_budget)
         for func_name in methods_mapper:
-            try:
-                if func_name == "NMF":
-                    w_, in_w_ = methods_mapper[func_name](
-                        in_x_,
-                        n_components,
-                        market_budget=market_budget,
-                        threshold=1e-2,
-                    )
-                    inner_weights = pd.concat([inner_weights, in_w_])
-                else:
-                    assert func_name in ["IVP", "HRP"]
-                    w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
-                r_ = pd.Series(np.dot(x_, w_))
-
-                # Vol target leverage (Jaeger et al 2021):
-                if vol_target is not None:
-                    in_r_ = np.dot(in_x_, w_)
-                    tvs = optimal_target_vol_test(pd.Series(in_r_))
-                    base_vol = np.max(
-                            (np.std(in_r_[-20:]), np.std(in_r_[-60:]))
-                    ) * np.sqrt(252)
-                    assert not np.isinf(base_vol)
-                    assert not np.isnan(base_vol)
-                    lev = vol_target / base_vol
-                    if lev > max_leverage:
-                        LOGGER.warning(f"leverage={lev}>{max_leverage}. "
-                                       f"Setting to {max_leverage}")
-                        lev = max_leverage
-                    r_ = lev * r_
-                else:
-                    lev = None
-            except Exception as _exc:
-                LOGGER.exception(f"Error with {func_name}...{_exc}")
-                r_ = pd.Series([np.nan] * len(x_))
-                w_ = pd.Series([np.nan] * x_.shape[-1])
-
-            leverage[func_name].append(lev)
-            test_target_vol[func_name].append(tvs)
-            r[func_name] = r[func_name].append(r_, ignore_index=True)
-            weights[func_name] = pd.concat([weights[func_name], w_])
+            leverage[func_name].append(rebal_res[func_name]["leverage"])
+            test_target_vol[func_name].append(
+                rebal_res[func_name]["test_target_vol"])
+            r[func_name] = r[func_name].append(rebal_res[func_name]["returns"],
+                                               ignore_index=True)
+            weights[func_name] = pd.concat(
+                [weights[func_name], rebal_res[func_name]["weights"]])
 
     # 4) Evaluate and store results
     port_returns = {}
@@ -315,7 +324,7 @@ def worker(
 
         port_returns[func_name] = r_
 
-    return port_returns, weights, cluster_mapper, inner_weights, leverage, test_target_vol
+    return port_returns, weights, cluster_mapper, leverage, test_target_vol
 
 
 def mc_hrp(
@@ -349,12 +358,7 @@ def mc_hrp(
                 )
                 for numIter in range(num_iters)
             )
-        # for numIter in range(numIters):
-        #     for func_name in methods_mapper:
-        #         stats[func_name].loc[numIter] = stats_iter[numIter][
-        #         func_name]
         clusters = []
-        inner_weights = []
         for numIter in range(num_iters):
             for func_name in methods_mapper:
                 returns[func_name] = pd.concat(
@@ -365,24 +369,18 @@ def mc_hrp(
                     [weights[func_name], results[numIter][1][func_name]],
                     axis=1,
                 )
-                leverage[func_name].append(results[numIter][4][func_name])
-                test_target_vol[func_name].append(results[numIter][5][
+                leverage[func_name].append(results[numIter][3][func_name])
+                test_target_vol[func_name].append(results[numIter][4][
                                                       func_name])
 
             clusters.append(results[numIter][2])
-            inner_weights.append(
-                results[numIter][3].reset_index().to_json(orient="index")
-            )
-
     else:
         clusters = []
-        inner_weights = []
         for numIter in range(num_iters):
             (
                 returns_iter,
                 weights_iter,
                 cluster_iter,
-                inner_weights_iter,
                 _,
                 _,
             ) = worker(
@@ -403,9 +401,6 @@ def mc_hrp(
                 weights[func_name] = pd.concat(
                     [weights[func_name], weights_iter[func_name]], axis=1
                 )
-            inner_weights.append(
-                inner_weights_iter.reset_index().to_json(orient="index")
-            )
 
     for func_name in methods_mapper:
         returns[func_name].columns = list(range(num_iters))
@@ -421,7 +416,6 @@ def mc_hrp(
         returns[func_name].to_csv(f"{save_dir}/returns_{func_name}.csv")
         weights[func_name].to_csv(f"{save_dir}/weights_{func_name}.csv")
 
-    json.dump(inner_weights, open(f"{save_dir}/inner_weights_NMF.json", "w"))
     json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
     json.dump(leverage, open(f"{save_dir}/leverage.json", "w"))
     json.dump(test_target_vol, open(f"{save_dir}/test_target_vol.json", "w"))
@@ -457,19 +451,22 @@ if __name__ == "__main__":
     if not os.path.isdir(save_dir):
         os.mkdir(save_dir)
 
+    sLength = 260
+    n_obs = 2*sLength
+
     if args.dgp == "hrp_mc":
         dgp_params = {
-            "n_obs": 520,
+            "n_obs": n_obs,
             "size0": 6,
             "size1": 9,
             "mu0": 0,
             "sigma0": 1e-2,
             "sigma1F": 0.25,
-            "sLength": 260,
+            "sLength": sLength,
         }
     elif args.dgp == "cluster_mc":
         dgp_params = {
-            "n_obs": 520,
+            "n_obs": n_obs,
             "size1": 15,
             "mu0": [0] * 5,
             "sigma0": [
@@ -480,7 +477,7 @@ if __name__ == "__main__":
                 0.007,
             ],  # (crypto, bond, stock, forex, commodities)
             "sigma1F": 0.25,
-            "sLength": 260,
+            "sLength": sLength,
             "process": "garch",
         }
     else:
