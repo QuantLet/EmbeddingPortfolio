@@ -209,9 +209,15 @@ def getNMF(
     return weights  # , inner_weights
 
 
-def rebalance(train_returns, returns, methods_mapper,
-              vol_target=0.05, max_leverage=3, n_components=None,
-              market_budget=None):
+def rebalance(
+    train_returns,
+    returns,
+    methods_mapper,
+    vol_target=0.05,
+    max_leverage=3,
+    n_components=None,
+    market_budget=None,
+):
     cov_ = np.cov(train_returns, rowvar=0)
     corr_ = np.corrcoef(train_returns, rowvar=0)
 
@@ -244,8 +250,10 @@ def rebalance(train_returns, returns, methods_mapper,
                 assert not np.isnan(base_vol)
                 lev = vol_target / base_vol
                 if lev > max_leverage:
-                    LOGGER.warning(f"leverage={lev}>{max_leverage}. "
-                                   f"Setting to {max_leverage}")
+                    LOGGER.warning(
+                        f"leverage={lev}>{max_leverage}. "
+                        f"Setting to {max_leverage}"
+                    )
                     lev = max_leverage
                 r_ = lev * r_
             else:
@@ -300,20 +308,28 @@ def worker(
     # 2) Compute portfolios in-sample
     for pointer in pointers:
         in_x_ = returns[pointer - sLength : pointer]
-        x_ = returns[pointer: pointer + rebal]
+        x_ = returns[pointer : pointer + rebal]
         # 3) Compute performance out-of-sample
-        rebal_res = rebalance(in_x_, x_, methods_mapper,
-                              vol_target=vol_target, max_leverage=max_leverage,
-                              n_components=n_components,
-                              market_budget=market_budget)
+        rebal_res = rebalance(
+            in_x_,
+            x_,
+            methods_mapper,
+            vol_target=vol_target,
+            max_leverage=max_leverage,
+            n_components=n_components,
+            market_budget=market_budget,
+        )
         for func_name in methods_mapper:
             leverage[func_name].append(rebal_res[func_name]["leverage"])
             test_target_vol[func_name].append(
-                rebal_res[func_name]["test_target_vol"])
-            r[func_name] = r[func_name].append(rebal_res[func_name]["returns"],
-                                               ignore_index=True)
+                rebal_res[func_name]["test_target_vol"]
+            )
+            r[func_name] = r[func_name].append(
+                rebal_res[func_name]["returns"], ignore_index=True
+            )
             weights[func_name] = pd.concat(
-                [weights[func_name], rebal_res[func_name]["weights"]])
+                [weights[func_name], rebal_res[func_name]["weights"]]
+            )
 
     # 4) Evaluate and store results
     port_returns = {}
@@ -370,20 +386,15 @@ def mc_hrp(
                     axis=1,
                 )
                 leverage[func_name].append(results[numIter][3][func_name])
-                test_target_vol[func_name].append(results[numIter][4][
-                                                      func_name])
+                test_target_vol[func_name].append(
+                    results[numIter][4][func_name]
+                )
 
             clusters.append(results[numIter][2])
     else:
         clusters = []
         for numIter in range(num_iters):
-            (
-                returns_iter,
-                weights_iter,
-                cluster_iter,
-                _,
-                _,
-            ) = worker(
+            (returns_iter, weights_iter, cluster_iter, _, _,) = worker(
                 num_iters - numIter,
                 methods_mapper,
                 dgp_name,
@@ -452,7 +463,7 @@ if __name__ == "__main__":
         os.mkdir(save_dir)
 
     sLength = 260
-    n_obs = 2*sLength
+    n_obs = 2 * sLength
 
     if args.dgp == "hrp_mc":
         dgp_params = {
