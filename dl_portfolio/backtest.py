@@ -31,6 +31,7 @@ def backtest_stats(
     period: int = 250,
     format: bool = True,
     sspw_tto=True,
+    volatility_target=0.05,
     **kwargs,
 ):
     """
@@ -45,7 +46,7 @@ def backtest_stats(
     benchmark, _ = load_data(dataset="dataset2")
     benchmark = benchmark.pct_change().dropna()
     benchmark = benchmark.loc[perf.index, bench_names]
-    benchmark = benchmark * 0.05 / (benchmark.std() * np.sqrt(252))
+    benchmark = benchmark * volatility_target / (benchmark.std() * np.sqrt(252))
 
     perf = pd.concat([perf, benchmark], 1)
 
@@ -567,7 +568,7 @@ def get_portfolio_perf_wrapper(
             assert not np.isinf(base_vol)
             assert not np.isnan(base_vol)
 
-            leverage = 0.05 / base_vol
+            leverage = volatility_target / base_vol
             cost = cost * leverage
             port_perf = leverage * port_perf
             if portfolio not in ["equal", "equal_class"]:
