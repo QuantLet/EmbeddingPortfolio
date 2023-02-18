@@ -456,7 +456,8 @@ def get_best_model_from_dir(dir_):
     return file
 
 
-def optimal_target_vol_test(returns: pd.Series):
+def optimal_target_vol_test(returns: pd.Series,
+                            risk_free: pd.Series = 0.):
     """
     cf On the Optimality of Target Volatility Strategies, Kais Dachraoui,
     The Journal of Portfolio Management Apr 2018, 44 (5) 58-67;
@@ -469,7 +470,8 @@ def optimal_target_vol_test(returns: pd.Series):
     std_ = pd.DataFrame([returns.rolling(22).std(),
                          returns.rolling(60).std()]).T
     std_ = std_.dropna(how="all", axis=0).fillna(0.).max(1)
-    sr_ = returns / std_
+    std_ = std_.shift(1).dropna()
+    sr_ = (returns - risk_free) / std_
     sr_.dropna(inplace=True)
 
     tvs = np.cov(sr_.values, std_.values)[0, 1]
