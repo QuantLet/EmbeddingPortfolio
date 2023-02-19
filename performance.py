@@ -174,16 +174,17 @@ if __name__ == "__main__":
         elif config.encoding_dim == 4:
             CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_4
         else:
-            raise NotImplementedError()
+            CLUSTER_NAMES = None
 
     elif config.dataset == "dataset2":
         if config.encoding_dim == 5:
             CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET2_5
         else:
-            raise NotImplementedError()
+            CLUSTER_NAMES = None
     else:
         raise NotImplementedError()
-    assert config.encoding_dim == len(CLUSTER_NAMES)
+    if CLUSTER_NAMES is not None:
+        assert config.encoding_dim == len(CLUSTER_NAMES)
     LOGGER.info("Main loop to get results and portfolio weights...")
     # Main loop to get results
     cv_results = {}
@@ -196,6 +197,7 @@ if __name__ == "__main__":
             portfolios = PORTFOLIOS
         else:
             portfolios = [p for p in PORTFOLIOS if "ae" in p]
+
         cv_results[i] = get_cv_results(
             path,
             args.test_set,
@@ -208,6 +210,7 @@ if __name__ == "__main__":
             n_jobs=args.n_jobs,
             ae_config=config,
             excess_ret=config.excess_ret,
+            reorder_features=CLUSTER_NAMES is not None,
         )
     LOGGER.info("Done.")
 
@@ -460,9 +463,10 @@ if __name__ == "__main__":
             cons_mat = consensus_matrix(
                 cv_labels[cv], reorder=True, method="single"
             )
-            cluster_assignment[cv] = assign_cluster_from_consmat(
-                cons_mat, CLUSTER_NAMES, t=0
-            )
+            if CLUSTER_NAMES is not None:
+                cluster_assignment[cv] = assign_cluster_from_consmat(
+                    cons_mat, CLUSTER_NAMES, t=0
+                )
 
             if cv == 0:
                 order0 = cons_mat.index

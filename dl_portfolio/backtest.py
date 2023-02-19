@@ -765,6 +765,7 @@ def one_cv(
     compute_weights=True,
     window: Optional[int] = 250,
     excess_ret=True,
+    reorder_features=True,
     **kwargs,
 ):
     ae_config = kwargs.get("ae_config")
@@ -781,7 +782,8 @@ def one_cv(
         decoding,
         _,
         decoder_bias,
-    ) = load_result(ae_config, test_set, data, assets, base_dir, cv)
+    ) = load_result(ae_config, test_set, data, assets, base_dir, cv,
+                    reorder_features=reorder_features)
 
     data = data.pct_change(1).dropna()
     data = data[assets]
@@ -858,6 +860,7 @@ def get_cv_results(
     window: Optional[int] = None,
     n_jobs: int = None,
     dataset="global",
+    reorder_features=True,
     **kwargs,
 ):
     assert test_set in ["val", "test"]
@@ -879,6 +882,7 @@ def get_cv_results(
                     market_budget=market_budget,
                     compute_weights=compute_weights,
                     window=window,
+                    reorder_features=reorder_features,
                     **kwargs,
                 )
                 for cv in range(n_folds)
@@ -902,6 +906,7 @@ def get_cv_results(
                 market_budget=market_budget,
                 compute_weights=compute_weights,
                 window=window,
+                reorder_features=reorder_features,
                 **kwargs,
             )
 
