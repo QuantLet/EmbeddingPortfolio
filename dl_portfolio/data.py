@@ -45,16 +45,15 @@ def load_risk_free():
     Mixed source: IRX Yahoo before 2001 and US treasury for after 2001
     :return:
     """
-    ann_monthly_rate, daily_rate = load_bill_rates()
+    daily_rate = load_bill_rates()
 
     ann_monthly_rate_yahoo = pd.read_csv("data/irx_yahoo.csv", index_col=0,
                                          parse_dates=True).sort_index()
-    ann_monthly_rate_yahoo = ann_monthly_rate_yahoo["Adj Close"] / 100
+    ann_monthly_rate_yahoo = ann_monthly_rate_yahoo[["Adj Close"]] / 100
     ann_monthly_rate_yahoo = ann_monthly_rate_yahoo.loc[
-                             :ann_monthly_rate.index[0]].iloc[:-1]
+                             :daily_rate.index[0]].iloc[:-1]
     ann_monthly_rate_yahoo.columns = ["risk_free"]
     daily_rate_yahoo = ann_monthly_rate_yahoo / 365
-
     daily_rate = pd.concat([daily_rate_yahoo, daily_rate])
 
     return daily_rate
@@ -72,7 +71,7 @@ def load_bill_rates():
     ann_monthly_rate.columns = ["risk_free"]
     daily_rate = ann_monthly_rate / 365
 
-    return daily_rate["risk_free"]
+    return daily_rate
 
 
 def impute_missing_risk_free(data):
