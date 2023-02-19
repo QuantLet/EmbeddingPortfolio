@@ -581,7 +581,6 @@ def get_portfolio_perf_wrapper(
                     if risk_free is not None:
                         leverage_cost = risk_free.loc[date] * (leverage - 1)
                         total_cost = fee_cost + leverage_cost
-                        print(fee_cost, leverage_cost, total_cost)
                     else:
                         total_cost = fee_cost
                     assert not total_cost.isna().any()
@@ -592,7 +591,6 @@ def get_portfolio_perf_wrapper(
                     if risk_free is not None:
                         leverage_cost = risk_free.loc[date] * (leverage - 1)
                         total_cost = fee_cost + leverage_cost
-                        print(fee_cost, leverage_cost, total_cost)
                     else:
                         total_cost = fee_cost
                     assert not np.isnan(total_cost)[0]
