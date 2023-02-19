@@ -57,7 +57,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--n_jobs",
-        default=2 * os.cpu_count(),
+        default=os.cpu_count(),
         type=int,
         help="Number of parallel jobs",
     )
