@@ -229,6 +229,7 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
 
         train_returns = returns.loc[:test_start].iloc[-window_size - 1 : -1]
         test_returns = returns.loc[test_start:test_end]
+        raise NotImplementedError("What about risk_free parameter of get_portfolio_perf_wrapper")
         one_cv_perf, l = get_portfolio_perf_wrapper(
             train_returns,
             test_returns,
@@ -484,6 +485,7 @@ def get_portfolio_perf_wrapper(
     prev_weights: Optional[Dict] = None,
     fee: float = 2e-4,
     volatility_target: Optional[float] = 0.05,
+    risk_free: Optional[pd.Series] = None,
     **kwargs,
 ):
     """
@@ -569,15 +571,32 @@ def get_portfolio_perf_wrapper(
             assert not np.isnan(base_vol)
 
             leverage = volatility_target / base_vol
-            cost = cost * leverage
+            fee_cost = cost * leverage
+
             port_perf = leverage * port_perf
             if portfolio not in ["equal", "equal_class"]:
                 if weights[portfolio].shape[0] > 1:
-                    assert isinstance(cost, pd.Series)
-                    port_perf -= cost
+                    assert isinstance(fee_cost, pd.Series)
+                    date = port_perf.index
+                    if risk_free is not None:
+                        leverage_cost = risk_free.loc[date] * (leverage - 1)
+                        total_cost = fee_cost + leverage_cost
+                        print(fee_cost, leverage_cost, total_cost)
+                    else:
+                        total_cost = fee_cost
+                    assert not total_cost.isna().any()
+                    port_perf -= total_cost
                 else:
-                    assert isinstance(cost, float)
-                    port_perf.iloc[0] = port_perf.iloc[0] - cost
+                    assert isinstance(fee_cost, float)
+                    date = port_perf.iloc[0].index[0]
+                    if risk_free is not None:
+                        leverage_cost = risk_free.loc[date] * (leverage - 1)
+                        total_cost = fee_cost + leverage_cost
+                        print(fee_cost, leverage_cost, total_cost)
+                    else:
+                        total_cost = fee_cost
+                    assert not np.isnan(total_cost)[0]
+                    port_perf.loc[date] = port_perf.loc[date] - total_cost
 
         port_perfs[portfolio] = port_perf
         leverages[portfolio] = leverage
@@ -628,6 +647,7 @@ def cv_portfolio_perf(
         else:
             prev_weights = cv_results[cv - 1]["port"].copy()
 
+        raise NotImplementedError("What about risk_free parameter of get_portfolio_perf_wrapper")
         one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(
             cv_results[cv]["train_returns"],
             cv_results[cv]["returns"],
@@ -697,6 +717,12 @@ def cv_portfolio_perf_df(
         else:
             train_w = {p: weights[p].iloc[0, :] for p in weights}
 
+        risk_free = load_risk_free()
+        risk_free = risk_free.reindex(cv_portfolio[cv]["returns"].index)
+        risk_free = impute_missing_risk_free(risk_free)
+        if risk_free.isna().any().any():
+            assert not risk_free.isna().any()
+
         one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(
             cv_portfolio[cv]["train_returns"],
             cv_portfolio[cv]["returns"],
@@ -704,6 +730,7 @@ def cv_portfolio_perf_df(
             portfolios,
             train_weights=train_w,
             prev_weights=prev_weights,
+            risk_free=risk_free["risk_free"],
             **kwargs,
         )
 
