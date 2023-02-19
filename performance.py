@@ -644,30 +644,34 @@ if __name__ == "__main__":
                     show=args.show,
                     legend=args.legend,
                 )
-            bar_plot_weights(
-                port_weights["aerp"],
-                save_path=f"{save_dir}/weights_aerp.png",
-                show=args.show,
-                legend=args.legend,
-            )
-            bar_plot_weights(
-                port_weights["aeerc"],
-                save_path=f"{save_dir}/weights_aeerc.png",
-                show=args.show,
-                legend=args.legend,
-            )
-            bar_plot_weights(
-                port_weights["ae_rp_c"],
-                save_path=f"{save_dir}/weights_aeerc_cluster.png",
-                show=args.show,
-                legend=args.legend,
-            )
-            bar_plot_weights(
-                port_weights["aeaa"],
-                save_path=f"{save_dir}/weights_aeaa.png",
-                show=args.show,
-                legend=args.legend,
-            )
+            if "aerp" in PORTFOLIOS:
+                bar_plot_weights(
+                    port_weights["aerp"],
+                    save_path=f"{save_dir}/weights_aerp.png",
+                    show=args.show,
+                    legend=args.legend,
+                )
+            if "aeerc" in PORTFOLIOS:
+                bar_plot_weights(
+                    port_weights["aeerc"],
+                    save_path=f"{save_dir}/weights_aeerc.png",
+                    show=args.show,
+                    legend=args.legend,
+                )
+            if "ae_rp_c" in PORTFOLIOS:
+                bar_plot_weights(
+                    port_weights["ae_rp_c"],
+                    save_path=f"{save_dir}/weights_aeerc_cluster.png",
+                    show=args.show,
+                    legend=args.legend,
+                )
+            if "aeaa" in PORTFOLIOS:
+                bar_plot_weights(
+                    port_weights["aeaa"],
+                    save_path=f"{save_dir}/weights_aeaa.png",
+                    show=args.show,
+                    legend=args.legend,
+                )
         else:
             plot_perf(
                 ann_perf, strategies=PORTFOLIOS, show=args.show, legend=args.legend
