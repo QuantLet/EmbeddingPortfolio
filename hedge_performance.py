@@ -14,10 +14,10 @@ from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
 DATA_BASE_DIR_1 = "./activationProba/data/dataset1"
 GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
-PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20220322_150317"
+PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230219_144811"
 DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
 GARCH_BASE_DIR_2 = "activationProba/output/dataset2/final"
-PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20220323_152418"
+PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230219_145632"
 
 if __name__ == "__main__":
     import argparse
@@ -32,7 +32,7 @@ if __name__ == "__main__":
                         type=str,
                         help="Method to compute optimal threshold")
     parser.add_argument("--n_jobs",
-                        default=os.cpu_count() - 1,
+                        default=os.cpu_count(),
                         type=int,
                         help="Number of parallel jobs")
     parser.add_argument("--save",
@@ -58,7 +58,9 @@ if __name__ == "__main__":
 
         # Load data
         data, assets = load_data(dataset="dataset1")
-        market_budget = pd.read_csv("data/market_budget_dataset1.csv", index_col=0)
+        market_budget = pd.read_csv(
+            "data/dataset1/market_budget_dataset1.csv",
+                                    index_col=0)
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat([market_budget, pd.DataFrame(np.array([["crypto", 1]] * len(cryptos)),
                                                                index=cryptos,
@@ -73,7 +75,8 @@ if __name__ == "__main__":
 
         # Load data
         data, assets = load_data(dataset="dataset2")
-        market_budget = pd.read_csv('data/market_budget_dataset2.csv', index_col=0)
+        market_budget = pd.read_csv(
+            'data/dataset2/market_budget_dataset2.csv', index_col=0)
         market_budget['rc'] = market_budget['rc'].astype(int)
     else:
         raise NotImplementedError(dataset)
