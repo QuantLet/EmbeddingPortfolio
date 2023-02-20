@@ -229,7 +229,13 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
 
         train_returns = returns.loc[:test_start].iloc[-window_size - 1 : -1]
         test_returns = returns.loc[test_start:test_end]
-        raise NotImplementedError("What about risk_free parameter of get_portfolio_perf_wrapper")
+
+        risk_free = load_risk_free()
+        risk_free = risk_free.reindex(test_returns.index)
+        risk_free = impute_missing_risk_free(risk_free)
+        if risk_free.isna().any().any():
+            assert not risk_free.isna().any()
+
         one_cv_perf, l = get_portfolio_perf_wrapper(
             train_returns,
             test_returns,
@@ -237,6 +243,7 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
             portfolios=["other"],
             prev_weights=prev_w,
             train_weights={"other": w["other"].iloc[0, :]},
+            risk_free=risk_free["risk_free"]
         )
         leverage.append(l["other"])
         prev_w = w.copy()
@@ -600,68 +607,6 @@ def get_portfolio_perf_wrapper(
         leverages[portfolio] = leverage
 
     return port_perfs, leverages
-
-
-def cv_portfolio_perf(
-    cv_results: Dict,
-    portfolios: List = [
-        "equal",
-        "markowitz",
-        "shrink_markowitz",
-        "ivp",
-        "aerp",
-        "rp",
-        "aeerc",
-    ],
-    **kwargs,
-) -> Union[Dict, pd.DataFrame]:
-    """
-
-    :param cv_results: Dictionary with keys:
-     - first key is cv fold
-     - for each cv:
-        - "port" for portfolio weights with each strategy as key: [cv]["port"], [cv]["port"]["rp"], etc.
-        - "train_returns"
-        - "returns"
-    :param portfolios:
-    :return:
-    """
-    assert all([p in PORTFOLIOS for p in portfolios])
-    port_perf = {}
-    leverage = {}
-    for p in portfolios:
-        port_perf[p] = {}
-        leverage[p] = []
-        port_perf[p]["total"] = pd.DataFrame()
-
-    for cv in cv_results:
-        weights = cv_results[cv]["port"].copy()
-        if cv == 0:
-            prev_weights = {
-                p: np.ones_like(cv_results[cv]["port"][p])
-                for p in portfolios
-                if p not in ["equal", "equal_class"]
-            }
-        else:
-            prev_weights = cv_results[cv - 1]["port"].copy()
-
-        raise NotImplementedError("What about risk_free parameter of get_portfolio_perf_wrapper")
-        one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(
-            cv_results[cv]["train_returns"],
-            cv_results[cv]["returns"],
-            weights,
-            portfolios,
-            prev_weights=prev_weights,
-            **kwargs,
-        )
-        for p in portfolios:
-            port_perf[p]["total"] = pd.concat(
-                [port_perf[p]["total"], one_cv_perf[p]]
-            )
-            leverage[p].append(one_cv_leverage[p])
-    leverage = pd.DataFrame(leverage)
-
-    return port_perf, leverage
 
 
 def cv_portfolio_perf_df(
