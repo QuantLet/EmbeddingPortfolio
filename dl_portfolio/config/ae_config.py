@@ -17,7 +17,7 @@ resample = {
     "block_length": 60,
     "when": "each_epoch",
 }
-excess_ret = True
+excess_ret = False
 scaler_func = {
     "name": "StandardScaler",
     "params": {
@@ -28,7 +28,7 @@ scaler_func = {
 seed = None
 
 # Model
-encoding_dim = 3
+encoding_dim = 4
 encoder_bias = True
 decoder_bias = True
 batch_normalization = True

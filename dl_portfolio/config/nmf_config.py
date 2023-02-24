@@ -7,22 +7,25 @@ show_plot = False
 seed = None
 
 # Model
-encoding_dim = 3
+encoding_dim = 4
 
 # Data
-dataset = "dataset1"
+dataset = 'dataset1'
 resample = {
-    "method": "nbb",
-    "where": ["train"],
-    "block_length": 60,
-    "when": "each_epoch",
+    'method': 'nbb',
+    'where': ['train'],
+    'block_length': 60,
+    'when': 'each_epoch'
 }
-excess_ret = True
-scaler_func = {"name": "StandardScaler"}
+scaler_func = {
+    'name': 'StandardScaler'
+}
+excess_ret = False
 
 # Model name
-model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
-model_name = model_name.replace(".", "d")
+model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}_VALIDATION"
+model_name = model_name.replace('.', 'd')
+
 
 val_start = pd.date_range(
     "2018-12-01", "2019-10-01", freq="1MS"
