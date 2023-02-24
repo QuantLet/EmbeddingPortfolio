@@ -456,14 +456,14 @@ def get_best_model_from_dir(dir_):
     return file
 
 
-def optimal_target_vol_test(returns: pd.Series,
-                            risk_free: pd.Series = 0.):
+def optimal_target_vol_test(returns: pd.Series, risk_free: pd.Series = 0.):
     """
     cf On the Optimality of Target Volatility Strategies, Kais Dachraoui,
     The Journal of Portfolio Management Apr 2018, 44 (5) 58-67;
     DOI: 10.3905/jpm.2018.44.5.058
 
     :param returns:
+    :param risk_free:
     :return:
     """
     assert isinstance(returns, pd.Series)

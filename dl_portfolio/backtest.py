@@ -46,7 +46,9 @@ def backtest_stats(
     benchmark, _ = load_data(dataset="dataset2")
     benchmark = benchmark.pct_change().dropna()
     benchmark = benchmark.loc[perf.index, bench_names]
-    benchmark = benchmark * volatility_target / (benchmark.std() * np.sqrt(252))
+    if volatility_target:
+        benchmark = benchmark * volatility_target / (benchmark.std() *
+                                                     np.sqrt(252))
 
     perf = pd.concat([perf, benchmark], 1)
 
@@ -370,7 +372,7 @@ def hist_ES(perf, level: float = 0.05):
     return -np.mean(perf[perf <= VaR])
 
 
-def ceq(returns, gamma: float = 1.0, risk_free=0.0, period: int = 1):
+def ceq(returns, gamma: float = 1.0, period: int = 1):
     """
     See Raffinot paper or DeMiguel et al. [2009]
     :param perf: returns
@@ -379,8 +381,12 @@ def ceq(returns, gamma: float = 1.0, risk_free=0.0, period: int = 1):
     :return:
     """
 
+    risk_free = load_risk_free()
+    risk_free = risk_free.reindex(returns.index)
+    risk_free = impute_missing_risk_free(risk_free)
+
     return (
-        returns.mean() * period - risk_free
+        returns.mean() * period - risk_free["risk_free"]
     ) - gamma / 2 * returns.var() * period
 
 
@@ -602,6 +608,8 @@ def get_portfolio_perf_wrapper(
                         total_cost = fee_cost
                     assert not np.isnan(total_cost)[0]
                     port_perf.loc[date] = port_perf.loc[date] - total_cost
+        else:
+            leverage = None
 
         port_perfs[portfolio] = port_perf
         leverages[portfolio] = leverage
