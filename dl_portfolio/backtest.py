@@ -386,7 +386,7 @@ def ceq(returns, gamma: float = 1.0, period: int = 1):
     risk_free = impute_missing_risk_free(risk_free)
 
     return (
-        returns.mean() * period - risk_free["risk_free"]
+        (returns - risk_free["risk_free"]).mean() * period
     ) - gamma / 2 * returns.var() * period
 
 
