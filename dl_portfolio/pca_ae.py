@@ -7,6 +7,7 @@ from typing import List, Optional
 import tensorflow as tf
 import seaborn as sns
 from tensorflow.keras.utils import CustomObjectScope
+import sys
 
 
 def create_linear_encoder_with_constraint(input_dim, encoding_dim):
@@ -215,3 +216,38 @@ def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
         )
     if show:
         plt.show()
+
+
+def load_model_from_config(base_dir, cv, input_dim):
+    sys.path.append(base_dir)
+    import ae_config as config
+    model, encoder, extra_features = build_model(
+        config.model_type,
+        input_dim,
+        config.encoding_dim,
+        n_features=None,
+        extra_features_dim=1,
+        activation=config.activation,
+        batch_normalization=config.batch_normalization,
+        kernel_initializer=config.kernel_initializer,
+        kernel_constraint=config.kernel_constraint,
+        kernel_regularizer=config.kernel_regularizer,
+        activity_regularizer=config.activity_regularizer,
+        loss=config.loss,
+        uncorrelated_features=config.uncorrelated_features,
+        weightage=config.weightage,
+        encoder_bias=config.encoder_bias,
+        decoder_bias=config.decoder_bias,
+    )
+    model.load_weights(f"{base_dir}/{cv}/model.h5")
+    layer_name = list(
+        filter(
+            lambda x: "uncorrelated_features_layer" in x,
+            [l.name for l in model.layers],
+        )
+    )[0]
+    encoder = tf.keras.Model(
+        inputs=model.input, outputs=model.get_layer(layer_name).output
+    )
+
+    return model, encoder
