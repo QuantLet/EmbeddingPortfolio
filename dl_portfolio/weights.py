@@ -16,18 +16,7 @@ from dl_portfolio.constant import PORTFOLIOS
 from prado.hrp import correlDist, getQuasiDiag, getRecBipart
 import scipy.cluster.hierarchy as sch
 
-
-def getHRP(cov, corr, index):
-    # Construct a hierarchical portfolio
-    corr, cov = pd.DataFrame(corr), pd.DataFrame(cov)
-    dist = correlDist(corr)
-    link = sch.linkage(dist, "single")
-    sortIx = getQuasiDiag(link)
-    sortIx = corr.index[sortIx].tolist()  # recover labels
-    hrp = getRecBipart(cov, sortIx)
-    hrp = hrp.sort_index()
-    hrp.index = index
-    return hrp
+from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
 
 def portfolio_weights(
@@ -91,6 +80,24 @@ def portfolio_weights(
             returns, embedding, loading, budget, risk_parity="cluster"
         )
 
+    if "sector_erc" in portfolio:
+        LOGGER.info("Computing Sector ERC weights...")
+        assert budget is not None
+        embedding = pd.DataFrame(columns=budget["market"].unique(),
+                                 index=budget.index)
+        for c in embedding.columns:
+            embedding.loc[
+                budget.index[budget["market"] == c], c] = 1
+        embedding.fillna(0, inplace=True)
+        loading = embedding.copy()
+        port_w["sector_erc"] = ae_riskparity_weights(
+            returns,
+            embedding,
+            loading,
+            budget,
+            risk_parity="budget",
+        )
+
     if "aeaa" in portfolio:
         LOGGER.info("Computing AE Asset Allocation weights...")
         port_w["aeaa"] = aeaa_weights(returns, embedding)
@@ -98,6 +105,13 @@ def portfolio_weights(
     if "hrp" in portfolio:
         port_w["hrp"] = getHRP(cov=S.values, corr=returns.corr().values,
                                index=returns.columns)
+
+    if 'hcaa' in portfolio:
+        LOGGER.info('Computing HCAA weights...')
+        port_w['hcaa'] = herc_weights(returns,
+                                      optimal_num_clusters=kwargs.get(
+                                          'optimal_num_clusters'),
+                                      risk_measure='equal_weighting')
 
     return port_w
 
@@ -115,7 +129,7 @@ def get_cluster_var(cov, cluster_items, weights=None):
     :return:
     """
     cov_slice = cov.loc[cluster_items, cluster_items]
-    if weights is not None:
+    if weights is None:
         weights = ivp_weights(cov_slice)
     return np.linalg.multi_dot((weights, cov_slice, weights))
 
@@ -395,7 +409,7 @@ def ae_ivp_weights(returns, embedding):
         if cluster_items:
             c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
             cluster_var = get_cluster_var(
-                cov, cluster_items, weights=cluster_weights
+                cov, cluster_items, weights=c_weights
             )
             cluster_asset_weights[c] = c_weights
             cluster_weights[c] = cluster_var
@@ -416,5 +430,35 @@ def ae_ivp_weights(returns, embedding):
         weights = pd.concat([weights, cluster_weights[c]])
     weights = weights.reindex(returns.columns)  # rerorder
     weights.fillna(0.0, inplace=True)
+
+    return weights
+
+
+def getHRP(cov, corr, index):
+    # Construct a hierarchical portfolio
+    corr, cov = pd.DataFrame(corr), pd.DataFrame(cov)
+    dist = correlDist(corr)
+    link = sch.linkage(dist, "single")
+    sortIx = getQuasiDiag(link)
+    sortIx = corr.index[sortIx].tolist()  # recover labels
+    hrp = getRecBipart(cov, sortIx)
+    hrp = hrp.sort_index()
+    hrp.index = index
+    return hrp
+
+
+def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: str = 'equal_weighting',
+                 covariance_matrix=None, optimal_num_clusters=None) -> pd.Series:
+    hercEW_single = HierarchicalEqualRiskContribution()
+    hercEW_single.allocate(asset_names=returns.columns,
+                           asset_returns=returns,
+                           covariance_matrix=covariance_matrix,
+                           risk_measure=risk_measure,
+                           optimal_num_clusters=optimal_num_clusters,
+                           linkage=linkage)
+
+    weights = hercEW_single.weights.T
+    weights = weights[0]
+    weights = weights[returns.columns]
 
     return weights

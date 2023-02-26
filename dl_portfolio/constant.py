@@ -35,6 +35,7 @@ PORTFOLIOS = [
     "ivp",
     "aerp",
     "rp",
+    "sector_erc",
     "aeerc",
     "ae_rp_c",
     "kmaa",

@@ -4,6 +4,7 @@ import os
 import pickle
 import sys
 
+import json
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -37,6 +38,8 @@ PORTFOLIOS = [
     "equal",
     "equal_class",
     "hrp",
+    "hcaa",
+    "sector_erc",
     "aerp",
     "aeerc",
     "ae_rp_c",
@@ -45,8 +48,14 @@ PORTFOLIOS = [
 ]
 
 if __name__ == "__main__":
-    import argparse, json
-
+    try:
+        from portfoliolab.clustering.herc import \
+            HierarchicalEqualRiskContribution
+    except ModuleNotFoundError as _exc:
+        LOGGER.exception("You must install portfoliolab or remove 'hcaa' "
+                         "from the portfolios list or implement "
+                         "'HierarchicalEqualRiskContribution' yourself!")
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_dir", type=str, help="Experiments dir")
     parser.add_argument(
@@ -97,7 +106,16 @@ if __name__ == "__main__":
         const=logging.DEBUG,
         default=logging.WARNING,
     )
+    parser.add_argument(
+        "-vol",
+        "--volatility_target",
+        help="Volatility target",
+        dest="volatility_target",
+        default=0.05,
+    )
     args = parser.parse_args()
+    if args.volatility_target == "":
+        args.volatility_target = None
     logging.basicConfig(level=args.loglevel)
     LOGGER.setLevel(args.loglevel)
     meta = vars(args)
@@ -546,7 +564,7 @@ if __name__ == "__main__":
         port_perf, leverage = cv_portfolio_perf_df(
             cv_portfolio_df,
             portfolios=PORTFOLIOS,
-            volatility_target=0.05,
+            volatility_target=args.volatility_target,
             market_budget=market_budget,
         )
         LOGGER.info("Done.")
@@ -799,6 +817,7 @@ if __name__ == "__main__":
             period=250,
             format=True,
             market_budget=market_budget,
+            volatility_target=args.volatility_target,
         )
         if args.save:
             stats.to_csv(f"{save_dir}/backtest_stats.csv")
