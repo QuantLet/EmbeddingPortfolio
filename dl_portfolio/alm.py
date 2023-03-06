@@ -575,6 +575,39 @@ def testConFun(x, parameters):
     )
 
 
+def test_principal_port(x, parameters):
+    """
+    The constraints.
+
+    Parameters
+    ----------
+    x : a list or a numpy array
+        The decision variables.
+    parameters : a dict
+        The dictionary of the constraint conditions-related parameters, in which
+        the key is either the string 'ineq' or 'eq' and the value is a list of
+        tuples each containing the parameters passed to construct an inequality
+        or an equality constraint.
+    """
+    ineqConsArray = []
+    eqConsArray = []
+    for keyStr, paraList in parameters.items():
+        if keyStr == 'ineq':
+            for paraTuple in paraList:
+                c = np.array(paraTuple)
+                ineqConsArray.append(np.dot(c[:-1], x) + c[-1])
+        elif keyStr == 'eq':
+            for paraTuple in paraList:
+                c = np.array(paraTuple)
+                eqConsArray.append(np.dot(c[:-1], x) + c[-1])
+        else:
+            print("The parameter dictionary of the constraints does not contain \
+            the key '%s'!" % keyStr)
+            exit(-1)
+    return np.asarray(ineqConsArray, dtype="float"), np.asarray(eqConsArray,
+                                                                dtype="float")
+
+
 if __name__ == "__main__":
     import time
 

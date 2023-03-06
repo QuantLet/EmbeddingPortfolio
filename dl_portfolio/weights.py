@@ -6,15 +6,18 @@ import cvxpy as cp
 
 from typing import Union
 from sklearn.cluster import KMeans
+from sklearn.covariance import shrunk_covariance
 
 from pypfopt.efficient_frontier import EfficientFrontier
 from pypfopt import risk_models
 
+from dl_portfolio.alm import fmin_ALM, _epsilon, test_principal_port
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.constant import PORTFOLIOS
 from prado.hrp import correlDist, getQuasiDiag, getRecBipart
 import scipy.cluster.hierarchy as sch
+from scipy.optimize import minimize
 
 from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
@@ -35,6 +38,7 @@ def portfolio_weights(
 
     mu = returns.mean()
     S = returns.cov()
+    n_assets = S.shape[0]
 
     if "markowitz" in portfolio:
         LOGGER.info("Computing Markowitz weights...")
@@ -113,7 +117,177 @@ def portfolio_weights(
                                           'optimal_num_clusters'),
                                       risk_measure='equal_weighting')
 
+    if "drp" in portfolio:
+        LOGGER.info('Computing DRP weights...')
+        w0 = np.ones(n_assets) / n_assets
+        w0 = kwargs.get("w0", w0)
+        assert w0 is not None, "You must provide w0, initial value for drp " \
+                               "optimization"
+        port_w['drp'] = get_drp_weights(S, w0,
+                                        verbose=kwargs.get("verbose", False))
+
+    if "principal" in portfolio:
+        LOGGER.info('Computing Principal Portfolios weights...')
+        assert embedding is not None
+        n_components = embedding.values.shape[-1]
+        w0 = get_drp_weights(S, np.ones(n_assets) / n_assets,
+                             verbose=False).values
+        assert w0 is not None, "You must provide w0, initial value for drp " \
+                               "optimization"
+        S = returns.corr()
+        port_w["principal"] = get_principal_port(
+            S, w0, n_components, verbose=kwargs.get("verbose", False))
+
     return port_w
+
+
+def get_eigen_decomposition(cov, shrinkage=None):
+    """
+
+    :param cov:
+    :param shrinkage:
+    :return: eigvals, eigvecs
+    """
+    if shrinkage is not None:
+        cov = shrunk_covariance(cov, shrinkage=shrinkage)
+    eigvals, eigvecs = np.linalg.eig(cov)
+    order_ = np.argsort(eigvals)[::-1]
+    eigvals = eigvals[order_]
+    eigvecs = eigvecs[:, order_]
+
+    return eigvals, eigvecs
+
+
+def get_neg_entropy_from_weights(w, cov, shrinkage=None):
+    """
+    cf: Lohre et al 2014, https://papers.ssrn.com/sol3/papers.cfm?abstract_id
+    =1974446
+
+    """
+    eigvals, eigvecs = get_eigen_decomposition(cov, shrinkage=shrinkage)
+    eigvals = eigvals.reshape(-1, 1)
+    w_tilde = np.dot(eigvecs.T, w)
+    var_i = w_tilde ** 2 * eigvals
+    p = var_i / var_i.sum()
+    N_Ent = np.exp(-np.sum(p * np.log(p)))
+
+    return -N_Ent
+
+
+def effective_bets(w, cov, t):
+    """
+    https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2276632
+
+    :param w: Portfolio weights
+    :param cov: Covariance matrix
+    :param t: decorrelation matrix
+    :return:
+    """
+    cov = np.asmatrix(cov)
+    w = np.asmatrix(w)
+    p = np.asmatrix(
+        np.asarray(np.linalg.inv(t.T) * w.T) * np.asarray(t * cov * w.T)
+    ) / (w * cov * w.T)
+    enb = np.exp(- p.T * np.log(p))
+    return p, enb
+
+
+def get_drp_weights(S: pd.DataFrame(), w0, n_components=None, shrinkage=None,
+                    verbose=False):
+    """
+    Lohre et al 2014, Diversified Risk Parity weights with long-only and
+    full investment constraints.
+    cf: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1974446
+
+    """
+    n_assets = S.shape[0]
+
+    # Full investment constraints
+    cons = [
+        {"type": "eq", "fun": lambda x: np.array([1 - np.sum(x)])}
+    ]
+    # Long only contraints
+    bnds = tuple((0 * x - 0.0, 0 * x + 1.0) for x in range(n_assets))
+
+    if n_components is not None:
+        # Keep only eigenvectors with largest eigenvalues
+        eigvals, eigvecs = get_eigen_decomposition(S.values,
+                                                   shrinkage=shrinkage)
+        to_drop = eigvecs[:, n_components:]
+
+        # Add constraints that cancel exposure to small eigenvectors
+        for i in range(to_drop.shape[-1]):
+            cons.append(
+                {
+                    "type": "eq",
+                    "fun": lambda x: np.array([np.sum(x * to_drop[:, i])])
+                }
+            )
+
+    res = minimize(get_neg_entropy_from_weights, w0, args=(S.values,
+                                                           shrinkage),
+                   bounds=bnds,
+                   constraints=cons, options={"disp": verbose})
+    weights = pd.Series(res.x, index=S.index)
+
+    return weights
+
+
+def get_principal_port(S: pd.DataFrame(), x0, n_components,
+                       verbose=False):
+    assets = S.columns
+    n_assets = len(assets)
+    eigvals, eigvecs = get_eigen_decomposition(S.values)
+
+    # Get G
+    G = np.diag(np.sqrt(eigvals)) * np.linalg.inv(eigvecs)
+    G = np.asmatrix(G)
+
+    # Create constraints
+    # Equality constraints
+    eigen_const = np.concatenate([
+        np.asarray(eigvecs[:, n_components:]),
+        np.zeros(n_assets - n_components).reshape(1, -1)
+    ]).T.tolist()
+    eqParameters = [tuple(c) for c in eigen_const]
+    # Budget constraint
+    eqParameters += [tuple([1] * n_assets + [-1])]
+
+    # Inequality constraints: long-only and no leverage
+    ineqParameters = [tuple([1 if i == c else 0 for i in range(n_assets + 1)])
+                      for c in range(n_assets)]
+    max_1 = [[- 1 if i == c else 0 for i in range(n_assets + 1)] for c in
+             range(n_assets)]
+    for c in max_1:
+        c[-1] = 1
+    max_1 = [tuple(c) for c in max_1]
+    ineqParameters += max_1
+
+    conParaDict = {'ineq': ineqParameters, 'eq': eqParameters}
+
+    def neg_entropy(x):
+        v_ = np.dot(G, x)
+        p = np.multiply(v_, v_)
+        R_2 = p / np.sum(p)
+        R_2[R_2 < 1e-10] = 1e-10  # Remove small values
+        MinusEnt = - R_2.T * np.log(R_2)
+        MinusEnt = - np.exp(np.asarray(MinusEnt)[0][0])
+
+        return float(MinusEnt)
+
+    res = fmin_ALM(neg_entropy, x0, test_principal_port,
+                   eqConNum=len(eqParameters),
+                   ineqConNum=len(ineqParameters),
+                   funArgs=(), conArgs=(conParaDict,),
+                   multiplierRange=(0.1, 1.),
+                   gtol=1e-3, sigma=3., beta=0.9, alpha=1.3,
+                   norm=2, epsilon=_epsilon, maxiter=1000, full_output=1,
+                   disp=int(verbose), retall=1, callback=None)
+    weights = res[0]
+    weights[weights <= 0] = 0
+    weights = weights / np.sum(weights)
+    weights = pd.Series(weights, index=assets)
+    return weights
 
 
 def get_cluster_var(cov, cluster_items, weights=None):

@@ -42,6 +42,8 @@ PORTFOLIOS = [
     "sector_erc",
     "aerp",
     "aeerc",
+    "drp",
+    "principal",
     "ae_rp_c",
     "aeaa",
     "kmaa",
@@ -229,6 +231,7 @@ if __name__ == "__main__":
             ae_config=config,
             excess_ret=config.excess_ret,
             reorder_features=CLUSTER_NAMES is not None,
+            verbose=True,
         )
     LOGGER.info("Done.")
 
