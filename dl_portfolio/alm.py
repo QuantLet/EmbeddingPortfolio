@@ -15,6 +15,8 @@ import numpy as np
 from scipy.optimize import fmin_bfgs
 
 # some global constants
+from dl_portfolio.logger import LOGGER
+
 _epsilon = np.sqrt(np.finfo(float).eps)  # the float number accuracy
 # standard status messages of optimizers
 _status_message = {
@@ -99,7 +101,7 @@ def vecnorm(x, order=2):
         else:
             return np.sum(np.abs(x) ** order, axis=0) ** (1.0 / order)
     else:
-        print("x is not a numpy ndarray!")
+        LOGGER.error("x is not a numpy ndarray!")
         exit(-1)
 
 
@@ -149,8 +151,9 @@ def ALMfunc(x, objFun, conFuns, w, v, sigma):
     """
     ineqConFuns, eqConFuns = conFuns(x)
     if (len(ineqConFuns) != len(w)) or (len(eqConFuns) != len(v)):
-        print(
-            "The multiplier number is not equal to that of the corresponding constraints!"
+        LOGGER.error(
+            "The multiplier number is not equal to that of the corresponding "
+            "constraints!"
         )
         exit(-1)
     sumValue1 = np.sum(
@@ -396,12 +399,12 @@ def _fmin_ALM(
         try:
             res = fmin_bfgs(ALfun, xk_1, fprime=None, args=(), **opts)
             if disp:
-                print(
+                LOGGER.info(
                     "The status of the %i-th unconstrained optimization: %s"
                     % (k, res[6])
                 )
             if res[6] in [2, 3]:
-                print(f"Stop evaluation: warningflag is {res[6]}.")
+                LOGGER.warning(f"Stop evaluation: warningflag is {res[6]}.")
                 break
         except _UnconstrainedOptimizationError:
             warnflag = 2
@@ -416,15 +419,17 @@ def _fmin_ALM(
         # step 3:
         # check whether the global tolerance is satisfied.
         if gnorm < gtol:
-            print(
-                """The equality constraint norm evaluated at x[%i] is less than the global tolerance!"""
+            LOGGER.info(
+                """The equality constraint norm evaluated at x[%i] is less than
+                  the global tolerance!"""
                 % k
             )
             break
         # check the objective value
         if not np.isfinite(fval):
-            print(
-                """The function value evaluated at x[%i] is infinite! Something may go wrong!"""
+            LOGGER.warning(
+                """The function value evaluated at x[%i] is infinite! 
+                Something may go wrong!"""
                 % k
             )
             warnflag = 2
@@ -450,29 +455,16 @@ def _fmin_ALM(
 
     if warnflag == 2:
         msg = _status_message["pr_loss"]
-        if disp:
-            print("Warning: " + msg)
-            print("         Current function value: %f" % fval)
-            print("         Iterations: %d" % k)
-            print("         Function evaluations: %d" % func_calls[0])
-            print("         Constraint evaluations: %d" % conFunc_calls[0])
     elif k >= maxiter:
         warnflag = 1
         msg = _status_message["maxiter"]
-        if disp:
-            print("Warning: " + msg)
-            print("         Current function value: %f" % fval)
-            print("         Iterations: %d" % k)
-            print("         Function evaluations: %d" % func_calls[0])
-            print("         Constraint evaluations: %d" % conFunc_calls[0])
     else:
         msg = _status_message["success"]
-        if disp:
-            print("Warning: " + msg)
-            print("         Current function value: %f" % fval)
-            print("         Iterations: %d" % k)
-            print("         Function evaluations: %d" % func_calls[0])
-            print("         Constraint evaluations: %d" % conFunc_calls[0])
+    if disp:
+        LOGGER.warning(f"""Warning: {msg}\nCurrent function value: {fval}
+                       \nIterations: {k}
+                       \nFunction evaluations: {func_calls[0]}
+                       \nConstraint evaluations: {conFunc_calls[0]}""")
 
     result = OptimizeResult(
         fun=fval,
@@ -572,9 +564,9 @@ def testConFun(x, parameters):
                     paraTuple[0] * x[0] + paraTuple[1] * x[1] + paraTuple[2]
                 )
         else:
-            print(
-                "The parameter dictionary of the constraints does not contain \
-            the key '%s'!"
+            LOGGER.error(
+                "The parameter dictionary of the constraints does not "
+                "contain  the key '%s'!"
                 % keyStr
             )
             exit(-1)
