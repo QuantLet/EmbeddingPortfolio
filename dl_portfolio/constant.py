@@ -43,7 +43,8 @@ PORTFOLIOS = [
     "hrp",
     "hcaa",
     "drp",
-    "principal"
+    "principal",
+    "rb_factor",
 ]
 
 BASE_FACTOR_ORDER_DATASET1_4 = ["GE_B", "SPX_X", "EUR_FX", "BTC"]

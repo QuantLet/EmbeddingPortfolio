@@ -3,7 +3,7 @@ import tensorflow.keras.backend as K
 from typing import Optional, Dict
 from tensorflow.keras.regularizers import Regularizer
 
-
+# TODO: replace with keras.regularizers.OrthogonalRegularizer
 class WeightsOrthogonality(Regularizer):
     def __init__(
         self,

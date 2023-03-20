@@ -117,6 +117,10 @@ def portfolio_weights(
                                           'optimal_num_clusters'),
                                       risk_measure='equal_weighting')
 
+    if "rb_factor" in portfolio:
+        LOGGER.info('Computing RB factor weights...')
+        port_w['rb_factor'] = get_rb_factor_weights(returns, loading)
+
     if "drp" in portfolio:
         LOGGER.info('Computing DRP weights...')
         w0 = np.ones(n_assets) / n_assets
@@ -412,6 +416,72 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
     return weights
 
 
+def rb_perfect_corr(
+        returns,
+        budget,
+        corr
+):
+    """
+    cf (4) and (5) in Bruder, B., & Roncalli, T. (2012). Managing risk
+    exposures using the risk budgeting approach. Available at SSRN 2009778.
+
+    :param returns:
+    :param budget:
+    :param corr: 0 ou 1
+    :return:
+    """
+    assert budget.shape[-1] == returns.shape[-1]
+    sigmas = np.std(returns, axis=0)
+    assert sigmas.shape == budget.shape
+
+    if corr == 0:
+        budget = np.sqrt(budget)
+    else:
+        assert corr == 1
+
+    weights = budget / np.std(returns, axis=0)
+    weights /= np.sum(weights)
+
+    return weights
+
+
+def get_rb_factor_weights(returns, loading, threshold=1e-2):
+    """
+    Compute inner weights with rb_perfect_corr and apply inverse volatility
+    at the factor level
+    :param returns:
+    :param loading:
+    :param threshold:
+    :return:
+    """
+    assets = returns.columns.tolist()
+    n_components = loading.shape[-1]
+    cluster_ind = loading[
+        loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
+    assert len(cluster_ind.unique()) == n_components
+
+    inner_weights = pd.DataFrame(0, columns=loading.columns, index=assets)
+    for i in range(n_components):
+        c_assets = cluster_ind[cluster_ind == i].index
+        budget = loading.loc[c_assets, i].copy()
+        budget = budget / np.linalg.norm(budget)
+        budget = budget**2 # Must sum to 1, also is interpretable as
+        # explained variance
+        inner_weights.loc[c_assets, i] = rb_perfect_corr(returns[c_assets],
+                                                         budget, corr=1)
+
+    cluster_sigmas = np.array(
+        [np.std(np.dot(returns, inner_weights.values[:, i])) for i in
+         range(inner_weights.shape[-1])]
+    )
+    cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
+
+    weights = inner_weights * cluster_weights
+    weights = weights.sum(axis=1)
+
+    return weights
+
+
 def ae_riskparity_weights(
     returns,
     embedding,
@@ -511,7 +581,7 @@ def kmaa_weights(returns: pd.DataFrame, n_clusters: int) -> pd.Series:
     weights = pd.Series(dtype="float32")
     for c in cluster_weights:
         weights = pd.concat([weights, cluster_weights[c]])
-    weights = weights / n_clusters  # Rescale each weight
+    weights = weights / n_clusters  # Rescale each weightq
     weights = weights.reindex(returns.columns)  # rerorder
     weights.fillna(0.0, inplace=True)
 
