@@ -304,11 +304,11 @@ def load_result(
         model = pickle.load(open(f"{base_dir}/{cv}/model.p", "rb"))
         embedding = model.encoding.copy()
         embedding = pd.DataFrame(embedding, index=assets)
-        decoding = model.components.copy()
+        decoding = model.decoding.copy()
         decoding = pd.DataFrame(decoding, index=assets)
     elif model_type == "semi_nmf":
         model = pickle.load(open(f"{base_dir}/{cv}/model.p", "rb"))
-        decoding = model.components.copy()
+        decoding = model.G.copy()
         decoding = pd.DataFrame(decoding, index=assets)
         embedding = decoding.copy()
     else:

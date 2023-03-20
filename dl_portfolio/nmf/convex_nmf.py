@@ -16,13 +16,14 @@ class ConvexNMF(SemiNMF):
     def __init__(
         self,
         n_components,
-        G=None,
         max_iter=200,
         tol=1e-6,
         random_state=None,
         verbose=0,
         loss="mse",
         shuffle=False,
+        norm_W: Optional[str] = None,
+        norm_G: Optional[str] = None,
     ):
         super(ConvexNMF, self).__init__(
             n_components,
@@ -32,9 +33,12 @@ class ConvexNMF(SemiNMF):
             verbose=verbose,
             loss=loss,
             shuffle=shuffle,
+            norm=norm_G
         )
-        self.G = G
+        self.norm_W = norm_W
         self.encoding = None
+        self.decoding = None
+        self.W = None
 
     def fit(self, X, verbose: Optional[int] = None):
         X = X.astype(np.float32)
@@ -83,14 +87,15 @@ class ConvexNMF(SemiNMF):
                     break
                 previous_error = error
 
-        self.components = G
+        self.G = G
+        self.W = W
+        self.decoding = G
         self.encoding = W
         self._is_fitted = True
 
     def transform(self, X):
         assert self._is_fitted, "You must fit the model first"
-        W = self.encoding.copy()
-        F = X.dot(W)
+        F = X.dot(self.W)
         return F
 
     def _initilize_g_w(self, X, G=None):
@@ -106,8 +111,7 @@ class ConvexNMF(SemiNMF):
 
         return G, W
 
-    @staticmethod
-    def _update_w(X, W, G):
+    def _update_w(self, X, W, G):
         X_TX_plus = positive_matrix(X.T.dot(X))
         X_TX_minus = negative_matrix(X.T.dot(X))
 
@@ -116,4 +120,14 @@ class ConvexNMF(SemiNMF):
 
         assert (denominator != 0).all(), "Division by 0"
 
-        return W * np.sqrt(numerator / denominator)
+        W = W * np.sqrt(numerator / denominator)
+        if self.norm_W is not None:
+            if self.norm_W == "l1":
+                D_norm = np.diag(np.linalg.norm(W, ord=1, axis=0))
+            elif self.norm_W == "l2":
+                D_norm = np.diag(np.linalg.norm(W, ord=2, axis=0))
+            else:
+                raise NotImplementedError(self.norm_W)
+            W = np.dot(W, np.linalg.inv(D_norm))
+
+        return W

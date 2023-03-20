@@ -624,6 +624,8 @@ def run_nmf(
                 n_components=config.encoding_dim,
                 random_state=seed,
                 verbose=verbose,
+                norm_G=config.norm_G,
+                norm_W=config.norm_W,
             )
         elif config.model_type == "semi_nmf":
             raise NotImplementedError("You must verify the logic here")
@@ -632,12 +634,12 @@ def run_nmf(
                 n_components=config.encoding_dim,
                 random_state=seed,
                 verbose=verbose,
+                norm=config.norm,
             )
         else:
             raise NotImplementedError(config.model_type)
 
         nmf.fit(train_data)
-        encoder_weights = pd.DataFrame(nmf.components, index=assets)
         mse[cv] = {
             "train": nmf.evaluate(train_data),
             "test": nmf.evaluate(val_data)
@@ -648,7 +650,6 @@ def run_nmf(
         if config.save:
             LOGGER.debug(f"Saving result at cv {cv} at {save_path} ...")
             nmf.save(f"{save_path}/model.p")
-            encoder_weights.to_pickle(f"{save_path}/encoder_weights.p")
             if scaler:
                 config.scaler_func["attributes"] = scaler.__dict__
                 pickle.dump(

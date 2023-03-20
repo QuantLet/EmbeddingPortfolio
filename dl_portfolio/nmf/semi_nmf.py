@@ -27,6 +27,7 @@ class SemiNMF(BaseEstimator):
         verbose=0,
         loss="mse",
         shuffle=False,
+        norm: str = None,
     ):
         self.n_components = n_components
         self.tol = tol
@@ -35,8 +36,10 @@ class SemiNMF(BaseEstimator):
         self.verbose = verbose
         self.shuffle = shuffle
         self._is_fitted = False
-        self.components = None
         self.loss = loss
+        self.norm = norm
+        self.F = None
+        self.G = None
 
     def _check_params(self, X):
         # n_components
@@ -116,18 +119,18 @@ class SemiNMF(BaseEstimator):
                     break
                 previous_error = error
 
-        self.components = G
+        self.F = F
+        self.G = G
         self._is_fitted = True
 
     def transform(self, X):
         assert self._is_fitted, "You must fit the model first"
-        G = self.components.copy()
-        F = X.dot(G.dot(np.linalg.inv(G.T.dot(G))))
+        F = X.dot(self.G.dot(np.linalg.inv(self.G.T.dot(self.G))))
         return F
 
     def inverse_transform(self, F):
         assert self._is_fitted, "You must fit the model first"
-        return np.dot(F, self.components.T)
+        return np.dot(F, self.G.T)
 
     def _initilize_g(self, X):
         d = X.shape[-1]
@@ -145,7 +148,7 @@ class SemiNMF(BaseEstimator):
 
     def evaluate(self, X):
         F = self.transform(X)
-        return reconstruction_error(X, F, self.components, loss=self.loss)
+        return reconstruction_error(X, F, self.G, loss=self.loss)
 
     def save(self, path):
         assert self._is_fitted, "Fit the model before dumping it"
@@ -155,12 +158,7 @@ class SemiNMF(BaseEstimator):
         ], f"Extension must be 'p' or 'pkl', not: {path.split('.')[-1]}"
         pickle.dump(self, open(path, "wb"))
 
-    @staticmethod
-    def _update_f(X, G):
-        return X.dot(G.dot(np.linalg.inv(G.T.dot(G))))
-
-    @staticmethod
-    def _update_g(X, G, F):
+    def _update_g(self, X, G, F):
         F_TF_minus = negative_matrix(F.T.dot(F))
         F_TF_plus = positive_matrix(F.T.dot(F))
 
@@ -170,10 +168,21 @@ class SemiNMF(BaseEstimator):
         numerator = X_TF_plus + G.dot(F_TF_minus)
         denominator = X_TF_minus + G.dot(F_TF_plus)
 
-        # TODO: Handle denominator has 0
         denominator += EPSILON
         assert (denominator != 0).all(), "Division by 0"
-        # if not (denominator != 0).all():
-        #     denominator[:,:] = np.nan
 
-        return G * np.sqrt(numerator / denominator)
+        G = G * np.sqrt(numerator / denominator)
+        if self.norm is not None:
+            if self.norm == "l1":
+                D_norm = np.diag(np.linalg.norm(G, ord=1, axis=0))
+            elif self.norm == "l2":
+                D_norm = np.diag(np.linalg.norm(G, ord=2, axis=0))
+            else:
+                raise NotImplementedError(self.norm)
+            G = np.dot(G, np.linalg.inv(D_norm))
+
+        return G
+
+    @staticmethod
+    def _update_f(X, G):
+        return X.dot(G.dot(np.linalg.inv(G.T.dot(G))))

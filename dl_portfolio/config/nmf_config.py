@@ -8,6 +8,8 @@ seed = None
 
 # Model
 encoding_dim = 4
+norm_G = "l2"
+norm_W = None
 
 # Data
 dataset = "dataset1"
@@ -26,12 +28,12 @@ model_name = model_name.replace(".", "d")
 
 
 val_start = pd.date_range(
-    "2018-12-01", "2019-10-01", freq="1MS"
-) + dt.timedelta(days=12)
+    "2017-06-01", "2019-11-01", freq="1MS"
+) + dt.timedelta(days=11)
 val_start = [str(d.date()) for d in val_start]
 
-val_end = pd.date_range("2019-01-01", "2019-11-01", freq="1MS") + dt.timedelta(
-    days=11
+val_end = pd.date_range("2017-07-01", "2019-12-01", freq="1MS") + dt.timedelta(
+    days=10
 )
 val_end = [str(d.date()) for d in val_end]
 
