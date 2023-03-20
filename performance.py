@@ -43,6 +43,7 @@ PORTFOLIOS = [
     "aerp",
     "aeerc",
     "drp",
+    "rb_factor",
     "principal",
     "ae_rp_c",
     "aeaa",
