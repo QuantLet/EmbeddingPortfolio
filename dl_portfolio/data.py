@@ -12,7 +12,8 @@ DATASETS = ["dataset1", "dataset2"]
 def load_data(dataset):
     assert dataset in DATASETS, dataset
     if dataset == "dataset1":
-        data, assets = load_dataset1()
+        # data, assets = load_dataset1()
+        data, assets = load_dataset1_new()
     elif dataset == "dataset2":
         data, assets = load_dataset2()
     else:
@@ -24,18 +25,31 @@ def load_data(dataset):
 
 
 def load_dataset1():
-    data = pd.read_csv("data/dataset1/dataset1.csv", index_col=0)
-    data.index = pd.to_datetime(data.index)
+    data = pd.read_csv("data/dataset1/dataset1.csv", index_col=0,
+                       parse_dates=True)
     data = data.astype(np.float32)
     return data, list(data.columns)
 
 
+def load_dataset1_new():
+    data = pd.read_csv("data/dataset1/dataset1_new.csv", index_col=0,
+                       parse_dates=True)
+    data = data.interpolate(method="polynomial", order=2)
+    data = data.astype(np.float32)
+
+    # There are NaNs at the beginning or end... drop them
+    data.dropna(inplace=True)
+    return data, list(data.columns)
+
+
 def load_dataset2():
-    data = pd.read_csv("data/dataset2/dataset2.csv", index_col=0)
-    data.index = pd.to_datetime(data.index)
+    data = pd.read_csv("data/dataset2/dataset2.csv", index_col=0,
+                       parse_dates=True)
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float32)
     assets = list(data.columns)
+
+    assert not data.isna().any().any()
 
     return data, assets
 
@@ -64,7 +78,7 @@ def load_bill_rates():
     Source: https://home.treasury.gov
     :return:
     """
-    ann_monthly_rate = pd.read_csv("data/bill-rates-2002-2021.CSV",
+    ann_monthly_rate = pd.read_csv("bill-rates-2002-2023.csv",
                                    index_col=0, parse_dates=True)
     ann_monthly_rate = ann_monthly_rate.sort_index()
     ann_monthly_rate = ann_monthly_rate[["4 WEEKS BANK DISCOUNT"]] / 100
