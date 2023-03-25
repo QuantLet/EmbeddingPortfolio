@@ -42,10 +42,14 @@ def backtest_stats(
     :param format:
     :return:
     """
-    bench_names = ["SP500", "Russel2000", "EuroStoxx50"]
-    benchmark, _ = load_data(dataset="dataset2")
+    benchmark = pd.read_csv("data/benchmarks.csv", index_col=0,
+                             parse_dates=True)
+    bench_names = list(benchmark.columns)
     benchmark = benchmark.pct_change().dropna()
-    benchmark = benchmark.loc[perf.index, bench_names]
+    benchmark = benchmark.reindex(perf.index)
+    benchmark = benchmark.interpolate(method="polynomial", order=2)
+    benchmark = benchmark.astype(np.float32)
+
     if volatility_target:
         benchmark = benchmark * volatility_target / (benchmark.std() *
                                                      np.sqrt(252))
@@ -540,7 +544,7 @@ def get_portfolio_perf_wrapper(
                 )
                 port_perf = returns * np.nan
         # Volatility target weights
-        if volatility_target:
+        if volatility_target is not None:
             if portfolio == "equal":
                 train_port_perf = portfolio_return(
                     train_returns, weights=1 / N
@@ -669,11 +673,19 @@ def cv_portfolio_perf_df(
             train_w = {p: weights[p].iloc[0, :] for p in weights}
 
         risk_free = load_risk_free()
-        risk_free = risk_free.reindex(cv_portfolio[cv]["returns"].index)
         risk_free = impute_missing_risk_free(risk_free)
-        if risk_free.isna().any().any():
-            assert not risk_free.isna().any()
+        last_value = risk_free.values[-1, 0]
 
+        if risk_free.isna().any().any():
+            risk_free.fillna(method="ffill", inplace=True)
+            assert not risk_free.isna().any().any()
+        risk_free = risk_free.reindex(cv_portfolio[cv]["returns"].index)
+        if risk_free.isna().any().any():
+            if np.isnan(risk_free.values[0, 0]):
+                risk_free.iloc[0, 0] = last_value
+            risk_free.fillna(method="ffill", inplace=True)
+
+        assert not risk_free.isna().any().any()
         one_cv_perf, one_cv_leverage = get_portfolio_perf_wrapper(
             cv_portfolio[cv]["train_returns"],
             cv_portfolio[cv]["returns"],
@@ -681,7 +693,7 @@ def cv_portfolio_perf_df(
             portfolios,
             train_weights=train_w,
             prev_weights=prev_weights,
-            risk_free=risk_free["risk_free"],
+            risk_free=None,#risk_free["risk_free"],
             **kwargs,
         )
 
