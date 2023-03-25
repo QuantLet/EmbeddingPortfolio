@@ -16,6 +16,8 @@ from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.constant import PORTFOLIOS
 from prado.hrp import correlDist, getQuasiDiag, getRecBipart
+
+import scipy
 import scipy.cluster.hierarchy as sch
 from scipy.optimize import minimize
 
@@ -104,7 +106,7 @@ def portfolio_weights(
 
     if "aeaa" in portfolio:
         LOGGER.info("Computing AE Asset Allocation weights...")
-        port_w["aeaa"] = aeaa_weights(returns, embedding)
+        port_w["aeaa"] = aeaa_weights(returns, loading)
 
     if "hrp" in portfolio:
         port_w["hrp"] = getHRP(cov=S.values, corr=returns.corr().values,
@@ -120,6 +122,10 @@ def portfolio_weights(
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
         port_w['rb_factor'] = get_rb_factor_weights(returns, loading)
+
+    if "rb_factor_full_erc" in portfolio:
+        LOGGER.info('Computing RB factor weights...')
+        port_w['rb_factor_full_erc'] = get_full_rb_factor_weights(returns, loading)
 
     if "drp" in portfolio:
         LOGGER.info('Computing DRP weights...')
@@ -176,6 +182,30 @@ def get_neg_entropy_from_weights(w, cov, shrinkage=None):
     N_Ent = np.exp(-np.sum(p * np.log(p)))
 
     return -N_Ent
+
+
+def get_factor_rc(w, Sigma, A):
+    """
+    Roncalli, T., & Weisang, G. (2016). Risk parity portfolios with risk
+    factors. Quantitative Finance, 16(3), 377-388.
+
+    :param w: portfolio weights
+    :param Sigma: returns covariance matrix
+    :param A: Factor loadings
+    :return:
+    """
+    B = A.T
+    # B_inv = np.linalg.pinv(B)
+    A_inv = np.linalg.pinv(A)
+    B_tilde = scipy.linalg.null_space(B).T
+
+    volatility = np.sqrt(np.dot(w.T, np.dot(Sigma, w)))
+    RC_z = np.dot(A.T, w) * np.dot(A_inv, np.dot(Sigma, w)) / volatility
+    RC_z_e = np.dot(B_tilde, w) * np.dot(B_tilde, np.dot(Sigma,
+                                                         w)) / volatility
+    RC_z_all = np.concatenate([RC_z, RC_z_e])
+
+    return RC_z_all
 
 
 def effective_bets(w, cov, t):
@@ -417,7 +447,7 @@ def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
 
 
 def rb_perfect_corr(
-        returns,
+        sigmas,
         budget,
         corr
 ):
@@ -425,13 +455,11 @@ def rb_perfect_corr(
     cf (4) and (5) in Bruder, B., & Roncalli, T. (2012). Managing risk
     exposures using the risk budgeting approach. Available at SSRN 2009778.
 
-    :param returns:
+    :param sigmas:
     :param budget:
     :param corr: 0 ou 1
     :return:
     """
-    assert budget.shape[-1] == returns.shape[-1]
-    sigmas = np.std(returns, axis=0)
     assert sigmas.shape == budget.shape
 
     if corr == 0:
@@ -439,13 +467,48 @@ def rb_perfect_corr(
     else:
         assert corr == 1
 
-    weights = budget / np.std(returns, axis=0)
+    weights = budget / sigmas
     weights /= np.sum(weights)
 
     return weights
 
 
-def get_rb_factor_weights(returns, loading, threshold=1e-2):
+def get_full_rb_factor_weights(returns, loading, threshold=1e-2):
+    """
+    Compute inner weights with rb_perfect_corr and apply inverse volatility
+    at the factor level
+    :param returns:
+    :param loading:
+    :param threshold:
+    :return:
+    """
+    assets = returns.columns.tolist()
+    n_components = loading.shape[-1]
+    cluster_ind = loading[
+        loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
+    assert len(cluster_ind.unique()) == n_components
+    budget = loading ** 2
+
+    inner_weights = pd.DataFrame(0, columns=loading.columns, index=assets)
+    for i in range(n_components):
+        inner_weights.loc[:, i] = rb_perfect_corr(
+            np.std(returns, axis=0), budget.iloc[:, i], corr=1)
+
+    factor_returns = np.array(
+        [np.dot(returns, inner_weights.values[:, i]) for i in range(
+            n_components)])
+    cluster_weights = rp.RiskParityPortfolio(
+        covariance=np.cov(factor_returns),
+        budget=np.ones(n_components)/n_components
+    ).weights
+
+    weights = inner_weights * cluster_weights
+    weights = weights.sum(axis=1)
+
+    return weights
+
+
+def get_rb_factor_weights(returns, loading, threshold=1e-2, erc_factor=False):
     """
     Compute inner weights with rb_perfect_corr and apply inverse volatility
     at the factor level
@@ -467,14 +530,21 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2):
         budget = budget / np.linalg.norm(budget)
         budget = budget**2 # Must sum to 1, also is interpretable as
         # explained variance
-        inner_weights.loc[c_assets, i] = rb_perfect_corr(returns[c_assets],
-                                                         budget, corr=1)
+        inner_weights.loc[c_assets, i] = rb_perfect_corr(
+            np.std(returns[c_assets], axis=0), budget, corr=1)
 
-    cluster_sigmas = np.array(
-        [np.std(np.dot(returns, inner_weights.values[:, i])) for i in
-         range(inner_weights.shape[-1])]
-    )
-    cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
+    factor_returns = np.array(
+        [np.dot(returns, inner_weights.values[:, i]) for i in range(
+            n_components)])
+    if erc_factor:
+        cluster_weights = rp.RiskParityPortfolio(
+            covariance=np.cov(factor_returns),
+            budget=np.ones(n_components)/n_components
+        ).weights
+
+    else:
+        cluster_sigmas = np.sqrt(np.diag(np.cov(factor_returns)))
+        cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
 
     weights = inner_weights * cluster_weights
     weights = weights.sum(axis=1)

@@ -12,7 +12,7 @@ import prado.cla.CLA as CLA
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
 from dl_portfolio.utils import optimal_target_vol_test
-from dl_portfolio.weights import ae_riskparity_weights
+from dl_portfolio.weights import ae_riskparity_weights, get_rb_factor_weights
 from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
 from arch import arch_model
 
@@ -181,20 +181,21 @@ def create_art_market_budget(col_cluster_mapper):
 
 
 def getNMF(
-    train_data, n_components, market_budget, threshold, method="ae_rp_c"
+    train_data, n_components, market_budget, threshold, method="rb_factor"
 ):
     model = ConvexNMF(
         n_components=n_components,
         random_state=None,
+        norm_G="l2",
         verbose=0,
     )
     model.fit(train_data)
 
-    embedding = pd.DataFrame(model.encoding.copy())
-    loading = pd.DataFrame(model.components.copy())
+    embedding = pd.DataFrame(model.W)
+    loading = pd.DataFrame(model.G)
 
+    returns = pd.DataFrame(train_data)
     if method == "ae_rp_c":
-        returns = pd.DataFrame(train_data)
         weights = ae_riskparity_weights(
             returns,
             embedding,
@@ -203,6 +204,8 @@ def getNMF(
             risk_parity="cluster",
             threshold=threshold,
         )
+    elif method == "rb_factor":
+        weights = get_rb_factor_weights(returns, loading)
     else:
         raise NotImplementedError()
 

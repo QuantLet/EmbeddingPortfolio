@@ -78,7 +78,7 @@ def load_bill_rates():
     Source: https://home.treasury.gov
     :return:
     """
-    ann_monthly_rate = pd.read_csv("bill-rates-2002-2023.csv",
+    ann_monthly_rate = pd.read_csv("data/bill-rates-2002-2023.csv",
                                    index_col=0, parse_dates=True)
     ann_monthly_rate = ann_monthly_rate.sort_index()
     ann_monthly_rate = ann_monthly_rate[["4 WEEKS BANK DISCOUNT"]] / 100

@@ -36,6 +36,7 @@ class ConvexNMF(SemiNMF):
             norm=norm_G
         )
         self.norm_W = norm_W
+        self.norm_G = norm_G
         self.encoding = None
         self.decoding = None
         self.W = None

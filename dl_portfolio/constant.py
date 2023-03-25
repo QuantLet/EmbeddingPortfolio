@@ -45,6 +45,7 @@ PORTFOLIOS = [
     "drp",
     "principal",
     "rb_factor",
+    "rb_factor_full_erc"
 ]
 
 BASE_FACTOR_ORDER_DATASET1_4 = ["GE_B", "SPX_X", "EUR_FX", "BTC"]
