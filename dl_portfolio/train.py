@@ -224,7 +224,8 @@ def fit(
     best_weights = None
     stop_training = False
     for epoch in range(epochs):
-        LOGGER.info(f"Epochs to go: {epochs - epoch}")
+        if epoch % 10 == 0:
+            LOGGER.info(f"Epochs to go: {epochs - epoch}")
         if shuffle:
             LOGGER.debug(f"Shuffling data at epoch {epoch}")
             train_dataset, val_dataset = create_dataset(

@@ -9,7 +9,7 @@ seed = None
 # Model
 encoding_dim = None
 p_range = list(range(2, 16))
-n_exp = 1000
+n_exp = 100
 norm_G = "l2"
 norm_W = None
 

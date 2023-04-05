@@ -1,4 +1,5 @@
 import json
+import time
 
 import tensorflow as tf
 import numpy as np
@@ -89,7 +90,9 @@ def run_ae(
         scaler_params = {}
 
     for cv in config.data_specs:
-        LOGGER.debug(f"Starting with cv: {cv}")
+        LOGGER.info(f"Starting with cv: {cv}, to go: "
+                    f"{len(config.data_specs) - cv}")
+        t1 = time.time()
         if config.save:
             save_path = f"{save_dir}/{cv}"
             os.mkdir(f"{save_dir}/{cv}")
@@ -109,7 +112,7 @@ def run_ae(
                 n_exp = config.n_exp
                 if n_exp is None:
                     n_exp = 1000
-                encoding_dim = get_optimal_p_silhouette(
+                encoding_dim, bb_criteria = get_optimal_p_silhouette(
                     train_data, p_range=p_range, n_exp=n_exp,
                     savepath=f"{save_path}/decision_curve.png",
                     show=config.show_plot,
@@ -410,17 +413,17 @@ def run_ae(
                     vmin=vmin,
                 )
 
-        LOGGER.debug(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
-        LOGGER.debug(
+        LOGGER.info(f"Unit norm constraint:\n{(encoder_weights ** 2).sum(0)}")
+        LOGGER.info(
             "Orthogonality constraint:\n"
             f"{np.dot(encoder_weights.T, encoder_weights)}"
         )
         if decoder_weights is not None:
-            LOGGER.debug(
+            LOGGER.info(
                 "Unit norm constraint (decoder):\n"
                 f"{(decoder_weights ** 2).sum(0)}"
             )
-            LOGGER.debug(
+            LOGGER.info(
                 f"Orthogonality constraint (decoder)"
                 f"\n{np.dot(decoder_weights.T, encoder_weights)}"
             )
@@ -460,6 +463,11 @@ def run_ae(
                 plt.plot(val_features[c], label="true")
                 plt.title(c)
                 plt.show()
+
+        t2 = time.time()
+        LOGGER.info(f"Done with cv: {cv}, in {round((t2-t1)/60, 2)} mins, "
+                    f"to go: "
+                    f"{len(config.data_specs) - cv - 1}")
 
 
 def run_kmeans(config, data, assets, seed=None):
@@ -513,7 +521,7 @@ def run_kmeans(config, data, assets, seed=None):
             n_exp = config.n_exp
             if n_exp is None:
                 n_exp = 1000
-            n_components = get_optimal_p_silhouette(
+            n_components, bb_criteria = get_optimal_p_silhouette(
                 train_data, p_range=p_range, n_exp=n_exp,
                 savepath=f"{save_path}/decision_curve.png",
                 show=config.show_plot,
@@ -617,12 +625,18 @@ def run_nmf(
             n_exp = config.n_exp
             if n_exp is None:
                 n_exp = 1000
-            n_components = get_optimal_p_silhouette(
+            n_components, bb_criteria = get_optimal_p_silhouette(
                 train_data, p_range=p_range, n_exp=n_exp,
                 savepath=f"{save_path}/decision_curve.png",
                 show=config.show_plot,
             )
             LOGGER.info(f"Selected {n_components} factors!")
+            if config.save:
+                if scaler:
+                    pd.DataFrame(bb_criteria).to_csv(
+                        f"{save_path}/bb_criteria.csv", index=False
+                    )
+                LOGGER.debug("Done")
         else:
             n_components = config.encoding_dim
 

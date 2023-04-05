@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from joblib import Parallel, delayed
+from scipy.signal import argrelextrema
 from sklearn import metrics
 from sklearn.cluster import KMeans
 from typing import Dict, List
@@ -55,12 +56,30 @@ def cluster_selection_curve(
 
 
 def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
-                  show=False,  min_p=2):
+                  show=False,  min_p=2, method="extrema"):
     assert len(bb_criteria.shape) == 2
     mean_ = np.mean(bb_criteria, axis=1)
     lower_b = np.quantile(bb_criteria, alpha, axis=1)
     upper_b = np.quantile(bb_criteria, 1-alpha, axis=1)
-    best_p = np.argmax((np.roll(mean_, 1) >= lower_b)[1:]) + min_p
+    if method == "gap":
+        best_p = np.argmax((np.roll(mean_, 1) >= lower_b)[1:]) + min_p
+    elif method == "max":
+        best_p = np.argmax(mean_) + min_p
+    elif method == "extrema":
+        # Get all extrema
+        candidates = argrelextrema(mean_, np.greater, mode="wrap")[0].tolist()
+        # Now filter out candidates that do not improve by more than x %
+        # points from the first one
+        candidates = [candidates[0]] + np.array(candidates)[1:][
+            (mean_[candidates][1:] - mean_[candidates][:-1]) > 0.025].tolist()
+        # Now among candidates, compute the weighted mean with respect to
+        # the inverse variance
+        weighted_mean = mean_ / (upper_b - lower_b)
+        weighted_mean_cand = mean_ * 0.
+        weighted_mean_cand[candidates] = weighted_mean[candidates]
+        best_p = np.argmax(weighted_mean_cand) + min_p
+    else:
+        raise NotImplementedError(method)
 
     if plot or savepath is not None or show:
         plt.plot(mean_)
@@ -107,7 +126,7 @@ def get_optimal_p_silhouette(data: np.ndarray, p_range: List,
     min_p = min(p_range)
     best_p, _, _, _ = bb_silhouette(bb_criteria, min_p=min_p, **kwargs)
 
-    return best_p
+    return best_p, bb_criteria
 
 
 def get_optimal_p_gap(
