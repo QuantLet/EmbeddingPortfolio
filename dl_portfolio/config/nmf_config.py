@@ -3,7 +3,7 @@ import datetime as dt
 
 model_type = "convex_nmf"
 save = True
-show_plot = True
+show_plot = False
 seed = None
 
 # Model
