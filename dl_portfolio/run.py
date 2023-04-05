@@ -12,7 +12,7 @@ from shutil import copyfile
 from typing import Optional
 from sklearn.cluster import KMeans
 
-from dl_portfolio.cluster import get_optimal_n_clusters
+from dl_portfolio.cluster import get_optimal_p_silhouette
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
 from dl_portfolio.data import get_features
@@ -512,6 +512,9 @@ def run_kmeans(config, data, assets, seed=None):
             os.path.join(save_dir, "ae_config.py"),
         )
 
+    resample = config.resample
+    if resample is None:
+        resample = {"method": "nbb", "where": ["train"], "block_length": 60}
     for cv in config.data_specs:
         LOGGER.info(f"Starting with cv: {cv}")
         if config.save:
@@ -530,12 +533,19 @@ def run_kmeans(config, data, assets, seed=None):
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler="StandardScaler",
-            resample={"method": "nbb", "where": ["train"], "block_length": 60},
+            resample=resample,
             excess_ret=config.excess_ret,
         )
         if config.encoding_dim is None:
-            n_components, _ = get_optimal_n_clusters(
-                train_data, n_refs=100, cluster_array=range(3, 10)
+            p_range = config.p_range
+            assert p_range is not None
+            n_exp = config.n_exp
+            if n_exp is None:
+                n_exp = 1000
+            n_components = get_optimal_p_silhouette(
+                train_data, p_range=p_range, n_exp=n_exp,
+                savepath=f"{save_path}/decision_curve.png",
+                show=config.show_plot,
             )
         else:
             n_components = config.encoding_dim
@@ -607,6 +617,9 @@ def run_nmf(
         scaler_params = {}
 
     mse = {}
+    resample = config.resample
+    if resample is None:
+        resample = {"method": "nbb", "where": ["train"], "block_length": 60}
     for cv in config.data_specs:
         LOGGER.info(f"Starting with cv: {cv}")
         if config.save:
@@ -625,13 +638,20 @@ def run_nmf(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler_method,
-            resample={"method": "nbb", "where": ["train"], "block_length": 60},
+            resample=resample,
             excess_ret=config.excess_ret,
             **scaler_params,
         )
         if config.encoding_dim is None:
-            n_components, _ = get_optimal_n_clusters(
-                train_data, n_refs=10, cluster_array=range(3, 10)
+            p_range = config.p_range
+            assert p_range is not None
+            n_exp = config.n_exp
+            if n_exp is None:
+                n_exp = 1000
+            n_components = get_optimal_p_silhouette(
+                train_data, p_range=p_range, n_exp=n_exp,
+                savepath=f"{save_path}/decision_curve.png",
+                show=config.show_plot,
             )
             LOGGER.info(f"Selected {n_components} factors!")
         else:
@@ -677,7 +697,7 @@ def run_nmf(
             LOGGER.debug("Done")
 
         if config.show_plot:
-            heat_map(encoder_weights, show=config.show_plot)
+            heat_map(pd.DataFrame(nmf.G, index=assets), show=config.show_plot)
 
     if config.save:
         json.dump(mse, open(f"{save_dir}/evaluation.json", "w"))

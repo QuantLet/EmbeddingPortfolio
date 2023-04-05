@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 import numpy as np
+from joblib import Parallel, delayed
 from sklearn import metrics
 from sklearn.cluster import KMeans
 from typing import Dict, List
@@ -9,7 +10,11 @@ from fastcluster import linkage
 
 
 from gap_statistic import OptimalK
+import matplotlib.pyplot as plt
+from sklearn.metrics import euclidean_distances
+from sklearn.preprocessing import StandardScaler
 
+from dl_portfolio.data import bb_resample_sample
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
 
@@ -18,12 +23,94 @@ def convex_nmf_cluster(X, k):
     nmf = ConvexNMF(n_components=k, norm_G="l2")
     nmf.fit(X.T)
     centers = nmf.transform(X.T).T
-    labels = nmf.G.T.argmax(axis=0)
+    labels = np.argmax(nmf.G, axis=1)
 
     return centers, labels
 
 
-def get_optimal_n_clusters(
+def silhouette(X, k):
+    _, labels = convex_nmf_cluster(X.T, k)
+    return metrics.silhouette_score(euclidean_distances(X.T), labels)
+
+
+def cluster_selection_curve(
+    data: np.ndarray,
+    criterion: str = "silhouette",
+    p_range=list(range(1, 21)),
+    resample: bool = True,
+    block_length: int = 60,
+):
+    min_p = 1
+    assert min(p_range) >= min_p
+    if resample:
+        data, _ = bb_resample_sample(data, block_length=block_length)
+    scaler = StandardScaler()
+    X = scaler.fit_transform(data)
+    if criterion == "silhouette":
+        param_perf = [silhouette(X, k) for k in p_range]
+    else:
+        raise NotImplementedError(criterion)
+
+    return param_perf
+
+
+def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
+                  show=False,  min_p=2):
+    assert len(bb_criteria.shape) == 2
+    mean_ = np.mean(bb_criteria, axis=1)
+    lower_b = np.quantile(bb_criteria, alpha, axis=1)
+    upper_b = np.quantile(bb_criteria, 1-alpha, axis=1)
+    best_p = np.argmax((np.roll(mean_, 1) >= lower_b)[1:]) + min_p
+
+    if plot or savepath is not None or show:
+        plt.plot(mean_)
+        plt.fill_between(range(len(bb_criteria)), lower_b, upper_b,
+                         alpha=0.2, color="grey")
+        plt.xticks(range(len(bb_criteria)),
+                   range(min_p, len(bb_criteria) + 1))
+        plt.scatter(best_p - min_p, mean_[best_p - min_p], s=40, c="red")
+        if savepath:
+            plt.savefig(savepath, transparent=True, bbox_inches="tight")
+        if show:
+            plt.show()
+        plt.close()
+
+    return best_p, mean_, lower_b, upper_b
+
+
+def get_optimal_p_silhouette(data: np.ndarray, p_range: List,
+                             n_exp: int = 1000, n_jobs: int = os.cpu_count(),
+                             criterion: str = "silhouette",
+                             resample: bool = True, block_length: int = 60,
+                             **kwargs):
+    if n_jobs <= 1:
+        bb_criteria = []
+        for i in range(n_exp):
+            if i % 10 == 0:
+                LOGGER.info(f"Steps to go: {n_exp - i}")
+            criteria = cluster_selection_curve(
+                data, p_range=p_range, criterion=criterion,
+                resample=resample, block_length=block_length
+            )
+            bb_criteria.append(criteria)
+    else:
+        with Parallel(n_jobs=n_jobs) as _parallel_pool:
+            bb_criteria = _parallel_pool(
+                delayed(cluster_selection_curve)(
+                    data, p_range=p_range, criterion=criterion,
+                    resample=resample, block_length=block_length
+                )
+                for i in range(n_exp)
+            )
+
+    bb_criteria = np.array(bb_criteria).T
+    min_p = min(p_range)
+    best_p, _, _, _ = bb_silhouette(bb_criteria, min_p=min_p, **kwargs)
+
+    return best_p
+
+
+def get_optimal_p_gap(
     X, clusterer=None, n_refs=3, cluster_array=range(3, 10)
 ):
     """
