@@ -693,7 +693,7 @@ def cv_portfolio_perf_df(
             portfolios,
             train_weights=train_w,
             prev_weights=prev_weights,
-            risk_free=None,#risk_free["risk_free"],
+            risk_free=risk_free["risk_free"],
             **kwargs,
         )
 

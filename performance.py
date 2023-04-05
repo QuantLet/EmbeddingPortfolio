@@ -26,7 +26,10 @@ from dl_portfolio.cluster import (
     rand_score_permutation,
     assign_cluster_from_consmat,
 )
-from dl_portfolio.evaluate import average_prediction, average_prediction_cv
+from dl_portfolio.evaluate import (
+    average_prediction_cv,
+    load_prediction_cv,
+)
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import (
     BASE_FACTOR_ORDER_DATASET1_3,
@@ -213,6 +216,8 @@ if __name__ == "__main__":
     train_cov = {}
     test_cov = {}
     port_perf = {}
+
+    N_EXP = len(paths)
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
         if i == 0:
@@ -237,7 +242,6 @@ if __name__ == "__main__":
         )
     LOGGER.info("Done.")
 
-    K = cv_results[i][0]["loading"].shape[-1]
     CV_DATES = [
         str(cv_results[0][cv]["returns"].index[0].date())
         for cv in range(n_folds)
@@ -249,9 +253,14 @@ if __name__ == "__main__":
         # Model evaluation
         # Average prediction across runs for each cv
         LOGGER.info("Starting with evaluation...")
-        returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
-            cv_results, excess_ret=config.excess_ret
-        )
+        if N_EXP > 1:
+            returns, scaled_returns, pred, scaled_pred = average_prediction_cv(
+                cv_results, excess_ret=config.excess_ret
+            )
+        else:
+            returns, scaled_returns, pred, scaled_pred = load_prediction_cv(
+                cv_results, excess_ret=config.excess_ret
+            )
 
         LOGGER.info("Prediction metric")
         # Compute pred metric
@@ -279,10 +288,11 @@ if __name__ == "__main__":
         EVALUATION["model"]["cv_total_rmse"] = total_rmse
         EVALUATION["model"]["cv_total_r2"] = total_r2
 
-        # Average prediction across runs
-        returns, scaled_returns, pred, scaled_pred = average_prediction(
-            cv_results, excess_ret=config.excess_ret
-        )
+        # Now make one df
+        returns = pd.concat(returns.values())
+        scaled_returns = pd.concat(scaled_returns.values())
+        pred = pd.concat(pred.values())
+        scaled_pred = pd.concat(scaled_pred.values())
 
         # Compute pred metric
         scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
@@ -366,17 +376,20 @@ if __name__ == "__main__":
                 corr = cv_results[i][cv]["test_features"].corr().values
                 corr = corr[np.triu_indices(len(corr), k=1)]
                 cv_corr.append(corr)
-            cv_corr = np.array(cv_corr)
-            cv_corr = cv_corr.mean(0)
+            cv_corr = np.mean(cv_corr, axis=0).tolist()
             avg_cv_corr.append(cv_corr)
-        avg_cv_corr = np.array(avg_cv_corr)
-        avg_cv_corr = np.mean(avg_cv_corr, axis=1).tolist()
+        if config.encoding_dim is not None:
+            avg_cv_factor_corr = np.array(avg_cv_corr)
+            avg_cv_factor_corr = np.mean(avg_cv_factor_corr, axis=1).tolist()
+        else:
+            avg_cv_factor_corr = None
+        avg_cv_corr = np.array([np.mean(cv) for cv in avg_cv_corr]).tolist()
         EVALUATION["cluster"]["corr"] = {}
-        EVALUATION["cluster"]["corr"]["cv"] = avg_cv_corr
-        EVALUATION["cluster"]["corr"]["avg_corr"] = np.mean(avg_cv_corr)
+        EVALUATION["cluster"]["corr"]["cv"] = avg_cv_factor_corr
+        EVALUATION["cluster"]["corr"]["avg_corr"] = avg_cv_corr
 
         # Ex factor correlation cv = 0
-        corr_0 = cv_results[i][0]["test_features"].corr()
+        corr_0 = cv_results[i][10]["test_features"].corr()
         sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
         if args.save:
             plt.savefig(
@@ -389,7 +402,7 @@ if __name__ == "__main__":
         plt.close()
 
         # Ex pred correlation cv = 0
-        corr_0 = cv_results[i][0]["test_pred"].corr()
+        corr_0 = cv_results[i][10]["test_pred"].corr()
         plt.figure(figsize=(10, 10))
         sns.heatmap(corr_0, cmap="bwr", square=True, vmax=1, vmin=-1, cbar=True)
         if args.save:
@@ -428,90 +441,97 @@ if __name__ == "__main__":
         plt.close()
         LOGGER.info("Done.")
 
-        LOGGER.info("Cluster analysis...")
-        # Cluster analysis
-        LOGGER.info("Get cluster labels...")
-        cv_labels = {}
-        for cv in range(n_folds):
-            cv_labels[cv] = {}
-            for i in cv_results:
-                c, cv_labels[cv][i] = get_cluster_labels(
-                    cv_results[i][cv]["embedding"]
+        if N_EXP > 1:
+            LOGGER.info("Cluster analysis...")
+            # Cluster analysis
+            LOGGER.info("Get cluster labels...")
+            cv_labels = {}
+            for cv in range(n_folds):
+                cv_labels[cv] = {}
+                for i in cv_results:
+                    c, cv_labels[cv][i] = get_cluster_labels(
+                        cv_results[i][cv]["loading"]
+                    )
+            LOGGER.info("Done.")
+
+            LOGGER.info("Compute Rand Index...")
+            EVALUATION["cluster"]["rand_index"] = {}
+            n_runs = len(cv_results)
+            cv_rand = {}
+            for cv in range(n_folds):
+                cv_rand[cv] = rand_score_permutation(cv_labels[cv])
+            LOGGER.info("Done.")
+
+            LOGGER.info("Rand Index heatmap...")
+            # Plot heatmap
+            trii = np.triu_indices(n_runs, k=1)
+            EVALUATION["cluster"]["rand_index"]["cv"] = [
+                np.mean(cv_rand[cv][trii]) for cv in cv_rand
+            ]
+            # Plot heatmap of average rand
+            avg_rand = np.zeros_like(cv_rand[0])
+            trii = np.triu_indices(n_runs, k=1)
+            for cv in cv_rand:
+                triu = np.triu(cv_rand[cv], k=1)
+                avg_rand = avg_rand + triu
+            avg_rand = avg_rand / len(cv_rand)
+
+            mean = np.mean(avg_rand[trii])
+            std = np.std(avg_rand[trii])
+            EVALUATION["cluster"]["rand_index"]["mean"] = mean
+
+            sns.heatmap(avg_rand, vmin=0, vmax=1)
+            plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
+            if args.save:
+                plt.savefig(
+                    f"{save_dir}/rand_avg.png", bbox_inches="tight", transparent=True
                 )
-        LOGGER.info("Done.")
+            if args.show:
+                plt.show()
+            plt.close()
+            LOGGER.info("Done.")
 
-        LOGGER.info("Compute Rand Index...")
-        EVALUATION["cluster"]["rand_index"] = {}
-        n_runs = len(cv_results)
-        cv_rand = {}
-        for cv in range(n_folds):
-            cv_rand[cv] = rand_score_permutation(cv_labels[cv])
-        LOGGER.info("Done.")
-
-        LOGGER.info("Rand Index heatmap...")
-        # Plot heatmap
-        trii = np.triu_indices(n_runs, k=1)
-        EVALUATION["cluster"]["rand_index"]["cv"] = [
-            np.mean(cv_rand[cv][trii]) for cv in cv_rand
-        ]
-        # Plot heatmap of average rand
-        avg_rand = np.zeros_like(cv_rand[0])
-        trii = np.triu_indices(n_runs, k=1)
-        for cv in cv_rand:
-            triu = np.triu(cv_rand[cv], k=1)
-            avg_rand = avg_rand + triu
-        avg_rand = avg_rand / len(cv_rand)
-
-        mean = np.mean(avg_rand[trii])
-        std = np.std(avg_rand[trii])
-        EVALUATION["cluster"]["rand_index"]["mean"] = mean
-
-        sns.heatmap(avg_rand, vmin=0, vmax=1)
-        plt.title(f"Rand index\nMean: {mean.round(2)}, Std: {std.round(2)}")
-        if args.save:
-            plt.savefig(
-                f"{save_dir}/rand_avg.png", bbox_inches="tight", transparent=True
-            )
-        if args.show:
-            plt.show()
-        plt.close()
-        LOGGER.info("Done.")
-
-        LOGGER.info("Consensus matrix...")
-        # Consensus matrix
-        assets = cv_labels[cv][0]["label"].index
-        avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
-        cluster_assignment = {}
-        for cv in cv_labels:
-            cons_mat = consensus_matrix(
-                cv_labels[cv], reorder=True, method="single"
-            )
-            if CLUSTER_NAMES is not None:
-                cluster_assignment[cv] = assign_cluster_from_consmat(
-                    cons_mat, CLUSTER_NAMES, t=0
+            LOGGER.info("Consensus matrix...")
+            # Consensus matrix
+            assets = cv_labels[cv][0]["label"].index
+            avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
+            cluster_assignment = {}
+            for cv in cv_labels:
+                cons_mat = consensus_matrix(
+                    cv_labels[cv], reorder=True, method="single"
                 )
+                if CLUSTER_NAMES is not None:
+                    cluster_assignment[cv] = assign_cluster_from_consmat(
+                        cons_mat, CLUSTER_NAMES, t=0
+                    )
 
-            if cv == 0:
-                order0 = cons_mat.index
-                avg_cons_mat = avg_cons_mat.loc[order0, :]
-                avg_cons_mat = avg_cons_mat.loc[:, order0]
-            else:
-                cons_mat = cons_mat.loc[order0, :]
-            avg_cons_mat += cons_mat
+                if cv == 0:
+                    order0 = cons_mat.index
+                    avg_cons_mat = avg_cons_mat.loc[order0, :]
+                    avg_cons_mat = avg_cons_mat.loc[:, order0]
+                else:
+                    cons_mat = cons_mat.loc[order0, :]
+                avg_cons_mat += cons_mat
 
-        avg_cons_mat = avg_cons_mat / len(cv_labels)
-        plt.figure(figsize=(10, 10))
-        sns.heatmap(avg_cons_mat, square=True)
-        if args.save:
-            plt.savefig(
-                f"{save_dir}/avg_cons_mat.png",
-                bbox_inches="tight",
-                transparent=True,
-            )
-        if args.show:
-            plt.show()
-        plt.close()
-        LOGGER.info("Done.")
+            avg_cons_mat = avg_cons_mat / len(cv_labels)
+            plt.figure(figsize=(10, 10))
+            sns.heatmap(avg_cons_mat, square=True)
+            if args.save:
+                plt.savefig(
+                    f"{save_dir}/avg_cons_mat.png",
+                    bbox_inches="tight",
+                    transparent=True,
+                )
+            if args.show:
+                plt.show()
+            plt.close()
+            LOGGER.info("Done.")
+        else:
+            cluster_assignment = {}
+            for cv in range(n_folds):
+                cluster_assignment[cv], _ = get_cluster_labels(
+                    cv_results[0][cv]["loading"]
+                )
 
         LOGGER.info("Saving final results...")
         # Save final result

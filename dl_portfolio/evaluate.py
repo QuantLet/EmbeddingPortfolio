@@ -14,6 +14,7 @@ def average_prediction(cv_results: Dict, excess_ret=True):
     :param excess_ret:
     :return:
     """
+    raise NotImplementedError("Deprecated!")
     assert len(cv_results) >= 2
     if excess_ret:
         target_key = "excess_returns"
@@ -75,14 +76,46 @@ def average_prediction(cv_results: Dict, excess_ret=True):
     return returns, scaled_returns, pred, scaled_pred
 
 
-def average_prediction_cv(cv_results: Dict, excess_ret=True):
+def load_prediction_cv(cv_results: Dict, excess_ret=False):
+    if excess_ret:
+        target_key = "excess_returns"
+    else:
+        target_key = "returns"
+    returns = {}
+    scaled_returns = {}
+    predictions = {}
+    scaled_predictions = {}
+    n_cv = len(cv_results[0])
+    for cv in range(n_cv):
+        ret = cv_results[0][cv][target_key].copy()
+        returns[cv] = ret
+        predictions[cv] = cv_results[0][cv]["test_pred"]
+        scaler = cv_results[0][cv]["scaler"]
+        if scaler:
+            std = scaler["attributes"]["scale_"]
+            if std is None:
+                std = 1.0
+            scaled_ret = (ret - scaler["attributes"]["mean_"]) / std
+            scaled_predictions[cv] = (predictions[cv] - scaler["attributes"][
+                "mean_"]) / std
+        else:
+            scaled_ret = ret * 1.0
+            scaled_predictions[cv] = predictions[cv] * 1.0
+
+        returns[cv] = ret
+        scaled_returns[cv] = scaled_ret
+
+    return returns, scaled_returns, predictions, scaled_predictions
+
+
+def average_prediction_cv(cv_results: Dict, excess_ret=False):
     """
 
     :param cv_results: Dict with shape {run_1: {cv_0: {}, cv_1: {}}, run_2: {...} ...}
     :param excess_ret:
     :return:
     """
-    assert len(cv_results) >= 2
+    # assert len(cv_results) >= 2
     if excess_ret:
         target_key = "excess_returns"
     else:

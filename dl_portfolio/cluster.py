@@ -190,26 +190,26 @@ def assign_cluster_from_consmat(
     return cluster_assignment
 
 
-def get_cluster_labels(embedding: pd.DataFrame, threshold: float = 0.1):
-    encoding_dim = embedding.shape[-1]
+def get_cluster_labels(loading: pd.DataFrame, threshold: float = 1e-2):
+    encoding_dim = loading.shape[-1]
     if threshold is None:
         kmeans = KMeans(n_clusters=encoding_dim, random_state=0).fit(
-            embedding.values
+            loading.values
         )
         labels = pd.DataFrame(
-            kmeans.labels_, index=embedding.index, columns=["label"]
+            kmeans.labels_, index=loading.index, columns=["label"]
         )
     else:
-        mask = embedding >= threshold
+        mask = loading >= threshold
         labels = pd.DataFrame(columns=["label"], index=mask.index)
         for c in range(encoding_dim):
             labels.loc[mask.index[mask[c]], "label"] = c
 
         # When orthogonality constraint is not met, take max
-        multi_c = (labels["label"] != embedding.idxmax(1)) & (
+        multi_c = (labels["label"] != loading.idxmax(1)) & (
             ~labels["label"].isna()
         )
-        labels.loc[multi_c, "label"] = embedding.idxmax(1).loc[multi_c]
+        labels.loc[multi_c, "label"] = loading.idxmax(1).loc[multi_c]
         labels = labels.fillna(
             encoding_dim
         )  # Some assets might not be assigned to any
