@@ -1,16 +1,14 @@
-import datetime as dt
 import pandas as pd
 import tensorflow as tf
 
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 
+dataset = "dataset1"
 show_plot = False
 save = True
-nmf_model = "./log_convex_nmf_excess_p3_val/m_0_seed_2_20230120_172626"
+nmf_model = "./final_models/nmf/dataset1/m_0_seed_0_20230405_125943"
 
-# Data
-dataset = "dataset1"
 resample = {
     "method": "nbb",
     "where": ["train"],
@@ -18,17 +16,9 @@ resample = {
     "when": "each_epoch",
 }
 excess_ret = False
-scaler_func = {
-    "name": "StandardScaler",
-    "params": {
-        "with_mean": True,
-        "with_std": True,
-    },
-}
 seed = None
 
-# Model
-encoding_dim = 4
+encoding_dim = None
 encoder_bias = True
 decoder_bias = True
 batch_normalization = True
@@ -39,20 +29,15 @@ l_name = "l1"
 l = 1e-3
 activation = "relu"
 features_config = None
-model_name = f"{dataset}_nbb_resample_bl_{resample['block_length']}"
-model_name = model_name.replace(".", "d")
-
+model_name = None
 shuffle_columns = False
+scaler_func = {"name": "StandardScaler"}
 model_type = "ae_model"
 
 learning_rate = 1e-3
-epochs = 1500
+epochs = 1000
 batch_size = 32
-val_size = None
-test_size = 0
 loss = "mse"
-label_param = None
-rescale = None
 
 # Constraints and regularizer
 activity_regularizer = None
@@ -77,20 +62,20 @@ callbacks = {
     }
 }
 
-val_start = pd.date_range(
-    "2018-12-01", "2019-10-01", freq="1MS"
-) + dt.timedelta(days=12)
-val_start = [str(d.date()) for d in val_start]
+val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
+test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
 
-val_end = pd.date_range("2019-01-01", "2019-11-01", freq="1MS") + dt.timedelta(
-    days=11
-)
-val_end = [str(d.date()) for d in val_end]
+val_start = [str(d.date()) for d in val_start]
+test_start = [str(d.date()) for d in test_start]
+end = [str(d.date()) for d in end]
 
 data_specs = {}
 for i in range(len(val_start)):
     data_specs[i] = {
         "start": "2016-06-30",
         "val_start": val_start[i],
-        "end": val_end[i],
+        "test_start": test_start[i],
+        "end": end[i],
     }
+

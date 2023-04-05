@@ -233,7 +233,6 @@ def fit(
                 config.data_specs[cv],
                 config.model_type,
                 batch_size=config.batch_size,
-                rescale=config.rescale,
                 scaler_func=config.scaler_func,
                 resample=config.resample,
                 excess_ret=config.excess_ret,

@@ -63,7 +63,7 @@ def run_ae(
         if config.model_name is not None and config.model_name != "":
             subdir = f"m_{iter}_" + config.model_name + f"_seed_{seed}"
         else:
-            subdir = f"m_{iter}_"
+            subdir = f"m_{iter}_seed_{seed}"
         subdir = (
             subdir
             + "_"
@@ -96,23 +96,46 @@ def run_ae(
         else:
             save_path = None
         # Build model
+        if config.encoding_dim is None:
+            if config.nmf_model is not None:
+                nmf_model = pickle.load(
+                    open(f"{config.nmf_model}/{cv}/model.p", "rb")
+                )
+                encoding_dim = nmf_model.G.shape[-1]
+            else:
+                p_range = config.p_range
+                assert max(p_range) < train_data.shape[-1]
+                assert p_range is not None
+                n_exp = config.n_exp
+                if n_exp is None:
+                    n_exp = 1000
+                encoding_dim = get_optimal_p_silhouette(
+                    train_data, p_range=p_range, n_exp=n_exp,
+                    savepath=f"{save_path}/decision_curve.png",
+                    show=config.show_plot,
+                )
+                LOGGER.info(f"Selected {encoding_dim} factors!")
+        else:
+            encoding_dim = config.encoding_dim
+
+        # Set encoding_dim of kernel_regularizer
+        kernel_regularizer = config.kernel_regularizer
+        kernel_regularizer.encoding_dim = encoding_dim
+
         LOGGER.debug(f"Assets: {assets}")
         input_dim = len(assets)
         n_features = None
-        raise NotImplementedError(
-            "You must verify logic with " "config.encoding_dim"
-        )
         model, encoder, extra_features = build_model(
             config.model_type,
             input_dim,
-            config.encoding_dim,
+            encoding_dim,
             n_features=n_features,
             extra_features_dim=1,
             activation=config.activation,
             batch_normalization=config.batch_normalization,
             kernel_initializer=config.kernel_initializer,
             kernel_constraint=config.kernel_constraint,
-            kernel_regularizer=config.kernel_regularizer,
+            kernel_regularizer=kernel_regularizer,
             activity_regularizer=config.activity_regularizer,
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,
@@ -128,7 +151,6 @@ def run_ae(
                 assets,
                 val_start=config.data_specs[cv]["val_start"],
                 test_start=config.data_specs[cv].get("test_start"),
-                rescale=config.rescale,
                 scaler=scaler_method,
                 resample=config.resample,
                 excess_ret=config.excess_ret,
@@ -139,90 +161,43 @@ def run_ae(
                 f"Initilize weights with NMF model from {config.nmf_model}/"
                 f"{cv}"
             )
-            assert config.model_type in ["ae_model"]
-            if config.model_type == "ae_model":
-                nmf_model = pickle.load(
-                    open(f"{config.nmf_model}/{cv}/model.p", "rb")
+            nmf_model = pickle.load(
+                open(f"{config.nmf_model}/{cv}/model.p", "rb")
+            )
+            # Set encoder weights
+            weights = nmf_model.encoding.copy()
+            # Add small constant to avoid 0 weights at beginning of
+            # training
+            weights += 0.2
+            # Make it unit norm
+            weights = weights ** 2
+            weights /= np.sum(weights, axis=0)
+            weights = weights.astype(np.float32)
+
+            if config.encoder_bias:
+                # set bias
+                bias = model.layers[1].get_weights()[1]
+                model.layers[1].set_weights([weights, bias])
+            else:
+                model.layers[1].set_weights([weights])
+
+            # Set decoder weights
+            weights = nmf_model.G.copy()
+            # Add small constant to avoid 0 weights at beginning of
+            # training
+            weights += 0.2
+            # Make it unit norm
+            weights = weights / np.linalg.norm(weights, axis=0)
+            weights = weights.T.astype(np.float32)
+            if config.decoder_bias:
+                # set bias
+                F = nmf_model.transform(train_data)
+                bias = np.mean(train_data) - np.mean(
+                    F.dot(nmf_model.G.T), 0
                 )
-                # Set encoder weights
-                weights = nmf_model.encoding.copy()
-                # Add small constant to avoid 0 weights at beginning of
-                # training
-                weights += 0.2
-                # Make it unit norm
-                weights = weights ** 2
-                weights /= np.sum(weights, axis=0)
-                weights = weights.astype(np.float32)
-
-                if config.encoder_bias:
-                    # set bias
-                    bias = model.layers[1].get_weights()[1]
-                    model.layers[1].set_weights([weights, bias])
-                else:
-                    model.layers[1].set_weights([weights])
-
-                # Set decoder weights
-                weights = nmf_model.components.copy()
-                # Add small constant to avoid 0 weights at beginning of
-                # training
-                weights += 0.2
-                # Make it unit norm
-                weights = weights ** 2
-                weights /= np.sum(weights, axis=0)
-                weights = weights.T
-                weights = weights.astype(np.float32)
-                if config.decoder_bias:
-                    # set bias
-                    F = nmf_model.transform(train_data)
-                    bias = np.mean(train_data) - np.mean(
-                        F.dot(nmf_model.components.T), 0
-                    )
-                    model.layers[-1].set_weights([weights, bias])
-                else:
-                    model.layers[-1].set_weights([weights])
-            elif config.model_type == "pca_ae_model":
-                nmf_model = pickle.load(
-                    open(f"{config.nmf_model}/{cv}/model.p", "rb")
-                )
-                # Set encoder weights
-                weights = nmf_model.components.copy()
-                # Add small constant to avoid 0 weights at beginning of
-                # training
-                weights += 0.2
-                # Make it unit norm
-                weights = weights ** 2
-                weights /= np.sum(weights, axis=0)
-                weights = weights.astype(np.float32)
-                if config.encoder_bias:
-                    # set bias
-                    bias = model.layers[1].get_weights()[1]
-                    model.layers[1].set_weights([weights, bias])
-                else:
-                    model.layers[1].set_weights([weights])
-
-                # Set decoder weights
-                layer_weights = model.layers[-1].get_weights()
-                weights = nmf_model.components.copy()
-                # Add small constant to avoid 0 weights at beginning of
-                # training
-                weights += 0.2
-                # Make it unit norm
-                weights = weights ** 2
-                weights /= np.sum(weights, axis=0)
-                weights = weights.astype(np.float32)
-                if config.decoder_bias:
-                    # set bias
-                    F = nmf_model.transform(train_data)
-                    bias = np.mean(train_data) - np.mean(
-                        F.dot(nmf_model.components.T), 0
-                    )
-                    layer_weights[0] = bias
-                    layer_weights[1] = weights
-                    model.layers[-1].set_weights(layer_weights)
-                else:
-                    model.layers[-1].set_weights([weights])
-
-        # LOGGER.info(model.summary())
+                model.layers[-1].set_weights([weights, bias])
+            else:
+                model.layers[-1].set_weights([weights])
 
         # Create dataset:
         shuffle = False
@@ -234,7 +209,6 @@ def run_ae(
                     config.data_specs[cv],
                     config.model_type,
                     batch_size=config.batch_size,
-                    rescale=config.rescale,
                     scaler_func=config.scaler_func,
                     resample=config.resample,
                     excess_ret=config.excess_ret,
@@ -291,7 +265,6 @@ def run_ae(
             assets,
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
-            rescale=config.rescale,
             scaler=scaler_method,
             resample=config.resample,
             excess_ret=config.excess_ret,

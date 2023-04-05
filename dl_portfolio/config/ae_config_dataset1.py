@@ -1,4 +1,3 @@
-import datetime as dt
 import pandas as pd
 import tensorflow as tf
 
@@ -68,21 +67,13 @@ callbacks = {
     }
 }
 
-val_start = pd.date_range(
-    "2019-11-01", "2021-08-01", freq="1MS"
-) + dt.timedelta(days=12)
+val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
+test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
+
 val_start = [str(d.date()) for d in val_start]
-
-test_start = pd.date_range(
-    "2019-12-01", "2021-09-01", freq="1MS"
-) + dt.timedelta(days=11)
 test_start = [str(d.date()) for d in test_start]
-
-
-test_end = pd.date_range("2020-01-01", "2021-10-01", freq="MS") + dt.timedelta(
-    days=10
-)
-test_end = [str(d.date()) for d in test_end]
+end = [str(d.date()) for d in end]
 
 data_specs = {}
 for i in range(len(val_start)):
@@ -90,5 +81,6 @@ for i in range(len(val_start)):
         "start": "2016-06-30",
         "val_start": val_start[i],
         "test_start": test_start[i],
-        "end": test_end[i],
+        "end": end[i],
     }
+

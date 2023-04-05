@@ -13,7 +13,7 @@ class WeightsOrthogonality(Regularizer):
         max_dim: Optional[int] = None,
         regularizer: Optional[Dict] = None,
     ):
-        self.encoding_dim = encoding_dim
+        self._encoding_dim = encoding_dim
         self.weightage = weightage
         self.axis = axis
         self.max_dim = max_dim
@@ -37,8 +37,8 @@ class WeightsOrthogonality(Regularizer):
     def weights_orthogonality(self, w):
         if self.axis == 1:
             w = tf.transpose(w)
-        if self.encoding_dim > 1:
-            m = K.dot(K.transpose(w), w) - tf.eye(self.encoding_dim)
+        if self._encoding_dim > 1:
+            m = K.dot(K.transpose(w), w) - tf.eye(self._encoding_dim)
             return self.weightage * K.sqrt(K.sum(K.square(m)))
             # return self.weightage * K.sum(K.square(m))
         else:
@@ -61,9 +61,17 @@ class WeightsOrthogonality(Regularizer):
 
     def get_config(self):
         return {
-            "encoding_dim": self.encoding_dim,
+            "encoding_dim": self._encoding_dim,
             "weightage": self.weightage,
             "axis": self.axis,
             "max_dim": self.max_dim,
             "regularizer": self.regularizer,
         }
+
+    @property
+    def encoding_dim(self):
+        return self._encoding_dim
+
+    @encoding_dim.setter
+    def encoding_dim(self, value):
+        self._encoding_dim = value
