@@ -8,6 +8,52 @@ from scipy.spatial.distance import squareform
 from fastcluster import linkage
 
 
+from gap_statistic import OptimalK
+
+from dl_portfolio.logger import LOGGER
+from dl_portfolio.nmf.convex_nmf import ConvexNMF
+
+
+def convex_nmf_cluster(X, k):
+    nmf = ConvexNMF(n_components=k, norm_G="l2")
+    nmf.fit(X.T)
+    centers = nmf.transform(X.T).T
+    labels = nmf.G.T.argmax(axis=0)
+
+    return centers, labels
+
+
+def get_optimal_n_clusters(
+    X, clusterer=None, n_refs=3, cluster_array=range(3, 10)
+):
+    """
+    cf Estimating the number of clusters in a data set via the gap
+    statistic, (Tibshirani et al.)
+    k̂  = smallest k such that Gap(k) >= Gap(k+1) - s_{k+1}.
+
+    """
+    if clusterer is None:
+        clusterer = convex_nmf_cluster
+    optimalk = OptimalK(clusterer=clusterer)
+
+    optimalk(X.T, n_refs=n_refs, cluster_array=cluster_array)
+
+    decision = (
+        optimalk.gap_df.gap_value
+        - (optimalk.gap_df.gap_value - optimalk.gap_df.sk).shift(-1)
+    ) >= 0
+    decision = decision & (
+        (optimalk.gap_df.gap_value - optimalk.gap_df.gap_value.shift(-1)) >= 0
+    )
+    n_clusters_i = np.argmax(decision)
+    n_clusters = int(optimalk.gap_df.n_clusters.iloc[n_clusters_i])
+
+    if n_clusters == 1:
+        LOGGER.warning("No cluster found!!")
+
+    return n_clusters, optimalk
+
+
 def get_cluster_assignment(base_dir, cluster_names):
     models = os.listdir(base_dir)
     paths = [

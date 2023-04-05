@@ -12,6 +12,7 @@ from shutil import copyfile
 from typing import Optional
 from sklearn.cluster import KMeans
 
+from dl_portfolio.cluster import get_optimal_n_clusters
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
 from dl_portfolio.data import get_features
@@ -98,6 +99,9 @@ def run_ae(
         LOGGER.debug(f"Assets: {assets}")
         input_dim = len(assets)
         n_features = None
+        raise NotImplementedError(
+            "You must verify logic with " "config.encoding_dim"
+        )
         model, encoder, extra_features = build_model(
             config.model_type,
             input_dim,
@@ -529,13 +533,20 @@ def run_kmeans(config, data, assets, seed=None):
             resample={"method": "nbb", "where": ["train"], "block_length": 60},
             excess_ret=config.excess_ret,
         )
-        kmeans = KMeans(n_clusters=config.encoding_dim, random_state=seed)
+        if config.encoding_dim is None:
+            n_components, _ = get_optimal_n_clusters(
+                train_data, n_refs=100, cluster_array=range(3, 10)
+            )
+        else:
+            n_components = config.encoding_dim
+
+        kmeans = KMeans(n_clusters=n_components, random_state=seed)
         kmeans.fit(train_data.T)
         labels = pd.DataFrame(kmeans.labels_.reshape(1, -1), columns=assets).T
         labels.columns = ["label"]
         clusters = {
             i: list(labels[labels["label"] == i].index)
-            for i in range(config.encoding_dim)
+            for i in range(n_components)
         }
 
         if config.save:
@@ -618,10 +629,18 @@ def run_nmf(
             excess_ret=config.excess_ret,
             **scaler_params,
         )
+        if config.encoding_dim is None:
+            n_components, _ = get_optimal_n_clusters(
+                train_data, n_refs=10, cluster_array=range(3, 10)
+            )
+            LOGGER.info(f"Selected {n_components} factors!")
+        else:
+            n_components = config.encoding_dim
+
         if config.model_type == "convex_nmf":
             LOGGER.debug("Initiate convex NMF model")
             nmf = ConvexNMF(
-                n_components=config.encoding_dim,
+                n_components=n_components,
                 random_state=seed,
                 verbose=verbose,
                 norm_G=config.norm_G,
@@ -631,7 +650,7 @@ def run_nmf(
             raise NotImplementedError("You must verify the logic here")
             LOGGER.debug("Initiate semi NMF model")
             nmf = SemiNMF(
-                n_components=config.encoding_dim,
+                n_components=n_components,
                 random_state=seed,
                 verbose=verbose,
                 norm=config.norm,
