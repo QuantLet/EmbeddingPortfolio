@@ -512,9 +512,6 @@ def run_kmeans(config, data, assets, seed=None):
             os.path.join(save_dir, "ae_config.py"),
         )
 
-    resample = config.resample
-    if resample is None:
-        resample = {"method": "nbb", "where": ["train"], "block_length": 60}
     for cv in config.data_specs:
         LOGGER.info(f"Starting with cv: {cv}")
         if config.save:
@@ -533,7 +530,7 @@ def run_kmeans(config, data, assets, seed=None):
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler="StandardScaler",
-            resample=resample,
+            resample=config.resample,
             excess_ret=config.excess_ret,
         )
         if config.encoding_dim is None:
@@ -618,9 +615,6 @@ def run_nmf(
         scaler_params = {}
 
     mse = {}
-    resample = config.resample
-    if resample is None:
-        resample = {"method": "nbb", "where": ["train"], "block_length": 60}
     for cv in config.data_specs:
         LOGGER.info(f"Starting with cv: {cv}")
         if config.save:
@@ -639,7 +633,7 @@ def run_nmf(
             val_start=data_spec["val_start"],
             test_start=data_spec.get("test_start"),
             scaler=scaler_method,
-            resample=resample,
+            resample=config.resample,
             excess_ret=config.excess_ret,
             **scaler_params,
         )
