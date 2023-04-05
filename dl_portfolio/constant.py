@@ -1,15 +1,6 @@
 import pandas as pd
 
-BASE_FREQ = 1800
-BASE_COLUMNS = ["open", "high", "low", "close", "volume", "quoteVolume"]
-RESAMPLE_DICT = {
-    "open": "first",
-    "high": "max",
-    "low": "min",
-    "close": "last",
-    "volume": "sum",
-    "quoteVolume": "sum",
-}
+AVAILABLE_CRITERIA = ["gap", "aic"]
 
 CRYPTO_ASSETS = ["BTC", "DASH", "DOGE", "ETH", "LTC", "XEM", "XMR", "XRP"]
 FX_ASSETS = ["CADUSD", "CHFUSD", "EURUSD", "GBPUSD", "JPYUSD", "AUDUSD"]
