@@ -1,6 +1,6 @@
 import pandas as pd
 from dl_portfolio.logger import LOGGER
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Optional
 from sklearn import preprocessing
 import numpy as np
 import datetime as dt
@@ -25,15 +25,17 @@ def load_data(dataset):
 
 
 def load_dataset1():
-    data = pd.read_csv("data/dataset1/dataset1.csv", index_col=0,
-                       parse_dates=True)
+    data = pd.read_csv(
+        "data/dataset1/dataset1.csv", index_col=0, parse_dates=True
+    )
     data = data.astype(np.float32)
     return data, list(data.columns)
 
 
 def load_dataset1_new():
-    data = pd.read_csv("data/dataset1/dataset1_new.csv", index_col=0,
-                       parse_dates=True)
+    data = pd.read_csv(
+        "data/dataset1/dataset1_new.csv", index_col=0, parse_dates=True
+    )
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float32)
 
@@ -43,8 +45,9 @@ def load_dataset1_new():
 
 
 def load_dataset2():
-    data = pd.read_csv("data/dataset2/dataset2.csv", index_col=0,
-                       parse_dates=True)
+    data = pd.read_csv(
+        "data/dataset2/dataset2.csv", index_col=0, parse_dates=True
+    )
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float32)
     assets = list(data.columns)
@@ -61,11 +64,13 @@ def load_risk_free():
     """
     daily_rate = load_bill_rates()
 
-    ann_monthly_rate_yahoo = pd.read_csv("data/irx_yahoo.csv", index_col=0,
-                                         parse_dates=True).sort_index()
+    ann_monthly_rate_yahoo = pd.read_csv(
+        "data/irx_yahoo.csv", index_col=0, parse_dates=True
+    ).sort_index()
     ann_monthly_rate_yahoo = ann_monthly_rate_yahoo[["Adj Close"]] / 100
     ann_monthly_rate_yahoo = ann_monthly_rate_yahoo.loc[
-                             :daily_rate.index[0]].iloc[:-1]
+        : daily_rate.index[0]
+    ].iloc[:-1]
     ann_monthly_rate_yahoo.columns = ["risk_free"]
     daily_rate_yahoo = ann_monthly_rate_yahoo / 365
     daily_rate = pd.concat([daily_rate_yahoo, daily_rate])
@@ -78,8 +83,9 @@ def load_bill_rates():
     Source: https://home.treasury.gov
     :return:
     """
-    ann_monthly_rate = pd.read_csv("data/bill-rates-2002-2023.csv",
-                                   index_col=0, parse_dates=True)
+    ann_monthly_rate = pd.read_csv(
+        "data/bill-rates-2002-2023.csv", index_col=0, parse_dates=True
+    )
     ann_monthly_rate = ann_monthly_rate.sort_index()
     ann_monthly_rate = ann_monthly_rate[["4 WEEKS BANK DISCOUNT"]] / 100
     ann_monthly_rate.columns = ["risk_free"]
@@ -95,10 +101,13 @@ def impute_missing_risk_free(data):
     return data
 
 
-def bb_resample_sample(data: np.ndarray, dates: List, block_length: int = 44):
+def bb_resample_sample(
+    data: np.ndarray, dates: Optional[List] = None, block_length: int = 44
+):
     nbb_id = id_nb_bootstrap(len(data), block_length=block_length)
     data = data[nbb_id]
-    dates = dates[nbb_id]
+    if dates is not None:
+        dates = dates[nbb_id]
     return data, dates
 
 

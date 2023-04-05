@@ -19,8 +19,8 @@ setup(
         "seaborn==0.11.1",
         "pyportfolioopt==1.4.1",
         "riskparityportfolio==0.2",
-        "joblib==1.0.0",
-        "scikit-learn==0.24.0",
+        "joblib>=1.0.0",
+        "scikit-learn>=0.24.0",
         "fastcluster==1.2.6",
         "statsmodels==0.13.5",
         "arch>=5.3.1"
