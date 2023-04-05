@@ -23,7 +23,8 @@ setup(
         "scikit-learn>=0.24.0",
         "fastcluster==1.2.6",
         "statsmodels==0.13.5",
-        "arch>=5.3.1"
+        "arch>=5.3.1",
+        "gap-stat==2.0.2"
     ],
     zip_safe=False,
     packages=find_packages()
