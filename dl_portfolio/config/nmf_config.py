@@ -3,13 +3,13 @@ import datetime as dt
 
 model_type = "convex_nmf"
 save = True
-show_plot = True
+show_plot = False
 seed = None
 
 # Model
 encoding_dim = None
-p_range = list(range(2, 10))
-n_exp = 2
+p_range = list(range(2, 16))
+n_exp = 1000
 norm_G = "l2"
 norm_W = None
 
@@ -18,10 +18,6 @@ dataset = "dataset1"
 resample = None
 scaler_func = {"name": "StandardScaler"}
 excess_ret = False
-
-# Model name
-model_name = f"{dataset}_newdata1"
-model_name = model_name.replace(".", "d")
 
 val_start = pd.date_range(
     "2017-06-01", "2023-02-01", freq="1MS"

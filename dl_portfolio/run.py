@@ -538,6 +538,7 @@ def run_kmeans(config, data, assets, seed=None):
         )
         if config.encoding_dim is None:
             p_range = config.p_range
+            assert max(p_range) < train_data.shape[-1]
             assert p_range is not None
             n_exp = config.n_exp
             if n_exp is None:
@@ -644,6 +645,7 @@ def run_nmf(
         )
         if config.encoding_dim is None:
             p_range = config.p_range
+            assert max(p_range) < train_data.shape[-1]
             assert p_range is not None
             n_exp = config.n_exp
             if n_exp is None:
