@@ -624,19 +624,17 @@ def run_nmf(
             assert p_range is not None
             n_exp = config.n_exp
             if n_exp is None:
-                n_exp = 1000
+                n_exp = 100
             n_components, bb_criteria = get_optimal_p_silhouette(
                 train_data, p_range=p_range, n_exp=n_exp,
                 savepath=f"{save_path}/decision_curve.png",
                 show=config.show_plot,
             )
-            LOGGER.info(f"Selected {n_components} factors!")
             if config.save:
-                if scaler:
-                    pd.DataFrame(bb_criteria).to_csv(
-                        f"{save_path}/bb_criteria.csv", index=False
-                    )
-                LOGGER.debug("Done")
+                pd.DataFrame(bb_criteria).to_csv(
+                    f"{save_path}/bb_criteria.csv", index=False
+                )
+            LOGGER.info(f"Selected {n_components} factors!")
         else:
             n_components = config.encoding_dim
 
