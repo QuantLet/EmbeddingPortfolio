@@ -57,7 +57,7 @@ def cluster_selection_curve(
 
 
 def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
-                  show=False,  min_p=2, method="extrema"):
+                  show=False,  min_p=2, method="max"):
     assert len(bb_criteria.shape) == 2
     mean_ = np.mean(bb_criteria, axis=1)
     lower_b = np.quantile(bb_criteria, alpha, axis=1)
