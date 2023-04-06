@@ -89,17 +89,18 @@ def portfolio_weights(
     if "sector_erc" in portfolio:
         LOGGER.info("Computing Sector ERC weights...")
         assert budget is not None
-        embedding = pd.DataFrame(columns=budget["market"].unique(),
+        # Create artificial embedding and loading matrix
+        art_emb = pd.DataFrame(columns=budget["market"].unique(),
                                  index=budget.index)
-        for c in embedding.columns:
-            embedding.loc[
+        for c in art_emb.columns:
+            art_emb.loc[
                 budget.index[budget["market"] == c], c] = 1
-        embedding.fillna(0, inplace=True)
-        loading = embedding.copy()
+        art_emb.fillna(0, inplace=True)
+        art_load = art_emb.copy()
         port_w["sector_erc"] = ae_riskparity_weights(
             returns,
-            embedding,
-            loading,
+            art_emb,
+            art_load,
             budget,
             risk_parity="budget",
         )
