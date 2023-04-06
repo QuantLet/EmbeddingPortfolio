@@ -658,7 +658,7 @@ def cv_portfolio_perf_df(
         if cv == 0:
             prev_weights = {
                 p: pd.DataFrame(
-                    np.ones_like(cv_portfolio[cv]["port"]["ae_rp_c"]),
+                    np.ones_like(list(weights.values())[0]),
                     columns=assets,
                 )
                 for p in portfolios
@@ -821,7 +821,7 @@ def get_cv_results(
     market_budget=None,
     compute_weights=True,
     window: Optional[int] = None,
-    n_jobs: int = None,
+    n_jobs: int = 1,
     dataset="global",
     reorder_features=True,
     **kwargs,
@@ -832,7 +832,7 @@ def get_cv_results(
 
     data, assets = load_data(dataset=dataset)
 
-    if n_jobs:
+    if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
                 delayed(one_cv)(
