@@ -4,7 +4,6 @@ from joblib import Parallel, delayed
 from sklearn import metrics
 from sklearn.metrics import euclidean_distances
 
-from dl_portfolio.cluster import get_optimal_n_clusters
 from dl_portfolio.constant import AVAILABLE_CRITERIA
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
@@ -31,7 +30,8 @@ def silhouette(X, k):
     W[W < 1e-3] = 0
     labels = np.argmax(W, axis=1)
 
-    return metrics.silhouette_score(euclidean_distances(X.T), labels)
+    return metrics.silhouette_score(euclidean_distances(X.T), labels,
+                                    metric="precomputed")
 
 
 def nmf_eps(X, k):

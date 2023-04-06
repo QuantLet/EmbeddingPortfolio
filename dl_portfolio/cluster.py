@@ -31,7 +31,8 @@ def convex_nmf_cluster(X, k):
 
 def silhouette(X, k):
     _, labels = convex_nmf_cluster(X.T, k)
-    return metrics.silhouette_score(euclidean_distances(X.T), labels)
+    return metrics.silhouette_score(euclidean_distances(X.T), labels,
+                                    metric="precomputed")
 
 
 def cluster_selection_curve(
