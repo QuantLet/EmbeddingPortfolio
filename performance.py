@@ -44,6 +44,7 @@ PORTFOLIOS = [
     "hcaa",
     "aerp",
     "rb_factor",
+    "rb_factor_full_erc",
     "aeaa",
     "kmaa",
 ]

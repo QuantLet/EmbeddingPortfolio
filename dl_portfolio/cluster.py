@@ -9,8 +9,6 @@ from typing import Dict, List
 from scipy.spatial.distance import squareform
 from fastcluster import linkage
 
-
-from gap_statistic import OptimalK
 import matplotlib.pyplot as plt
 from sklearn.metrics import euclidean_distances
 from sklearn.preprocessing import StandardScaler
@@ -57,7 +55,7 @@ def cluster_selection_curve(
 
 
 def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
-                  show=False,  min_p=2, method="max"):
+                  show=False,  min_p=2, method="extrema"):
     assert len(bb_criteria.shape) == 2
     mean_ = np.mean(bb_criteria, axis=1)
     lower_b = np.quantile(bb_criteria, alpha, axis=1)
@@ -66,6 +64,12 @@ def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
         best_p = np.argmax((np.roll(mean_, 1) >= lower_b)[1:]) + min_p
     elif method == "max":
         best_p = np.argmax(mean_) + min_p
+    elif method == "first_max":
+        # Get max lower band
+        max_lower_b = lower_b[np.argmax(mean_)]
+        # Now get first extrema which mean is included in max confidence
+        # band
+        best_p = np.argmax(mean_ >= max_lower_b) + min_p
     elif method == "extrema":
         # Get all extrema
         candidates = argrelextrema(mean_, np.greater, mode="wrap")[0].tolist()
@@ -74,7 +78,7 @@ def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
         candidates = [candidates[0]] + np.array(candidates)[1:][
             (mean_[candidates][1:] - mean_[candidates][:-1]) > 0.025].tolist()
         # Now among candidates, compute the weighted mean with respect to
-        # the inverse variance
+        # the inverse variance of the estimate
         weighted_mean = mean_ / (upper_b - lower_b)
         weighted_mean_cand = mean_ * 0.
         weighted_mean_cand[candidates] = weighted_mean[candidates]
@@ -128,37 +132,6 @@ def get_optimal_p_silhouette(data: np.ndarray, p_range: List,
     best_p, _, _, _ = bb_silhouette(bb_criteria, min_p=min_p, **kwargs)
 
     return best_p, bb_criteria
-
-
-def get_optimal_p_gap(
-    X, clusterer=None, n_refs=3, cluster_array=range(3, 10)
-):
-    """
-    cf Estimating the number of clusters in a data set via the gap
-    statistic, (Tibshirani et al.)
-    k̂  = smallest k such that Gap(k) >= Gap(k+1) - s_{k+1}.
-
-    """
-    if clusterer is None:
-        clusterer = convex_nmf_cluster
-    optimalk = OptimalK(clusterer=clusterer)
-
-    optimalk(X.T, n_refs=n_refs, cluster_array=cluster_array)
-
-    decision = (
-        optimalk.gap_df.gap_value
-        - (optimalk.gap_df.gap_value - optimalk.gap_df.sk).shift(-1)
-    ) >= 0
-    decision = decision & (
-        (optimalk.gap_df.gap_value - optimalk.gap_df.gap_value.shift(-1)) >= 0
-    )
-    n_clusters_i = np.argmax(decision)
-    n_clusters = int(optimalk.gap_df.n_clusters.iloc[n_clusters_i])
-
-    if n_clusters == 1:
-        LOGGER.warning("No cluster found!!")
-
-    return n_clusters, optimalk
 
 
 def get_cluster_assignment(base_dir, cluster_names):
