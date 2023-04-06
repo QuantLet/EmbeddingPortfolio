@@ -14,17 +14,19 @@ norm_G = "l2"
 norm_W = None
 
 # Data
-dataset = "dataset2"
+dataset = "dataset1"
 resample = None
 scaler_func = {"name": "StandardScaler"}
 excess_ret = False
 
-val_start = pd.date_range("1990-02-01", "2021-11-01", freq="1MS")
+val_start = pd.date_range(
+    "2017-06-01", "2023-02-01", freq="1MS"
+)
 start = [d - dt.timedelta(days=365) for d in val_start]
 start = [str(d.date()) for d in start]
 val_start = [str(d.date()) for d in val_start]
 
-end = pd.date_range("1990-02-01", "2021-12-01", freq="1M")
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
 end = [str(d.date()) for d in end]
 
 data_specs = {}
