@@ -1,14 +1,9 @@
-library(fGarch)
-library(xts)
-library(forecast)
-library(parallel)
-library(doParallel)
+if (!require(fGarch)) install.packages("fGarch")
+if (!require(xts)) install.packages("xts")
+if (!require(forecast)) install.packages("forecast")
+if (!require(parallel)) install.packages("parallel")
+if (!require(doParallel)) install.packages("doParallel")
 
-# library(POT)
-# library(ismev)
-# library(MLmetrics)
-# source("definition.R")
-#library(fExtremes)
 
 get_cv_data = function(dataset, cv, window_size = NULL) {
   # load dataset
