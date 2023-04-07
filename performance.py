@@ -43,6 +43,7 @@ PORTFOLIOS = [
     "hrp",
     "hcaa",
     "aerp",
+    "erc",
     "rb_factor",
     "rb_factor_full_erc",
     "aeaa",
@@ -238,6 +239,7 @@ if __name__ == "__main__":
             verbose=True,
         )
     LOGGER.info("Done.")
+    pd.to_pickle(cv_results, f"{save_dir}/cv_results.p")
 
     CV_DATES = [
         str(cv_results[0][cv]["returns"].index[0].date())
@@ -493,10 +495,25 @@ if __name__ == "__main__":
             assets = cv_labels[cv][0]["label"].index
             avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
             cluster_assignment = {}
+            if args.save:
+                if not os.path.isdir(f"{save_dir}/cv_cons_mat/"):
+                    os.makedirs(f"{save_dir}/cv_cons_mat/")
             for cv in cv_labels:
                 cons_mat = consensus_matrix(
                     cv_labels[cv], reorder=True, method="single"
                 )
+                plt.figure(figsize=(10, 10))
+                sns.heatmap(cons_mat, square=True)
+                if args.save:
+                    plt.savefig(
+                        f"{save_dir}/cv_cons_mat/cons_mat_{cv}.png",
+                        bbox_inches="tight",
+                        transparent=True,
+                    )
+                if args.show:
+                    plt.show()
+                plt.close()
+
                 if CLUSTER_NAMES is not None:
                     cluster_assignment[cv] = assign_cluster_from_consmat(
                         cons_mat, CLUSTER_NAMES, t=0

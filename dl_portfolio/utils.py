@@ -1,7 +1,7 @@
 import datetime as dt
 import os
 import pickle
-from typing import Dict, List
+from typing import List
 
 import numpy as np
 import pandas as pd
@@ -10,16 +10,12 @@ from tensorflow.keras import activations
 
 from dl_portfolio.data import get_features
 from dl_portfolio.pca_ae import build_model
-from dl_portfolio.regularizers import WeightsOrthogonality
-from dl_portfolio.regressors.nonnegative_linear.ridge import NonnegativeRidge
-from dl_portfolio.regressors.nonnegative_linear.base import NonnegativeLinear
 from dl_portfolio.constant import (
     BASE_FACTOR_ORDER_DATASET1_3,
     BASE_FACTOR_ORDER_DATASET1_4,
     BASE_FACTOR_ORDER_DATASET2_5,
 )
 
-from sklearn.linear_model import LinearRegression, Lasso
 
 LOG_BASE_DIR = "./dl_portfolio/log"
 
@@ -270,17 +266,25 @@ def load_result(
             decoding = pd.read_pickle(f"{base_dir}/{cv}/decoder_weights.p")
         else:
             pass
+        if config.encoding_dim is None:
+            encoding_dim = embedding.shape[-1]
+            # Set encoding_dim of kernel_regularizer
+            kernel_regularizer = config.kernel_regularizer
+            kernel_regularizer.encoding_dim = encoding_dim
+        else:
+            encoding_dim = config.encoding_dim
+
         model, encoder, extra_features = build_model(
             config.model_type,
             input_dim,
-            config.encoding_dim,
+            encoding_dim,
             n_features=None,
             extra_features_dim=1,
             activation=config.activation,
             batch_normalization=config.batch_normalization,
             kernel_initializer=config.kernel_initializer,
             kernel_constraint=config.kernel_constraint,
-            kernel_regularizer=config.kernel_regularizer,
+            kernel_regularizer=kernel_regularizer,
             activity_regularizer=config.activity_regularizer,
             loss=config.loss,
             uncorrelated_features=config.uncorrelated_features,

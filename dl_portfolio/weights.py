@@ -30,7 +30,7 @@ def portfolio_weights(
     budget=None,
     embedding=None,
     loading=None,
-    portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "rp", "aeerc"],
+    portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "erc"],
     **kwargs,
 ):
     assert all([p in PORTFOLIOS for p in portfolio]), [
@@ -55,10 +55,10 @@ def portfolio_weights(
         LOGGER.info("Computing IVP weights...")
         port_w["ivp"] = ivp_weights(S)
 
-    if "rp" in portfolio:
+    if "erc" in portfolio:
         LOGGER.info("Computing Riskparity weights...")
         assert budget is not None
-        port_w["rp"] = riskparity_weights(S, budget=budget["rc"].values)
+        port_w["erc"] = riskparity_weights(S, budget=budget["rc"].values)
 
     if "kmaa" in portfolio:
         LOGGER.info("Computing KMeans Asset Allocation weights...")

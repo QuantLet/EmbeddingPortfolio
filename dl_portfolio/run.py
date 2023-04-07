@@ -118,12 +118,11 @@ def run_ae(
                     show=config.show_plot,
                 )
                 LOGGER.info(f"Selected {encoding_dim} factors!")
+            # Set encoding_dim of kernel_regularizer
+            kernel_regularizer = config.kernel_regularizer
+            kernel_regularizer.encoding_dim = encoding_dim
         else:
             encoding_dim = config.encoding_dim
-
-        # Set encoding_dim of kernel_regularizer
-        kernel_regularizer = config.kernel_regularizer
-        kernel_regularizer.encoding_dim = encoding_dim
 
         LOGGER.debug(f"Assets: {assets}")
         input_dim = len(assets)
