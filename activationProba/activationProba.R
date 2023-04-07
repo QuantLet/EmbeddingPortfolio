@@ -1,7 +1,7 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 source("run.R")
-library(rjson)
+if (!require(rjson)) install.packages("rjson")
 
 # ------------------------ Input ------------------------
 # Input
