@@ -90,26 +90,30 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
                 sep = ",")
     }
     
-    # Update with only the latest train dates (last month)
-    if (nrow(train_activation_probas) > 0) {
-      cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
+    if (!is.null(config$n_factors)){
+      # Update with only the latest train dates (last month)
+      if (nrow(train_activation_probas) > 0) {
+        cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
+      }
+      train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
+      train_activation_probas = as.xts(train_activation_probas)
+      
+      activation_probas = rbind(activation_probas, cv_activation_probas)
+      activation_probas = as.xts(activation_probas)
+      print("Train probas")
+      print(tail(train_activation_probas))
+      print("Test probas")
+      print(tail(activation_probas))
+      print("NaNs CV:")
+      print(paste("Train:", sum(is.na(cv_train_activation_probas))))
+      print(paste("Test:", sum(is.na(cv_activation_probas))))
+      
+      last_train_date = index(data$train)[nrow(data$train)]
     }
-    train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
-    train_activation_probas = as.xts(train_activation_probas)
-
-    activation_probas = rbind(activation_probas, cv_activation_probas)
-    activation_probas = as.xts(activation_probas)
-    print("Train probas")
-    print(tail(train_activation_probas))
-    print("Test probas")
-    print(tail(activation_probas))
-    print("NaNs CV:")
-    print(paste("Train:", sum(is.na(cv_train_activation_probas))))
-    print(paste("Test:", sum(is.na(cv_activation_probas))))
-
+    
     # Finally
     counter = counter + 1
-    last_train_date = index(data$train)[nrow(data$train)]
+    
   }
   return (list(train=train_activation_probas, test=activation_probas))
 }

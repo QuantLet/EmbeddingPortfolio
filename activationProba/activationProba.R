@@ -44,8 +44,10 @@ if (save) {
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
 
-# Finally
-if (save) {
-  write.zoo(result$train, file = train_save_path, sep = ",")
-  write.zoo(result$test, file = save_path, sep = ",")
+if (!is.null(config$n_factors)){
+  # Finally
+  if (save) {
+    write.zoo(result$train, file = train_save_path, sep = ",")
+    write.zoo(result$test, file = save_path, sep = ",")
+  }
 }
