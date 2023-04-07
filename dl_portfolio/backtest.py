@@ -42,8 +42,9 @@ def backtest_stats(
     :param format:
     :return:
     """
-    benchmark = pd.read_csv("data/benchmarks.csv", index_col=0,
-                             parse_dates=True)
+    benchmark = pd.read_csv(
+        "data/benchmarks.csv", index_col=0, parse_dates=True
+    )
     bench_names = list(benchmark.columns)
     benchmark = benchmark.pct_change().dropna()
     benchmark = benchmark.reindex(perf.index)
@@ -51,8 +52,9 @@ def backtest_stats(
     benchmark = benchmark.astype(np.float32)
 
     if volatility_target:
-        benchmark = benchmark * volatility_target / (benchmark.std() *
-                                                     np.sqrt(252))
+        benchmark = (
+            benchmark * volatility_target / (benchmark.std() * np.sqrt(252))
+        )
 
     perf = pd.concat([perf, benchmark], 1)
 
@@ -249,7 +251,7 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
             portfolios=["other"],
             prev_weights=prev_w,
             train_weights={"other": w["other"].iloc[0, :]},
-            risk_free=risk_free["risk_free"]
+            risk_free=risk_free["risk_free"],
         )
         leverage.append(l["other"])
         prev_w = w.copy()
@@ -514,7 +516,8 @@ def get_portfolio_perf_wrapper(
     - prev weights is previous cv weights or vector of 1s for the first cv
     - weights is current weights for the test period
 
-    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz', 'ivp', 'aerp', 'rp', 'aeerc']
+    :param portfolio: one of  ['equal', 'markowitz', 'shrink_markowitz',
+    'ivp', 'aerp', 'erc']
     :param train_returns:
     :param returns:
     :param weights: Dict with portfolio keys and corresponding weight
@@ -637,7 +640,8 @@ def cv_portfolio_perf_df(
     :param cv_portfolio: Dictionary with keys:
      - first key is cv fold
      - for each cv:
-        - "port" for portfolio weights with each strategy as key: [cv]["port"], [cv]["port"]["rp"], etc.
+        - "port" for portfolio weights with each strategy as key: [cv][
+        "port"], [cv]["port"]["erc"], etc.
         - "train_returns"
         - "returns"
     :poram portfolios: List of portfolio on which to compute weights
@@ -745,8 +749,15 @@ def one_cv(
         decoding,
         _,
         decoder_bias,
-    ) = load_result(ae_config, test_set, data, assets, base_dir, cv,
-                    reorder_features=reorder_features)
+    ) = load_result(
+        ae_config,
+        test_set,
+        data,
+        assets,
+        base_dir,
+        cv,
+        reorder_features=reorder_features,
+    )
 
     data = data.pct_change(1).dropna()
     data = data[assets]
