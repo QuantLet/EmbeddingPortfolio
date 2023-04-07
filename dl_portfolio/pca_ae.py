@@ -218,20 +218,28 @@ def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
         plt.show()
 
 
-def load_model_from_config(base_dir, cv, input_dim):
+def load_model_from_config(base_dir, cv, input_dim, encoding_dim=None):
     sys.path.append(base_dir)
     import ae_config as config
+    if config.encoding_dim is None:
+        assert encoding_dim is not None
+    else:
+        encoding_dim = config.encoding_dim
+
+    kernel_regularizer = config.kernel_regularizer
+    kernel_regularizer.encoding_dim = encoding_dim
+
     model, encoder, extra_features = build_model(
         config.model_type,
         input_dim,
-        config.encoding_dim,
+        encoding_dim,
         n_features=None,
         extra_features_dim=1,
         activation=config.activation,
         batch_normalization=config.batch_normalization,
         kernel_initializer=config.kernel_initializer,
         kernel_constraint=config.kernel_constraint,
-        kernel_regularizer=config.kernel_regularizer,
+        kernel_regularizer=kernel_regularizer,
         activity_regularizer=config.activity_regularizer,
         loss=config.loss,
         uncorrelated_features=config.uncorrelated_features,

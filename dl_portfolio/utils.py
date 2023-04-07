@@ -95,7 +95,7 @@ def get_linear_encoder(
     assets: List[str],
     base_dir: str,
     cv: str,
-    reorder_features=True,
+    reorder_features=False,
 ):
     """
 
@@ -118,17 +118,27 @@ def get_linear_encoder(
         scaler = None
     input_dim = len(assets)
 
+    if config.encoding_dim is None:
+        embedding = pd.read_pickle(f"{base_dir}/{cv}/encoder_weights.p")
+        encoding_dim = embedding.shape[-1]
+        # Set encoding_dim of kernel_regularizer
+    else:
+        encoding_dim = config.encoding_dim
+
+    kernel_regularizer = config.kernel_regularizer
+    kernel_regularizer.encoding_dim = encoding_dim
+
     model, encoder, extra_features = build_model(
         config.model_type,
         input_dim,
-        config.encoding_dim,
+        encoding_dim,
         n_features=None,
         extra_features_dim=1,
         activation=config.activation,
         batch_normalization=config.batch_normalization,
         kernel_initializer=config.kernel_initializer,
         kernel_constraint=config.kernel_constraint,
-        kernel_regularizer=config.kernel_regularizer,
+        kernel_regularizer=kernel_regularizer,
         activity_regularizer=config.activity_regularizer,
         loss=config.loss,
         uncorrelated_features=config.uncorrelated_features,
