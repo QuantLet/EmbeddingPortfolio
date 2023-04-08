@@ -13,7 +13,7 @@ from shutil import copyfile
 from typing import Optional
 from sklearn.cluster import KMeans
 
-from dl_portfolio.cluster import get_optimal_p_silhouette
+from dl_portfolio.cluster import get_optimal_p_silhouette, gap_optimal_cluster
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
 from dl_portfolio.data import get_features
@@ -622,17 +622,25 @@ def run_nmf(
             p_range = config.p_range
             assert max(p_range) < train_data.shape[-1]
             assert p_range is not None
-            n_exp = config.n_exp
-            if n_exp is None:
-                n_exp = 100
-            n_components, bb_criteria = get_optimal_p_silhouette(
-                train_data, p_range=p_range, n_exp=n_exp,
+            # n_exp = config.n_exp
+            # if n_exp is None:
+            #     n_exp = 100
+            # n_components, bb_criteria = get_optimal_p_silhouette(
+            #     train_data, p_range=p_range, n_exp=n_exp,
+            #     savepath=f"{save_path}/decision_curve.png",
+            #     show=config.show_plot,
+            # )
+            # if config.save:
+            #     pd.DataFrame(bb_criteria).to_csv(
+            #         f"{save_path}/bb_criteria.csv", index=False
+            #     )
+            n_components, gap_stats = gap_optimal_cluster(
+                train_data, max_p=max(p_range),
                 savepath=f"{save_path}/decision_curve.png",
-                show=config.show_plot,
-            )
+                show=config.show_plot)
             if config.save:
-                pd.DataFrame(bb_criteria).to_csv(
-                    f"{save_path}/bb_criteria.csv", index=False
+                pd.DataFrame(gap_stats).to_csv(
+                    f"{save_path}/gap_stats.csv", index=False
                 )
             LOGGER.info(f"Selected {n_components} factors!")
         else:

@@ -10,7 +10,7 @@ from scipy.spatial.distance import squareform
 from fastcluster import linkage
 
 import matplotlib.pyplot as plt
-from sklearn.metrics import euclidean_distances
+from sklearn.metrics import euclidean_distances, pairwise_distances
 from sklearn.preprocessing import StandardScaler
 
 from dl_portfolio.data import bb_resample_sample
@@ -29,8 +29,9 @@ def convex_nmf_cluster(X, k):
 
 def silhouette(X, k):
     _, labels = convex_nmf_cluster(X.T, k)
-    return metrics.silhouette_score(euclidean_distances(X.T), labels,
-                                    metric="precomputed")
+    return metrics.silhouette_score(
+        euclidean_distances(X.T), labels, metric="precomputed"
+    )
 
 
 def cluster_selection_curve(
@@ -48,18 +49,27 @@ def cluster_selection_curve(
     X = scaler.fit_transform(data)
     if criterion == "silhouette":
         param_perf = [silhouette(X, k) for k in p_range]
+    elif criterion == "gap":
+        param_perf = [compute_gap_k(X, k) for k in p_range]
     else:
         raise NotImplementedError(criterion)
 
     return param_perf
 
 
-def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
-                  show=False,  min_p=2, method="extrema"):
+def bb_silhouette(
+    bb_criteria,
+    alpha=0.05,
+    plot=False,
+    savepath=None,
+    show=False,
+    min_p=2,
+    method="extrema",
+):
     assert len(bb_criteria.shape) == 2
     mean_ = np.mean(bb_criteria, axis=1)
     lower_b = np.quantile(bb_criteria, alpha, axis=1)
-    upper_b = np.quantile(bb_criteria, 1-alpha, axis=1)
+    upper_b = np.quantile(bb_criteria, 1 - alpha, axis=1)
     if method == "gap":
         best_p = np.argmax((np.roll(mean_, 1) >= lower_b)[1:]) + min_p
     elif method == "max":
@@ -76,11 +86,12 @@ def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
         # Now filter out candidates that do not improve by more than x %
         # points from the first one
         candidates = [candidates[0]] + np.array(candidates)[1:][
-            (mean_[candidates][1:] - mean_[candidates][:-1]) > 0.025].tolist()
+            (mean_[candidates][1:] - mean_[candidates][:-1]) > 0.025
+        ].tolist()
         # Now among candidates, compute the weighted mean with respect to
         # the inverse variance of the estimate
         weighted_mean = mean_ / (upper_b - lower_b)
-        weighted_mean_cand = mean_ * 0.
+        weighted_mean_cand = mean_ * 0.0
         weighted_mean_cand[candidates] = weighted_mean[candidates]
         best_p = np.argmax(weighted_mean_cand) + min_p
     else:
@@ -88,10 +99,10 @@ def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
 
     if plot or savepath is not None or show:
         plt.plot(mean_)
-        plt.fill_between(range(len(bb_criteria)), lower_b, upper_b,
-                         alpha=0.2, color="grey")
-        plt.xticks(range(len(bb_criteria)),
-                   range(min_p, len(bb_criteria) + 1))
+        plt.fill_between(
+            range(len(bb_criteria)), lower_b, upper_b, alpha=0.2, color="grey"
+        )
+        plt.xticks(range(len(bb_criteria)), range(min_p, len(bb_criteria) + 1))
         plt.scatter(best_p - min_p, mean_[best_p - min_p], s=40, c="red")
         if savepath:
             plt.savefig(savepath, transparent=True, bbox_inches="tight")
@@ -102,27 +113,38 @@ def bb_silhouette(bb_criteria, alpha=0.05, plot=False, savepath=None,
     return best_p, mean_, lower_b, upper_b
 
 
-def get_optimal_p_silhouette(data: np.ndarray, p_range: List,
-                             n_exp: int = 1000, n_jobs: int = os.cpu_count(),
-                             criterion: str = "silhouette",
-                             resample: bool = True, block_length: int = 60,
-                             **kwargs):
+def get_optimal_p_silhouette(
+    data: np.ndarray,
+    p_range: List,
+    n_exp: int = 1000,
+    n_jobs: int = os.cpu_count(),
+    criterion: str = "silhouette",
+    resample: bool = True,
+    block_length: int = 60,
+    **kwargs,
+):
     if n_jobs <= 1:
         bb_criteria = []
         for i in range(n_exp):
             if i % 10 == 0:
                 LOGGER.info(f"Steps to go: {n_exp - i}")
             criteria = cluster_selection_curve(
-                data, p_range=p_range, criterion=criterion,
-                resample=resample, block_length=block_length
+                data,
+                p_range=p_range,
+                criterion=criterion,
+                resample=resample,
+                block_length=block_length,
             )
             bb_criteria.append(criteria)
     else:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             bb_criteria = _parallel_pool(
                 delayed(cluster_selection_curve)(
-                    data, p_range=p_range, criterion=criterion,
-                    resample=resample, block_length=block_length
+                    data,
+                    p_range=p_range,
+                    criterion=criterion,
+                    resample=resample,
+                    block_length=block_length,
                 )
                 for i in range(n_exp)
             )
@@ -339,3 +361,107 @@ def compute_serial_matrix(dist_mat, method="ward"):
     seriated_dist[b, a] = seriated_dist[a, b]
 
     return seriated_dist, res_order, res_linkage
+
+
+def compute_cluster_inertia(labels, asset_returns):
+    """
+
+    :param labels:
+    :param asset_returns:
+    :return:
+    """
+    unique_labels = np.unique(labels)
+    inertia = [
+        np.mean(pairwise_distances(asset_returns[:, labels == label]))
+        for label in unique_labels
+    ]
+    inertia = np.log(np.sum(inertia))
+    return inertia
+
+
+def compute_expected_inertia(
+    num_reference_datasets, asset_returns, num_clusters
+):
+    """
+
+    :param num_reference_datasets:
+    :param asset_returns:
+    :param num_clusters:
+    :param random_state:
+    :return:
+    """
+    reference_inertias = []
+    for _ in range(num_reference_datasets):
+        # Generate reference returns from uniform distribution and calculate
+        # clusters
+        reference_asset_returns = pd.DataFrame(
+            np.random.rand(*asset_returns.shape)
+        )
+        _, reference_cluster_assignments = convex_nmf_cluster(
+            asset_returns.T, num_clusters
+        )
+        inertia = compute_cluster_inertia(
+            reference_cluster_assignments, reference_asset_returns.values
+        )
+        reference_inertias.append(inertia)
+    s_k = np.sqrt(1 + 1 / num_reference_datasets) * np.std(reference_inertias)
+    return np.mean(reference_inertias), s_k
+
+
+def compute_gap_k(X, k, num_reference_datasets=5):
+    _, original_labels = convex_nmf_cluster(X.T, k)
+    inertia = compute_cluster_inertia(original_labels, X)
+    # Calculate expected inertia from reference datasets
+    expected_inertia, s_k = compute_expected_inertia(
+        num_reference_datasets, X, k
+    )
+    # Calculate the gap statistic
+    gap = expected_inertia - inertia
+
+    return gap, s_k
+
+
+def gap_optimal_cluster(train_data, max_p=None, savepath=None, show=False):
+    num_reference_datasets = 10
+    random_state = 0
+    if max_p is None:
+        max_p = train_data.shape[-1] - 1
+    gap_stats = np.zeros((max_p, 2))
+    for p in range(1, max_p + 1):
+        nmf = ConvexNMF(n_components=p, random_state=random_state, norm_G="l2")
+        nmf.fit(train_data)
+
+        # Calculate inertia from original data
+        original_cluster_assignments = np.argmax(nmf.G, axis=1)
+        inertia = compute_cluster_inertia(
+            original_cluster_assignments, train_data
+        )
+        # Calculate expected inertia from reference datasets
+        expected_inertia, s_k = compute_expected_inertia(
+            num_reference_datasets, train_data, p
+        )
+        # Calculate the gap statistic
+        gap = expected_inertia - inertia
+        gap_stats[p - 1, :] = (gap, s_k)
+
+    best_p = (
+        np.argmax(gap_stats[:-1, 0] > gap_stats[1:, 0] - gap_stats[1:, 1]) + 1
+    )
+    if savepath is not None or show:
+        plt.plot(gap_stats[:, 0])
+        plt.fill_between(
+            range(len(gap_stats)),
+            gap_stats[:, 0] - gap_stats[:, 1],
+            gap_stats[:, 0],
+            alpha=0.2,
+            color="grey",
+        )
+        plt.xticks(range(len(gap_stats)), range(1, len(gap_stats) + 1))
+        plt.scatter(best_p - 1, gap_stats[best_p - 1, 0], s=40, c="red")
+        if savepath:
+            plt.savefig(savepath, transparent=True, bbox_inches="tight")
+        if show:
+            plt.show()
+        plt.close()
+
+    return best_p, gap_stats
