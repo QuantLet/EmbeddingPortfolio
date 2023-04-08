@@ -421,7 +421,8 @@ def compute_gap_k(X, k, num_reference_datasets=5):
     return gap, s_k
 
 
-def gap_optimal_cluster(train_data, max_p=None, savepath=None, show=False):
+def gap_optimal_cluster(train_data, max_p=None, savepath=None, show=False,
+                        criterion="first_extrema"):
     num_reference_datasets = 10
     random_state = 0
     if max_p is None:
@@ -444,9 +445,17 @@ def gap_optimal_cluster(train_data, max_p=None, savepath=None, show=False):
         gap = expected_inertia - inertia
         gap_stats[p - 1, :] = (gap, s_k)
 
-    best_p = (
-        np.argmax(gap_stats[:-1, 0] > gap_stats[1:, 0] - gap_stats[1:, 1]) + 1
-    )
+    if criterion == "first_gap":
+        best_p = (
+            np.argmax(gap_stats[:-1, 0] > gap_stats[1:, 0] - gap_stats[1:, 1]) + 1
+        )
+    elif criterion == "first_extrema":
+        candidates = argrelextrema(gap_stats[:,0], np.greater, mode="wrap")[
+            0].tolist()
+        best_p = candidates[0] + 1
+    else:
+        raise NotImplementedError(criterion)
+
     if savepath is not None or show:
         plt.plot(gap_stats[:, 0])
         plt.fill_between(
