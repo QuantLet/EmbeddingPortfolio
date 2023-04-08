@@ -46,20 +46,19 @@ PORTFOLIOS = [
     "erc",
     "rb_factor",
     "rb_factor_full_erc",
-    "aeaa",
-    "kmaa",
 ]
 
 np.random.seed(0) # there is some variance with HCAA...
 
 if __name__ == "__main__":
-    try:
-        from portfoliolab.clustering.herc import \
-            HierarchicalEqualRiskContribution
-    except ModuleNotFoundError as _exc:
-        LOGGER.exception("You must install portfoliolab or remove 'hcaa' "
-                         "from the portfolios list or implement "
-                         "'HierarchicalEqualRiskContribution' yourself!")
+    if "hcaa" in PORTFOLIOS:
+        try:
+            from portfoliolab.clustering.herc import \
+                HierarchicalEqualRiskContribution
+        except ModuleNotFoundError as _exc:
+            LOGGER.exception("You must install portfoliolab or remove 'hcaa' "
+                             "from the portfolios list or implement "
+                             "'HierarchicalEqualRiskContribution' yourself!")
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_dir", type=str, help="Experiments dir")
@@ -634,129 +633,13 @@ if __name__ == "__main__":
                 show=args.show,
                 legend=args.legend,
             )
-            if "shrink_markowitz" in PORTFOLIOS:
+            for p_name in port_weights.keys():
                 bar_plot_weights(
-                    port_weights["shrink_markowitz"],
-                    save_path=f"{save_dir}/weights_shrink_markowitz.png",
-                    show=args.show,
-                )
-            if "markowitz" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["markowitz"],
-                    save_path=f"{save_dir}/weights_markowitz.png",
-                    show=args.show,
-                )
-            if "hcaa" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["hcaa"],
-                    save_path=f"{save_dir}/weights_hcaa.png",
-                    show=args.show,
+                    port_weights[p_name],
+                    save_path=f"{save_dir}/weights_{p_name}.png",
                     legend=args.legend,
-                )
-            if "hrp" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["hrp"],
-                    save_path=f"{save_dir}/weights_hrp.png",
                     show=args.show,
-                    legend=args.legend,
                 )
-            if "aerp" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["aerp"],
-                    save_path=f"{save_dir}/weights_aerp.png",
-                    show=args.show,
-                    legend=args.legend,
-                )
-            if "aeerc" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["aeerc"],
-                    save_path=f"{save_dir}/weights_aeerc.png",
-                    show=args.show,
-                    legend=args.legend,
-                )
-            if "ae_rp_c" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["ae_rp_c"],
-                    save_path=f"{save_dir}/weights_aeerc_cluster.png",
-                    show=args.show,
-                    legend=args.legend,
-                )
-            if "aeaa" in PORTFOLIOS:
-                bar_plot_weights(
-                    port_weights["aeaa"],
-                    save_path=f"{save_dir}/weights_aeaa.png",
-                    show=args.show,
-                    legend=args.legend,
-                )
-        else:
-            plot_perf(
-                ann_perf, strategies=PORTFOLIOS, show=args.show, legend=args.legend
-            )
-            bar_plot_weights(port_weights["aeerc"], show=args.show)
-            bar_plot_weights(port_weights["ae_rp_c"], show=args.show)
-            bar_plot_weights(port_weights["aeaa"], show=args.show)
-
-        # Plot excess return
-        # if "hrp" in PORTFOLIOS:
-        #     plt.figure(figsize=(20, 10))
-        #     plt.plot(
-        #         np.cumprod(ann_perf["aerp"] + 1) - np.cumprod(ann_perf["hrp"] + 1)
-        #     )
-        #     if args.save:
-        #         plt.savefig(
-        #             f"{save_dir}/excess_performance_hrp_aerp.png",
-        #             bbox_inches="tight",
-        #             transparent=True,
-        #         )
-        #     plt.figure(figsize=(20, 10))
-        #     plt.plot(
-        #         np.cumprod(ann_perf["ae_rp_c"] + 1)
-        #         - np.cumprod(ann_perf["hrp"] + 1)
-        #     )
-        #     if args.save:
-        #         plt.savefig(
-        #             f"{save_dir}/excess_performance_hrp_aeerc_cluster.png",
-        #             bbox_inches="tight",
-        #             transparent=True,
-        #         )
-        #
-        # if "hcaa" in PORTFOLIOS:
-        #     plt.figure(figsize=(20, 10))
-        #     plt.plot(
-        #         np.cumprod(ann_perf["aeerc"] + 1)
-        #         - np.cumprod(ann_perf["hcaa"] + 1)
-        #     )
-        #     if args.save:
-        #         plt.savefig(
-        #             f"{save_dir}/excess_performance_hcaa_aeerc.png",
-        #             bbox_inches="tight",
-        #             transparent=True,
-        #         )
-        #
-        #     plt.figure(figsize=(20, 10))
-        #     plt.plot(
-        #         np.cumprod(ann_perf["ae_rp_c"] + 1)
-        #         - np.cumprod(ann_perf["hcaa"] + 1)
-        #     )
-        #     if args.save:
-        #         plt.savefig(
-        #             f"{save_dir}/excess_performance_hcaa_aeerc_cluster.png",
-        #             bbox_inches="tight",
-        #             transparent=True,
-        #         )
-        #
-        # if "markowitz" in PORTFOLIOS:
-        #     plt.figure(figsize=(20, 10))
-        #     plt.plot(
-        #         np.cumprod(ann_perf["ae_rp_c"] + 1)
-        #         - np.cumprod(ann_perf["markowitz"] + 1)
-        #     )
-        #     if args.save:
-        #         plt.savefig(
-        #             f"{save_dir}/excess_performance_markowitz_aeerc_cluster.png",
-        #             bbox_inches="tight",
-        #             transparent=True,
-        #         )
 
         # Get statistics
         stats = backtest_stats(

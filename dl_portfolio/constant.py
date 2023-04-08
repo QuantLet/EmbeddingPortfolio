@@ -21,20 +21,10 @@ LOG_DIR = "log_AE"
 PORTFOLIOS = [
     "equal",
     "equal_class",
-    "markowitz",
-    "shrink_markowitz",
     "erc",
-    "ivp",
     "aerp",
-    "sector_erc",
-    "aeerc",
-    "ae_rp_c",
-    "kmaa",
-    "aeaa",
     "hrp",
     "hcaa",
-    "drp",
-    "principal",
     "rb_factor",
     "rb_factor_full_erc"
 ]

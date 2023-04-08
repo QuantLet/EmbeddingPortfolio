@@ -46,11 +46,6 @@ def portfolio_weights(
         LOGGER.info("Computing Markowitz weights...")
         port_w["markowitz"] = markowitz_weights(mu, S)
 
-    if "shrink_markowitz" in portfolio:
-        assert shrink_cov is not None
-        LOGGER.info("Computing shrinked Markowitz weights...")
-        port_w["shrink_markowitz"] = markowitz_weights(mu, shrink_cov)
-
     if "ivp" in portfolio:
         LOGGER.info("Computing IVP weights...")
         port_w["ivp"] = ivp_weights(S)
@@ -68,7 +63,7 @@ def portfolio_weights(
     if "aerp" in portfolio:
         LOGGER.info("Computing AE Risk Parity weights...")
         assert embedding is not None
-        port_w["aerp"] = ae_ivp_weights(returns, embedding)
+        port_w["aerp"] = ae_rp_weights(returns, embedding)
 
     if "aeerc" in portfolio:
         LOGGER.info("Computing AE Risk Contribution weights...")
@@ -76,33 +71,6 @@ def portfolio_weights(
         assert embedding is not None
         port_w["aeerc"] = ae_riskparity_weights(
             returns, embedding, loading, budget, risk_parity="budget"
-        )
-
-    if "ae_rp_c" in portfolio:
-        LOGGER.info("Computing AE Risk Contribution Cluster weights...")
-        assert budget is not None
-        assert embedding is not None
-        port_w["ae_rp_c"] = ae_riskparity_weights(
-            returns, embedding, loading, budget, risk_parity="cluster"
-        )
-
-    if "sector_erc" in portfolio:
-        LOGGER.info("Computing Sector ERC weights...")
-        assert budget is not None
-        # Create artificial embedding and loading matrix
-        art_emb = pd.DataFrame(columns=budget["market"].unique(),
-                                 index=budget.index)
-        for c in art_emb.columns:
-            art_emb.loc[
-                budget.index[budget["market"] == c], c] = 1
-        art_emb.fillna(0, inplace=True)
-        art_load = art_emb.copy()
-        port_w["sector_erc"] = ae_riskparity_weights(
-            returns,
-            art_emb,
-            art_load,
-            budget,
-            risk_parity="budget",
         )
 
     if "aeaa" in portfolio:
@@ -127,27 +95,6 @@ def portfolio_weights(
     if "rb_factor_full_erc" in portfolio:
         LOGGER.info('Computing RB factor weights...')
         port_w['rb_factor_full_erc'] = get_full_rb_factor_weights(returns, loading)
-
-    if "drp" in portfolio:
-        LOGGER.info('Computing DRP weights...')
-        w0 = np.ones(n_assets) / n_assets
-        w0 = kwargs.get("w0", w0)
-        assert w0 is not None, "You must provide w0, initial value for drp " \
-                               "optimization"
-        port_w['drp'] = get_drp_weights(S, w0,
-                                        verbose=kwargs.get("verbose", False))
-
-    if "principal" in portfolio:
-        LOGGER.info('Computing Principal Portfolios weights...')
-        assert embedding is not None
-        n_components = embedding.values.shape[-1]
-        w0 = get_drp_weights(S, np.ones(n_assets) / n_assets,
-                             verbose=False).values
-        assert w0 is not None, "You must provide w0, initial value for drp " \
-                               "optimization"
-        S = returns.corr()
-        port_w["principal"] = get_principal_port(
-            S, w0, n_components, verbose=kwargs.get("verbose", False))
 
     return port_w
 
@@ -440,6 +387,19 @@ def ivp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
     return weights
 
 
+def ivolp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
+    # Compute the inverse-volatility portfolio (simple ERC)
+    ivp = 1.0 / np.sqrt(np.diag(S.values))
+    weights = ivp / ivp.sum()
+
+    if isinstance(S, pd.DataFrame):
+        weights = pd.Series(weights, index=S.index)
+    else:
+        weights = pd.Series(weights)
+
+    return weights
+
+
 def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
     weights = rp.RiskParityPortfolio(covariance=S, budget=budget).weights
     weights = pd.Series(weights, index=S.index)
@@ -498,18 +458,21 @@ def get_full_rb_factor_weights(returns, loading, threshold=1e-2):
     factor_returns = np.array(
         [np.dot(returns, inner_weights.values[:, i]) for i in range(
             n_components)])
-    cluster_weights = rp.RiskParityPortfolio(
-        covariance=np.cov(factor_returns),
-        budget=np.ones(n_components)/n_components
-    ).weights
-
+    if factor_returns.shape[0] > 1:
+        cluster_weights = rp.RiskParityPortfolio(
+            covariance=np.cov(factor_returns),
+            budget=np.ones(n_components)/n_components
+        ).weights
+    else:
+        cluster_weights = np.array([1.])
     weights = inner_weights * cluster_weights
     weights = weights.sum(axis=1)
 
     return weights
 
 
-def get_rb_factor_weights(returns, loading, threshold=1e-2, erc_factor=False):
+def get_rb_factor_weights(returns, loading, threshold=1e-2,
+                          erc_factor=False, simple=False):
     """
     Compute inner weights with rb_perfect_corr and apply inverse volatility
     at the factor level
@@ -528,6 +491,8 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2, erc_factor=False):
     for i in range(n_components):
         c_assets = cluster_ind[cluster_ind == i].index
         budget = loading.loc[c_assets, i].copy()
+        if simple:
+            budget.values[:] = 1
         budget = budget / np.linalg.norm(budget)
         budget = budget**2 # Must sum to 1, also is interpretable as
         # explained variance
@@ -544,8 +509,12 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2, erc_factor=False):
         ).weights
 
     else:
-        cluster_sigmas = np.sqrt(np.diag(np.cov(factor_returns)))
-        cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
+        assert len(factor_returns.shape) == 2
+        if factor_returns.shape[0] > 1:
+            cluster_sigmas = np.sqrt(np.diag(np.cov(factor_returns)))
+            cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
+        else:
+            cluster_weights = np.array([1.])
 
     weights = inner_weights * cluster_weights
     weights = weights.sum(axis=1)
@@ -707,7 +676,7 @@ def equal_class_weights(market_budget: pd.DataFrame):
     return weights
 
 
-def ae_ivp_weights(returns, embedding):
+def ae_rp_weights(returns, embedding, erc=True, cluster_erc=False):
     max_cluster = embedding.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     # Rename columns in case of previous renaming
@@ -722,12 +691,19 @@ def ae_ivp_weights(returns, embedding):
     for c in clusters:
         cluster_items = clusters[c]
         if cluster_items:
-            c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
+            if erc:
+                c_weights = ivolp_weights(
+                    cov.loc[cluster_items, cluster_items])
+            else:
+                c_weights = ivp_weights(cov.loc[cluster_items, cluster_items])
             cluster_var = get_cluster_var(
                 cov, cluster_items, weights=c_weights
             )
             cluster_asset_weights[c] = c_weights
-            cluster_weights[c] = cluster_var
+            if cluster_erc:
+                cluster_weights[c] = np.sqrt(cluster_var)
+            else:
+                cluster_weights[c] = cluster_var
 
     cluster_weights = {c: 1 / cluster_weights[c] for c in cluster_weights}
     cluster_weights = {
