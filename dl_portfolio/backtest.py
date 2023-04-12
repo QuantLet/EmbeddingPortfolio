@@ -365,6 +365,7 @@ def bar_plot_weights(weights, show=False, legend=False, save_path=None):
         plt.savefig(save_path, bbox_inches="tight", transparent=True)
     if show:
         plt.show()
+    plt.close()
 
 
 def annualized_volatility(perf, period: int = 1):

@@ -655,6 +655,7 @@ if __name__ == "__main__":
         number_bets = get_number_of_bets(risk_contribution)
         if args.save:
             number_bets.to_csv(f"{save_dir}/number_bets.csv")
+            plt.figure()
             plt.boxplot(number_bets.T, showmeans=True)
             plt.xticks(range(1, len(number_bets.columns) + 1),
                        number_bets.columns, rotation=90)
@@ -662,6 +663,7 @@ if __name__ == "__main__":
                         transparent=True)
         if args.show:
             plt.show()
+        plt.close()
 
         stats = backtest_stats(
             ann_perf,
