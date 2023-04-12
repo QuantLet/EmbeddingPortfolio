@@ -1,4 +1,5 @@
 import pandas as pd
+import datetime as dt
 
 AVAILABLE_CRITERIA = ["gap", "aic"]
 
@@ -45,156 +46,84 @@ AVAILABLE_METHODS = [
     "hedged_equal_cum_excess_return_cluster",
 ]
 METHODS_MAPPING = {k: i for i, k in enumerate(AVAILABLE_METHODS)}
+
 # Cv dates
-
-DATA_SPECS_BOND = {
-    0: {
-        "start": "2016-06-30",
-        "val_start": "2019-11-13",
-        "test_start": "2019-12-12",
-        "end": "2020-01-11",
-    },
-    1: {
-        "start": "2016-06-30",
-        "val_start": "2019-12-13",
-        "test_start": "2020-01-12",
-        "end": "2020-02-11",
-    },
-    2: {
-        "start": "2016-06-30",
-        "val_start": "2020-01-13",
-        "test_start": "2020-02-12",
-        "end": "2020-03-11",
-    },
-    3: {
-        "start": "2016-06-30",
-        "val_start": "2020-02-13",
-        "test_start": "2020-03-12",
-        "end": "2020-04-11",
-    },
-    4: {
-        "start": "2016-06-30",
-        "val_start": "2020-03-13",
-        "test_start": "2020-04-12",
-        "end": "2020-05-11",
-    },
-    5: {
-        "start": "2016-06-30",
-        "val_start": "2020-04-13",
-        "test_start": "2020-05-12",
-        "end": "2020-06-11",
-    },
-    6: {
-        "start": "2016-06-30",
-        "val_start": "2020-05-13",
-        "test_start": "2020-06-12",
-        "end": "2020-07-11",
-    },
-    7: {
-        "start": "2016-06-30",
-        "val_start": "2020-06-13",
-        "test_start": "2020-07-12",
-        "end": "2020-08-11",
-    },
-    8: {
-        "start": "2016-06-30",
-        "val_start": "2020-07-13",
-        "test_start": "2020-08-12",
-        "end": "2020-09-11",
-    },
-    9: {
-        "start": "2016-06-30",
-        "val_start": "2020-08-13",
-        "test_start": "2020-09-12",
-        "end": "2020-10-11",
-    },
-    10: {
-        "start": "2016-06-30",
-        "val_start": "2020-09-13",
-        "test_start": "2020-10-12",
-        "end": "2020-11-11",
-    },
-    11: {
-        "start": "2016-06-30",
-        "val_start": "2020-10-13",
-        "test_start": "2020-11-12",
-        "end": "2020-12-11",
-    },
-    12: {
-        "start": "2016-06-30",
-        "val_start": "2020-11-13",
-        "test_start": "2020-12-12",
-        "end": "2021-01-11",
-    },
-    13: {
-        "start": "2016-06-30",
-        "val_start": "2020-12-13",
-        "test_start": "2021-01-12",
-        "end": "2021-02-11",
-    },
-    14: {
-        "start": "2016-06-30",
-        "val_start": "2021-01-13",
-        "test_start": "2021-02-12",
-        "end": "2021-03-11",
-    },
-    15: {
-        "start": "2016-06-30",
-        "val_start": "2021-02-13",
-        "test_start": "2021-03-12",
-        "end": "2021-04-11",
-    },
-    16: {
-        "start": "2016-06-30",
-        "val_start": "2021-03-13",
-        "test_start": "2021-04-12",
-        "end": "2021-05-11",
-    },
-    17: {
-        "start": "2016-06-30",
-        "val_start": "2021-04-13",
-        "test_start": "2021-05-12",
-        "end": "2021-06-11",
-    },
-    18: {
-        "start": "2016-06-30",
-        "val_start": "2021-05-13",
-        "test_start": "2021-06-12",
-        "end": "2021-07-11",
-    },
-    19: {
-        "start": "2016-06-30",
-        "val_start": "2021-06-13",
-        "test_start": "2021-07-12",
-        "end": "2021-08-11",
-    },
-    20: {
-        "start": "2016-06-30",
-        "val_start": "2021-07-13",
-        "test_start": "2021-08-12",
-        "end": "2021-09-11",
-    },
-    21: {
-        "start": "2016-06-30",
-        "val_start": "2021-08-13",
-        "test_start": "2021-09-12",
-        "end": "2021-10-11",
-    },
-}
-
-val_start = pd.date_range("2007-01-01", "2021-09-01", freq="1MS")
+val_start = pd.date_range(
+    "2017-06-01", "2023-02-01", freq="1MS"
+)
+start = [d - dt.timedelta(days=365) for d in val_start]
+start = [str(d.date()) for d in start]
 val_start = [str(d.date()) for d in val_start]
 
-test_start = pd.date_range("2007-02-01", "2021-10-01", freq="1MS")
-test_start = [str(d.date()) for d in test_start]
-test_end = pd.date_range("2007-02-01", "2021-11-01", freq="1M")
-test_end = [str(d.date()) for d in test_end]
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
+end = [str(d.date()) for d in end]
 
-DATA_SPECS_MULTIASSET_TRADITIONAL = {}
+data_specs = {}
 for i in range(len(val_start)):
-    DATA_SPECS_MULTIASSET_TRADITIONAL[i] = {
+    data_specs[i] = {
+        "start": start[i],
+        "val_start": val_start[i],
+        "end": end[i],
+    }
+DATA_SPECS_NMF_DATASET1 = data_specs.copy()
+
+val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
+test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
+
+val_start = [str(d.date()) for d in val_start]
+test_start = [str(d.date()) for d in test_start]
+end = [str(d.date()) for d in end]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
+        "start": "2016-06-30",
+        "val_start": val_start[i],
+        "test_start": test_start[i],
+        "end": end[i],
+    }
+DATA_SPECS_AE_DATASET1 = data_specs.copy()
+
+# Dataset 2
+val_start = pd.date_range("1990-01-01", "2021-10-01", freq="1MS")
+test_start = pd.date_range("1990-02-01", "2021-11-01", freq="1MS")
+val_start = [str(d.date()) for d in val_start]
+test_start = [str(d.date()) for d in test_start]
+
+end = pd.date_range("1990-02-01", "2021-12-01", freq="1M")
+end = [str(d.date()) for d in end]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
         "start": "1989-02-01",
         "val_start": val_start[i],
         "test_start": test_start[i],
-        "end": test_end[i],
+        "end": end[i],
     }
+DATA_SPECS_AE_DATASET2 = data_specs.copy()
+
+val_start = pd.date_range("1990-02-01", "2021-11-01", freq="1MS")
+start = [d - dt.timedelta(days=365) for d in val_start]
+start = [str(d.date()) for d in start]
+val_start = [str(d.date()) for d in val_start]
+
+end = pd.date_range("1990-02-01", "2021-12-01", freq="1M")
+end = [str(d.date()) for d in end]
+
+data_specs = {}
+for i in range(len(val_start)):
+    data_specs[i] = {
+        "start": start[i],
+        "val_start": val_start[i],
+        "end": end[i],
+    }
+
+for i in range(len(val_start)):
+    data_specs[i] = {
+        "start": start[i],
+        "val_start": val_start[i],
+        "end": end[i],
+    }
+DATA_SPECS_NMF_DATASET2 = data_specs.copy()

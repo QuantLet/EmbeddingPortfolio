@@ -26,6 +26,7 @@ from dl_portfolio.cluster import (
     rand_score_permutation,
     assign_cluster_from_consmat,
 )
+from dl_portfolio.data import load_data
 from dl_portfolio.evaluate import (
     average_prediction_cv,
     load_prediction_cv,
@@ -604,6 +605,7 @@ if __name__ == "__main__":
             portfolios=PORTFOLIOS,
             volatility_target=args.volatility_target,
             market_budget=market_budget,
+            dataset=config.dataset,
         )
         LOGGER.info("Done.")
 
@@ -649,6 +651,7 @@ if __name__ == "__main__":
             format=True,
             market_budget=market_budget,
             volatility_target=args.volatility_target,
+            prices=load_data(config.dataset)[0],
         )
         if args.save:
             stats.to_csv(f"{save_dir}/backtest_stats.csv")

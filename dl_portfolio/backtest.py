@@ -14,8 +14,8 @@ from dl_portfolio.data import (
 )
 from dl_portfolio.utils import load_result
 from dl_portfolio.constant import (
-    DATA_SPECS_BOND,
-    DATA_SPECS_MULTIASSET_TRADITIONAL,
+    DATA_SPECS_AE_DATASET1,
+    DATA_SPECS_AE_DATASET2,
 )
 from dl_portfolio.probabilistic_sr import (
     probabilistic_sharpe_ratio,
@@ -117,13 +117,15 @@ def backtest_stats(
                     )
                     tto_value = np.mean(
                         [
-                            total_average_turnover(weights[strat][k])
+                            total_average_turnover(weights[strat][k],
+                                                   prices=kwargs.get("prices"))
                             for k in weights[strat]
                         ]
                     )
                 else:
                     sspw_value = sspw(weights[strat])
-                    tto_value = total_average_turnover(weights[strat])
+                    tto_value = total_average_turnover(
+                        weights[strat], prices=kwargs.get("prices"))
             else:
                 sspw_value = np.nan
                 tto_value = 0.0
@@ -180,29 +182,29 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
     if portfolio == "GMV_robust_dataset1":
         dataset = "dataset1"
         weights = pd.read_csv(
-            "./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_GMV_robust.csv",
+            "./final_models/run_11_dataset1_20230408_145352/weights_GMV_robust.csv",
             index_col=0,
         )
-        data_specs = DATA_SPECS_BOND
+        data_specs = DATA_SPECS_AE_DATASET1
     elif portfolio == "MeanVar_dataset1":
         dataset = "dataset1"
         weights = pd.read_csv(
-            "./final_models/run_7_global_bond_dl_portfolio_20220122_151211/weights_MeanVar_long.csv",
+            "./final_models/run_11_dataset1_20230408_145352/weights_MeanVar_long.csv",
             index_col=0,
         )
-        data_specs = DATA_SPECS_BOND
+        data_specs = DATA_SPECS_AE_DATASET1
     elif portfolio == "GMV_robust_dataset2":
         dataset = "dataset2"
-        data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
+        data_specs = DATA_SPECS_AE_DATASET2
         weights = pd.read_csv(
-            "./final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_GMV_robust.csv",
+            "./final_models/run_12_dataset2_20230408_145946/weights_GMV_robust.csv",
             index_col=0,
         )
     elif portfolio == "MeanVar_dataset2":
         dataset = "dataset2"
-        data_specs = DATA_SPECS_MULTIASSET_TRADITIONAL
+        data_specs = DATA_SPECS_AE_DATASET2
         weights = pd.read_csv(
-            "./final_models/run_6_multiasset_traditional_dl_portfolio_20211206_173539/weights_MeanVar_long.csv",
+            "./final_models/run_12_dataset2_20230408_145946/weights_MeanVar_long.csv",
             index_col=0,
         )
     else:
@@ -217,7 +219,6 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
     port_perf = pd.DataFrame()
 
     leverage = []
-
     for cv in data_specs:
         test_start = data_specs[cv]["test_start"]
         test_end = data_specs[cv]["end"]
@@ -414,13 +415,31 @@ def average_turnover(weights):
     return weights.diff().abs().dropna().mean()
 
 
-def total_average_turnover(weights):
+def total_average_turnover(weights, prices=None):
     """
     compute total average turnover per rebalancing
     :param weights: pd.DataFrame of shape (n_obs, n_assets)
     :return:
     """
-    return np.sum(np.mean(np.abs(np.diff(weights, axis=0)), axis=0))
+    n_assets = weights.shape[-1]
+    if prices is None:
+        return np.mean(np.sum(np.abs(np.diff(weights, axis=0)), axis=0))
+    else:
+        # prev_weights = pd.DataFrame()
+        tto = []
+        for i, end_date in enumerate(weights.index):
+                if i == 0:
+                    pw = np.zeros((n_assets))
+                else:
+                    prev_weights = weights.iloc[i - 1]
+                    start_date = weights.index[i - 1]
+                    shares = prev_weights / prices.loc[start_date]
+                    pw = shares * prices.loc[end_date] / (
+                            shares * prices.loc[end_date]).sum()
+
+                tto.append(
+                    np.sum(np.abs(np.diff(weights.loc[end_date] - pw))))
+        return np.mean(tto)
 
 
 def adjusted_sharpe_ratio(perf, period: int = 1):
@@ -573,10 +592,10 @@ def get_portfolio_perf_wrapper(
                         [
                             prev_weights[portfolio].iloc[-1:, :],
                             weights[portfolio],
-                        ]
+                        ], ignore_index=True
                     )
                     cost = fee * np.abs(cost.diff().dropna()).sum(1)
-                    cost = pd.Series(cost, index=returns.index)
+                    cost = pd.Series(cost.values, index=returns.index)
                     assert cost.isna().sum() == 0
                 else:
                     mu = np.abs(prev_weights[portfolio] - weights[portfolio])
@@ -626,6 +645,7 @@ def get_portfolio_perf_wrapper(
 
 def cv_portfolio_perf_df(
     cv_portfolio: Dict,
+    dataset,
     portfolios: List[str] = ["ae_rp_c", "aeaa", "aeerc"],
     train_weights: Optional[Dict] = None,
     **kwargs,
@@ -649,6 +669,7 @@ def cv_portfolio_perf_df(
     :return:
     """
     assert all([p in PORTFOLIOS for p in portfolios])
+    prices, assets = load_data(dataset)
     port_perf = {}
     leverage = {}
     for p in portfolios:
@@ -661,16 +682,29 @@ def cv_portfolio_perf_df(
         weights = cv_portfolio[cv]["port"].copy()
         if cv == 0:
             prev_weights = {
-                p: pd.DataFrame(
-                    np.ones_like(list(weights.values())[0]),
-                    columns=assets,
-                )
-                for p in portfolios
-                if p not in ["equal", "equal_class"]
+                p: pd.DataFrame(np.zeros((1, len(assets))), columns=assets) for p
+                in portfolios
             }
         else:
-            prev_weights = cv_portfolio[cv - 1]["port"]
+            prev_weights = cv_portfolio[cv-1]["port"].copy()
+            start_date = cv_portfolio[cv-1]["returns"].index[0]
+            end_date = cv_portfolio[cv-1]["returns"].index[-1]
+            for p in portfolios:
+                if p == "equal":
+                    pw = np.ones(len(assets)) * 1/len(assets)
+                elif p == "equal_class":
+                    market_budget = kwargs.get("market_budget")
+                    assert market_budget is not None
+                    market_budget = market_budget.loc[assets, :]
+                    pw = equal_class_weights(market_budget)
+                else:
+                    pw = prev_weights[p].loc[start_date]
 
+                shares = pw / prices.loc[start_date]
+                prev_weights[p] = shares * prices.loc[end_date] / (
+                        shares * prices.loc[end_date]).sum()
+                prev_weights[p] = pd.DataFrame(prev_weights[p],
+                                               columns=[end_date]).T
         if train_weights is not None:
             train_w = train_weights[cv]
         else:
