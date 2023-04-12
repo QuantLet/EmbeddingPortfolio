@@ -19,7 +19,10 @@ from dl_portfolio.backtest import (
     get_cv_results,
     get_dl_average_weights,
     cv_portfolio_perf_df,
+    get_number_of_bets,
+    get_factors_rc_and_weights
 )
+
 from dl_portfolio.cluster import (
     get_cluster_labels,
     consensus_matrix,
@@ -644,6 +647,22 @@ if __name__ == "__main__":
                 )
 
         # Get statistics
+        risk_contribution, factor_weights = get_factors_rc_and_weights(
+            cv_results,
+            market_budget.drop("CRIX") if config.dataset == "dataset1"  else
+            market_budget
+        )
+        number_bets = get_number_of_bets(risk_contribution)
+        if args.save:
+            number_bets.to_csv(f"{save_dir}/number_bets.csv")
+            plt.boxplot(number_bets.T, showmeans=True)
+            plt.xticks(range(1, len(number_bets.columns) + 1),
+                       number_bets.columns, rotation=90)
+            plt.savefig(f"{save_dir}/number_bets.png", bbox_inches="tight",
+                        transparent=True)
+        if args.show:
+            plt.show()
+
         stats = backtest_stats(
             ann_perf,
             port_weights,

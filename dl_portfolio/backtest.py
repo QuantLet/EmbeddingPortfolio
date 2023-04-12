@@ -5,6 +5,7 @@ import numpy as np
 from scipy import stats as scipy_stats
 from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
+import scipy
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.data import (
@@ -753,6 +754,145 @@ def portfolio_return(
     else:
         port_perf = (returns * weights).sum(1)
     return port_perf
+
+
+def herfindal_index(p, normalize=True):
+    if normalize:
+        d = len(p)
+        return (d * np.sum(p ** 2) - 1) / (d - 1)
+    else:
+        return np.sum(p ** 2)
+
+
+def shannon_entropy(p):
+    return np.exp(- np.sum(p * np.log(p), axis=0))
+
+
+def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
+    """
+
+    :param rc: Dictionary with key corresponding to the
+    portfolio name and values a list of pd.Series with risk contribution for
+    various experiments, rc["rb_factor"][0], rc["rb_factor"][1], etc.
+    :param metric:
+    :return:
+    """
+    assert metric in ["shannon_entropy", "herfindal"]
+
+    n_exp = len(list(rc.values())[0])
+    # Get proba measure from risk contribution
+    p_rc = {
+        p: [(rc[p][i].abs().T / np.sum(
+            rc[p][i].abs().T, axis=0)).T for i in range(n_exp)]
+        for p in rc
+    }
+
+    if metric == "herfindal":
+        def func(x):
+            return 1 / herfindal_index(x, normalize=False)
+    elif metric == "shannon_entropy":
+        func = shannon_entropy
+    else:
+        raise NotImplementedError(metric)
+
+    number_bets = {
+        p: pd.concat(
+            [
+                p_rc[p][i].apply(func, axis=1) for i in range(n_exp)
+            ],
+            axis=1
+        ).mean(1)
+        for p in p_rc
+    }
+
+    return pd.DataFrame(number_bets)
+
+
+def get_factors_rc_and_weights(
+        cv_results: Dict, market_budget: pd.DataFrame, test_set: str = "test"):
+    """
+
+    :param cv_results:
+    :param market_budget:
+    :param test_set: "test" or "train", if "test" use covariance on test_set,
+    otherwise on train_set
+    :return:
+    """
+    assets = market_budget.index.tolist()
+    d = len(assets)
+
+    risk_contribution = {p: [] for p in PORTFOLIOS}
+    factor_weights = {p: [] for p in PORTFOLIOS}
+    for p in PORTFOLIOS:
+        for i in cv_results.keys():
+            p_rc = []
+            p_fw = []
+            for cv in cv_results[i].keys():
+                if test_set == "test":
+                    Sigma = np.cov(cv_results[i][cv]["returns"].T)
+                elif test_set == "train":
+                    Sigma = np.cov(cv_results[i][cv]["train_returns"].T)
+                else:
+                    raise NotImplementedError()
+                W_tilde = np.dot(
+                    np.diag(
+                        cv_results[i][cv]["scaler"]["attributes"]["scale_"]
+                    ),
+                    cv_results[i][cv]["loading"]
+                )
+                if p == "equal":
+                    a = np.ones(d) / d
+                elif p == "equal_class":
+                    assert market_budget is not None
+                    a = equal_class_weights(market_budget).loc[assets]
+                else:
+                    a = cv_results[0][cv]["port"][p].copy()
+                rc_z, rc_y = compute_factor_risk_contribution(a,
+                                                              W_tilde,
+                                                              Sigma)
+                w_z, w_y = compute_factor_weight(a, W_tilde)
+                p_rc.append(np.concatenate([rc_z, rc_y]))
+                p_fw.append(np.concatenate([w_z, w_y]))
+            risk_contribution[p].append(pd.DataFrame(p_rc))
+            factor_weights[p].append(pd.DataFrame(p_fw))
+    return risk_contribution, factor_weights
+
+
+def compute_factor_weight(a, W_tilde):
+    """
+    cf Roncalli, T., & Weisang, G. (2016). Risk parity portfolios with risk
+    factors. Quantitative Finance, 16(3), 377-388.
+    Appendix p.28
+
+    :param a:
+    :param W_tilde:
+    :return:
+    """
+    V = W_tilde.T
+    V_tilde = scipy.linalg.null_space(V).T
+
+    return np.dot(V, a), np.dot(V_tilde, a)
+
+
+def compute_factor_risk_contribution(a, W_tilde, Sigma):
+    """
+    Therom 2 in  Roncalli, T., & Weisang, G. (2016). Risk parity portfolios
+    with risk factors. Quantitative Finance, 16(3), 377-388.
+
+    :param a:
+    :param W_tilde:
+    :param Sigma:
+    :return:
+    """
+    assert W_tilde.shape[-1] < Sigma.shape[0]
+    sigma_a = np.sqrt(np.dot(a.T, np.dot(Sigma, a)))
+    V = W_tilde.T
+    V_tilde = scipy.linalg.null_space(V).T
+    rc_z = np.dot(W_tilde.T, a) * np.dot(np.linalg.pinv(W_tilde),
+                                         np.dot(Sigma, a)) / sigma_a
+    rc_y = np.dot(V_tilde, a) * np.dot(V_tilde, np.dot(Sigma, a)) / sigma_a
+
+    return rc_z, rc_y
 
 
 def one_cv(
