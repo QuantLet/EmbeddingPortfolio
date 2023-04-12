@@ -1,8 +1,8 @@
-if (!require(fGarch)) install.packages("fGarch")
-if (!require(xts)) install.packages("xts")
-if (!require(forecast)) install.packages("forecast")
-if (!require(parallel)) install.packages("parallel")
-if (!require(doParallel)) install.packages("doParallel")
+if (!require(fGarch)) install.packages("fGarch", repos="http://cran.us.r-project.org")
+if (!require(xts)) install.packages("xts", repos="http://cran.us.r-project.org")
+if (!require(forecast)) install.packages("forecast", repos="http://cran.us.r-project.org")
+if (!require(parallel)) install.packages("parallel", repos="http://cran.us.r-project.org")
+if (!require(doParallel)) install.packages("doParallel", repos="http://cran.us.r-project.org")
 
 
 get_cv_data = function(dataset, cv, window_size = NULL) {

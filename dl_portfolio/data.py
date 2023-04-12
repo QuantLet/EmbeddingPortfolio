@@ -12,8 +12,7 @@ DATASETS = ["dataset1", "dataset2"]
 def load_data(dataset):
     assert dataset in DATASETS, dataset
     if dataset == "dataset1":
-        # data, assets = load_dataset1()
-        data, assets = load_dataset1_new()
+        data, assets = load_dataset1()
     elif dataset == "dataset2":
         data, assets = load_dataset2()
     else:
@@ -27,14 +26,6 @@ def load_data(dataset):
 def load_dataset1():
     data = pd.read_csv(
         "data/dataset1/dataset1.csv", index_col=0, parse_dates=True
-    )
-    data = data.astype(np.float32)
-    return data, list(data.columns)
-
-
-def load_dataset1_new():
-    data = pd.read_csv(
-        "data/dataset1/dataset1_new.csv", index_col=0, parse_dates=True
     )
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float32)
