@@ -96,29 +96,33 @@ def backtest_stats(
     stats = pd.DataFrame(index=strats, columns=cols, dtype=np.float32)
     ports = list(weights.keys())
     assets = weights[ports[0]].columns
+    dates = weights[ports[0]].index
     n_assets = weights[ports[0]].shape[-1]
     for strat in strats:
         if strat == "equal":
-            weights["equal"] = pd.DataFrame([1 / n_assets] * n_assets).T
-            weights["equal"].columns = assets
-
+            weights["equal"] = np.repeat(np.array([[1 / n_assets] * n_assets]),
+                                         len(dates), axis=0)
+            weights["equal"] = pd.DataFrame(weights["equal"], columns=assets,
+                                            index=dates)
         elif strat == "equal_class":
             market_budget = kwargs.get("market_budget")
             market_budget = market_budget.loc[assets, :]
             assert market_budget is not None
-            weights["equal_class"] = pd.DataFrame(
-                equal_class_weights(market_budget)
-            ).T
+            weights["equal_class"] = np.repeat(equal_class_weights(
+                market_budget).values.reshape(1, -1), len(dates), axis=0)
+            weights["equal_class"] = pd.DataFrame(weights["equal_class"],
+                                                  columns=assets, index=dates)
 
         if sspw_tto:
-            if strat not in bench_names + ["equal"]:
+            if strat not in bench_names:
                 if "hedge" in strat:
                     sspw_value = np.mean(
                         [sspw(weights[strat][k]) for k in weights[strat]]
                     )
+                    raise NotImplementedError("You must verify logic for tto!")
                     tto_value = np.mean(
                         [
-                            total_average_turnover(weights[strat][k],
+                            total_average_turnover(weights[strat],
                                                    prices=kwargs.get("prices"))
                             for k in weights[strat]
                         ]
@@ -425,7 +429,7 @@ def total_average_turnover(weights, prices=None):
     """
     n_assets = weights.shape[-1]
     if prices is None:
-        return np.mean(np.sum(np.abs(np.diff(weights, axis=0)), axis=0))
+        return np.mean(np.sum(np.abs(np.diff(weights)), axis=1))
     else:
         # prev_weights = pd.DataFrame()
         tto = []
@@ -439,8 +443,7 @@ def total_average_turnover(weights, prices=None):
                     pw = shares * prices.loc[end_date] / (
                             shares * prices.loc[end_date]).sum()
 
-                tto.append(
-                    np.sum(np.abs(np.diff(weights.loc[end_date] - pw))))
+                tto.append(np.sum(np.abs(weights.loc[end_date] - pw)))
         return np.mean(tto)
 
 
