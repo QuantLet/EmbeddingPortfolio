@@ -848,7 +848,8 @@ def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame,
                     -get_neg_entropy_from_weights_principal(a.reshape(-1,1), Sigma)
                 )
             n_bets[p].append(p_n_bets)
-        n_bets[p] = pd.DataFrame(p_n_bets)
+        n_bets[p] = np.mean(pd.DataFrame(p_n_bets), axis=1)
+    n_bets = pd.DataFrame(n_bets)
 
     return n_bets
 
