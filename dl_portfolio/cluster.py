@@ -90,7 +90,7 @@ def bb_silhouette(
         ].tolist()
         # Now among candidates, compute the weighted mean with respect to
         # the inverse variance of the estimate
-        weighted_mean = mean_ / (upper_b - lower_b)
+        weighted_mean = mean_ / (upper_b - lower_b + 1e-12)
         weighted_mean_cand = mean_ * 0.0
         weighted_mean_cand[candidates] = weighted_mean[candidates]
         best_p = np.argmax(weighted_mean_cand) + min_p
