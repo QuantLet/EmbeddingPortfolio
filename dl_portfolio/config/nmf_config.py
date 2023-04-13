@@ -20,13 +20,13 @@ scaler_func = {"name": "StandardScaler"}
 excess_ret = False
 
 val_start = pd.date_range(
-    "2017-06-01", "2023-02-01", freq="1MS"
+    "2017-01-01", "2023-02-01", freq="1MS"
 )
-start = [d - dt.timedelta(days=365) for d in val_start]
+start = [d - dt.timedelta(days=250*2) for d in val_start]
 start = [str(d.date()) for d in start]
 val_start = [str(d.date()) for d in val_start]
 
-end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
+end = pd.date_range("2017-01-01", "2023-03-01", freq="M")
 end = [str(d.date()) for d in end]
 
 data_specs = {}
