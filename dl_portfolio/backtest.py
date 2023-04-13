@@ -779,7 +779,7 @@ def shannon_entropy(p):
     return np.exp(- np.sum(p * np.log(p), axis=0))
 
 
-def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
+def get_number_of_nmf_bets(rc: Dict, metric: str ="shannon_entropy"):
     """
 
     :param rc: Dictionary with key corresponding to the
@@ -819,7 +819,7 @@ def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
     return pd.DataFrame(number_bets)
 
 
-def get_principal_number_of_bets(cv_results, market_budget: pd.DataFrame,
+def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame,
                                  test_set: str = "test"):
     assets = market_budget.index.tolist()
     d = len(assets)

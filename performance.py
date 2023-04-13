@@ -19,7 +19,7 @@ from dl_portfolio.backtest import (
     get_cv_results,
     get_dl_average_weights,
     cv_portfolio_perf_df,
-    get_number_of_bets,
+    get_number_of_nmf_bets,
     get_factors_rc_and_weights
 )
 
@@ -652,7 +652,7 @@ if __name__ == "__main__":
             market_budget.drop("CRIX") if config.dataset == "dataset1"  else
             market_budget
         )
-        number_bets = get_number_of_bets(risk_contribution)
+        number_bets = get_number_of_nmf_bets(risk_contribution)
         if args.save:
             number_bets.to_csv(f"{save_dir}/number_bets.csv")
             plt.figure()
