@@ -26,7 +26,6 @@ from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
 def portfolio_weights(
     returns,
-    shrink_cov=None,
     budget=None,
     embedding=None,
     loading=None,
@@ -94,7 +93,8 @@ def portfolio_weights(
 
     if "rb_factor_full_erc" in portfolio:
         LOGGER.info('Computing RB factor weights...')
-        port_w['rb_factor_full_erc'] = get_full_rb_factor_weights(returns, loading)
+        port_w['rb_factor_full_erc'] = get_full_rb_factor_weights(returns,
+                                                                  loading)
 
     return port_w
 
@@ -116,44 +116,103 @@ def get_eigen_decomposition(cov, shrinkage=None):
     return eigvals, eigvecs
 
 
-def get_neg_entropy_from_weights(w, cov, shrinkage=None):
+def compute_factor_weight(a, W_tilde):
     """
-    cf: Lohre et al 2014, https://papers.ssrn.com/sol3/papers.cfm?abstract_id
+    cf Roncalli, T., & Weisang, G. (2016). Risk parity portfolios with risk
+    factors. Quantitative Finance, 16(3), 377-388.
+    Appendix p.28
+
+    :param a:
+    :param W_tilde:
+    :return:
+    """
+    V = W_tilde.T
+    V_tilde = scipy.linalg.null_space(V).T
+
+    return np.dot(V, a), np.dot(V_tilde, a)
+
+
+def compute_factor_risk_contribution(a, W_tilde, Sigma):
+    """
+    Therom 2 in  Roncalli, T., & Weisang, G. (2016). Risk parity portfolios
+    with risk factors. Quantitative Finance, 16(3), 377-388.
+
+    :param a:
+    :param W_tilde:
+    :param Sigma:
+    :return:
+    """
+    assert W_tilde.shape[-1] < Sigma.shape[0]
+    sigma_a = np.sqrt(np.dot(a.T, np.dot(Sigma, a)))
+    V = W_tilde.T
+    V_tilde = scipy.linalg.null_space(V).T
+    rc_z = np.dot(W_tilde.T, a) * np.dot(np.linalg.pinv(W_tilde),
+                                         np.dot(Sigma, a)) / sigma_a
+    rc_y = np.dot(V_tilde, a) * np.dot(V_tilde, np.dot(Sigma, a)) / sigma_a
+
+    return rc_z, rc_y
+
+
+def get_neg_entropy_from_weights_factor(a, W_tilde, Sigma):
+    """
+    cf: Lohre et al 2014,
+    https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1974446
     =1974446
 
     """
-    eigvals, eigvecs = get_eigen_decomposition(cov, shrinkage=shrinkage)
-    eigvals = eigvals.reshape(-1, 1)
-    w_tilde = np.dot(eigvecs.T, w)
-    var_i = w_tilde ** 2 * eigvals
-    p = var_i / var_i.sum()
+    rc_z, rc_y = compute_factor_risk_contribution(a, W_tilde, Sigma)
+
+    rc = np.concatenate([rc_z, rc_y])
+    p = np.abs(rc) / np.sum(np.abs(rc))
     N_Ent = np.exp(-np.sum(p * np.log(p)))
 
     return -N_Ent
 
 
-def get_factor_rc(w, Sigma, A):
+def get_drp_factor_weights(W_tilde, Sigma, w0, verbose=False):
     """
-    Roncalli, T., & Weisang, G. (2016). Risk parity portfolios with risk
-    factors. Quantitative Finance, 16(3), 377-388.
+    Lohre et al 2014, Diversified Risk Parity weights with long-only and
+    full investment constraints.
+    cf: https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1974446
 
-    :param w: portfolio weights
-    :param Sigma: returns covariance matrix
-    :param A: Factor loadings
-    :return:
     """
-    B = A.T
-    # B_inv = np.linalg.pinv(B)
-    A_inv = np.linalg.pinv(A)
-    B_tilde = scipy.linalg.null_space(B).T
+    n_assets = Sigma.shape[0]
 
-    volatility = np.sqrt(np.dot(w.T, np.dot(Sigma, w)))
-    RC_z = np.dot(A.T, w) * np.dot(A_inv, np.dot(Sigma, w)) / volatility
-    RC_z_e = np.dot(B_tilde, w) * np.dot(B_tilde, np.dot(Sigma,
-                                                         w)) / volatility
-    RC_z_all = np.concatenate([RC_z, RC_z_e])
+    # Full investment constraints
+    cons = [
+        {"type": "eq", "fun": lambda x: np.array([1 - np.sum(x)])}
+    ]
+    # Long only contraints
+    bnds = tuple((0 * x - 0.0, 0 * x + 1.0) for x in range(n_assets))
+    res = minimize(get_neg_entropy_from_weights_factor, w0, args=(W_tilde,
+                                                                  Sigma),
+                   bounds=bnds, constraints=cons, options={"disp": verbose})
+    weights = pd.Series(res.x, index=w0.index)
 
-    return RC_z_all
+    return weights
+
+
+def get_neg_entropy_from_weights_principal(w, cov, shrinkage=None):
+    """
+    cf: Lohre et al 2014,
+    https://papers.ssrn.com/sol3/papers.cfm?abstract_id=1974446
+    =1974446
+
+    """
+    assert len(w.shape) == 2
+    assert w.shape[-1] == 1
+    eigvals, eigvecs = get_eigen_decomposition(cov, shrinkage=shrinkage)
+    eigvals = eigvals.reshape(-1, 1)
+    w_tilde = np.dot(eigvecs.T, w)
+    var_i = w_tilde ** 2 * eigvals
+    p = var_i / var_i.sum()
+    assert p.shape == w_tilde.shape
+    # sometimes eigen decomposition returns small complex numbers with real
+    # part close to 0, just take real and abs
+    p = np.abs(np.real(p))
+    N_Ent = np.exp(-np.sum(p * np.log(p)))
+
+    return -N_Ent
 
 
 def effective_bets(w, cov, t):
@@ -206,7 +265,7 @@ def get_drp_weights(S: pd.DataFrame(), w0, n_components=None, shrinkage=None,
                 }
             )
 
-    res = minimize(get_neg_entropy_from_weights, w0, args=(S.values,
+    res = minimize(get_neg_entropy_from_weights_principal, w0, args=(S.values,
                                                            shrinkage),
                    bounds=bnds,
                    constraints=cons, options={"disp": verbose})

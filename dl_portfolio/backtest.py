@@ -22,7 +22,9 @@ from dl_portfolio.probabilistic_sr import (
     probabilistic_sharpe_ratio,
     min_track_record_length,
 )
-from dl_portfolio.weights import portfolio_weights, equal_class_weights
+from dl_portfolio.weights import portfolio_weights, equal_class_weights, \
+    compute_factor_weight, compute_factor_risk_contribution, \
+    get_neg_entropy_from_weights_principal
 from dl_portfolio.constant import PORTFOLIOS
 
 
@@ -117,7 +119,10 @@ def backtest_stats(
             if strat not in bench_names:
                 if "hedge" in strat:
                     sspw_value = np.mean(
-                        [sspw(weights[strat][k]) for k in weights[strat]]
+                        [np.mean(
+                            weights[strat][k].apply(herfindahl_index, axis=1)
+                        )
+                    for k in weights[strat]]
                     )
                     raise NotImplementedError("You must verify logic for tto!")
                     tto_value = np.mean(
@@ -128,7 +133,9 @@ def backtest_stats(
                         ]
                     )
                 else:
-                    sspw_value = sspw(weights[strat])
+                    sspw_value = np.mean(
+                        weights[strat].apply(herfindahl_index, axis=1)
+                    )
                     tto_value = total_average_turnover(
                         weights[strat], prices=kwargs.get("prices"))
             else:
@@ -760,7 +767,7 @@ def portfolio_return(
     return port_perf
 
 
-def herfindal_index(p, normalize=True):
+def herfindahl_index(p, normalize=True):
     if normalize:
         d = len(p)
         return (d * np.sum(p ** 2) - 1) / (d - 1)
@@ -781,7 +788,7 @@ def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
     :param metric:
     :return:
     """
-    assert metric in ["shannon_entropy", "herfindal"]
+    assert metric in ["shannon_entropy", "herfindahl"]
 
     n_exp = len(list(rc.values())[0])
     # Get proba measure from risk contribution
@@ -791,9 +798,9 @@ def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
         for p in rc
     }
 
-    if metric == "herfindal":
+    if metric == "herfindahl":
         def func(x):
-            return 1 / herfindal_index(x, normalize=False)
+            return 1 / herfindahl_index(x, normalize=False)
     elif metric == "shannon_entropy":
         func = shannon_entropy
     else:
@@ -812,6 +819,40 @@ def get_number_of_bets(rc: Dict, metric: str ="shannon_entropy"):
     return pd.DataFrame(number_bets)
 
 
+def get_principal_number_of_bets(cv_results, market_budget: pd.DataFrame,
+                                 test_set: str = "test"):
+    assets = market_budget.index.tolist()
+    d = len(assets)
+    portfolios = list(cv_results[0][0]["port"].keys()) + ["equal",
+                                                          "equal_class"]
+    n_bets = {p: [] for p in portfolios}
+    for p in portfolios:
+        for i in cv_results.keys():
+            p_n_bets = []
+            for cv in cv_results[i].keys():
+                if test_set == "test":
+                    Sigma = np.cov(cv_results[i][cv]["returns"].T)
+                elif test_set == "train":
+                    Sigma = np.cov(cv_results[i][cv]["train_returns"].T)
+                else:
+                    raise NotImplementedError()
+
+                if p == "equal":
+                    a = np.ones(d) / d
+                elif p == "equal_class":
+                    assert market_budget is not None
+                    a = equal_class_weights(market_budget).loc[assets].values
+                else:
+                    a = cv_results[i][cv]["port"][p].copy().values
+                p_n_bets.append(
+                    -get_neg_entropy_from_weights_principal(a.reshape(-1,1), Sigma)
+                )
+            n_bets[p].append(p_n_bets)
+        n_bets[p] = pd.DataFrame(p_n_bets)
+
+    return n_bets
+
+
 def get_factors_rc_and_weights(
         cv_results: Dict, market_budget: pd.DataFrame, test_set: str = "test"):
     """
@@ -824,10 +865,11 @@ def get_factors_rc_and_weights(
     """
     assets = market_budget.index.tolist()
     d = len(assets)
-
-    risk_contribution = {p: [] for p in PORTFOLIOS}
-    factor_weights = {p: [] for p in PORTFOLIOS}
-    for p in PORTFOLIOS:
+    portfolios = list(cv_results[0][0]["port"].keys()) + ["equal",
+                                                          "equal_class"]
+    risk_contribution = {p: [] for p in portfolios}
+    factor_weights = {p: [] for p in portfolios}
+    for p in portfolios:
         for i in cv_results.keys():
             p_rc = []
             p_fw = []
@@ -850,7 +892,7 @@ def get_factors_rc_and_weights(
                     assert market_budget is not None
                     a = equal_class_weights(market_budget).loc[assets]
                 else:
-                    a = cv_results[0][cv]["port"][p].copy()
+                    a = cv_results[i][cv]["port"][p].copy()
                 rc_z, rc_y = compute_factor_risk_contribution(a,
                                                               W_tilde,
                                                               Sigma)
@@ -860,43 +902,6 @@ def get_factors_rc_and_weights(
             risk_contribution[p].append(pd.DataFrame(p_rc))
             factor_weights[p].append(pd.DataFrame(p_fw))
     return risk_contribution, factor_weights
-
-
-def compute_factor_weight(a, W_tilde):
-    """
-    cf Roncalli, T., & Weisang, G. (2016). Risk parity portfolios with risk
-    factors. Quantitative Finance, 16(3), 377-388.
-    Appendix p.28
-
-    :param a:
-    :param W_tilde:
-    :return:
-    """
-    V = W_tilde.T
-    V_tilde = scipy.linalg.null_space(V).T
-
-    return np.dot(V, a), np.dot(V_tilde, a)
-
-
-def compute_factor_risk_contribution(a, W_tilde, Sigma):
-    """
-    Therom 2 in  Roncalli, T., & Weisang, G. (2016). Risk parity portfolios
-    with risk factors. Quantitative Finance, 16(3), 377-388.
-
-    :param a:
-    :param W_tilde:
-    :param Sigma:
-    :return:
-    """
-    assert W_tilde.shape[-1] < Sigma.shape[0]
-    sigma_a = np.sqrt(np.dot(a.T, np.dot(Sigma, a)))
-    V = W_tilde.T
-    V_tilde = scipy.linalg.null_space(V).T
-    rc_z = np.dot(W_tilde.T, a) * np.dot(np.linalg.pinv(W_tilde),
-                                         np.dot(Sigma, a)) / sigma_a
-    rc_y = np.dot(V_tilde, a) * np.dot(V_tilde, np.dot(Sigma, a)) / sigma_a
-
-    return rc_z, rc_y
 
 
 def one_cv(
