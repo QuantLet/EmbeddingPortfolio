@@ -5,7 +5,6 @@ import numpy as np
 from scipy import stats as scipy_stats
 from typing import Union, Dict, Optional, List
 from joblib import Parallel, delayed
-import scipy
 
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.data import (
