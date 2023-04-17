@@ -28,7 +28,7 @@ def load_dataset1():
         "data/dataset1/dataset1.csv", index_col=0, parse_dates=True
     )
     data = data.interpolate(method="polynomial", order=2)
-    data = data.astype(np.float32)
+    data = data.astype(np.float64)
 
     # There are NaNs at the beginning or end... drop them
     data.dropna(inplace=True)
