@@ -72,8 +72,12 @@ def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
     n_bets = {p: pd.DataFrame() for p in portfolios}
     rcs = {p: [] for p in portfolios}
 
+    dates = [cv_results[0][cv]["returns"].index[0] for cv in
+             cv_results[0].keys()]
+
     for i in cv_results.keys():
         i_n_bets = {p: [] for p in portfolios}
+        i_rcs = {p: [] for p in portfolios}
         for cv in cv_results[i].keys():
             scale_ = cv_results[i][cv]["scaler"]["attributes"]["scale_"]
             if level == "asset":
@@ -123,15 +127,20 @@ def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
 
                 rc_i, nb = EffectiveBets(a, Sigma, t_mt)
                 nb = np.real(np.array(nb)[0, 0])
+                rc_i = np.asarray(rc_i)[:, 0]
                 i_n_bets[p].append(nb)
+                i_rcs[p].append(rc_i)
+
         i_n_bets = {p: pd.Series(i_n_bets[p]) for p in portfolios}
+        i_rcs = {p: np.array(i_rcs[p]) for p in portfolios}
         for p in portfolios:
             n_bets[p][i] = i_n_bets[p]
+            rcs[p].append(pd.DataFrame(i_rcs[p], index=dates))
 
     for p in portfolios:
         n_bets[p] = n_bets[p].mean(1)
+
     n_bets = pd.DataFrame(n_bets)
-    n_bets.index = [cv_results[0][cv]["returns"].index[0] for cv in
-                    cv_results[0].keys()]
+    n_bets.index = dates
 
     return rcs, n_bets
