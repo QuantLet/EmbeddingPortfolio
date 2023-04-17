@@ -818,8 +818,7 @@ def get_number_of_nmf_bets(rc: Dict, metric: str ="shannon_entropy"):
     return pd.DataFrame(number_bets)
 
 
-def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame,
-                                 test_set: str = "test"):
+def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame):
     assets = market_budget.index.tolist()
     d = len(assets)
     portfolios = list(cv_results[0][0]["port"].keys()) + ["equal",
@@ -829,13 +828,13 @@ def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame,
         for i in cv_results.keys():
             p_n_bets = []
             for cv in cv_results[i].keys():
-                if test_set == "test":
-                    Sigma = np.cov(cv_results[i][cv]["returns"].T)
-                elif test_set == "train":
-                    Sigma = np.cov(cv_results[i][cv]["train_returns"].T)
-                else:
-                    raise NotImplementedError()
-
+                ret = pd.concat(
+                    [
+                        cv_results[i][cv]["train_returns"],
+                        cv_results[i][cv]["returns"]
+                    ]
+                )
+                Sigma = np.cov(ret.T)
                 if p == "equal":
                     a = np.ones(d) / d
                 elif p == "equal_class":
@@ -854,7 +853,7 @@ def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame,
 
 
 def get_factors_rc_and_weights(
-        cv_results: Dict, market_budget: pd.DataFrame, test_set: str = "test"):
+        cv_results: Dict, market_budget: pd.DataFrame):
     """
 
     :param cv_results:
@@ -874,12 +873,13 @@ def get_factors_rc_and_weights(
             p_rc = []
             p_fw = []
             for cv in cv_results[i].keys():
-                if test_set == "test":
-                    Sigma = np.cov(cv_results[i][cv]["returns"].T)
-                elif test_set == "train":
-                    Sigma = np.cov(cv_results[i][cv]["train_returns"].T)
-                else:
-                    raise NotImplementedError()
+                ret = pd.concat(
+                    [
+                        cv_results[i][cv]["train_returns"],
+                        cv_results[i][cv]["returns"]
+                    ]
+                )
+                Sigma = np.cov(ret.T)
                 W_tilde = np.dot(
                     np.diag(
                         cv_results[i][cv]["scaler"]["attributes"]["scale_"]
