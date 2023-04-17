@@ -7,12 +7,15 @@ import random
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
+from portfoliolab.clustering import HierarchicalEqualRiskContribution
 
 import prado.cla.CLA as CLA
+from dl_portfolio.data import load_data
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.nmf.convex_nmf import ConvexNMF
+from dl_portfolio.torsion import torsion, EffectiveBets
 from dl_portfolio.utils import optimal_target_vol_test
-from dl_portfolio.weights import ae_riskparity_weights, get_rb_factor_weights
+from dl_portfolio.weights import get_rb_factor_weights, herc_weights
 from prado.hrp import correlDist, getIVP, getQuasiDiag, getRecBipart
 from arch import arch_model
 
@@ -65,20 +68,19 @@ def generate_garch(
     :param sigmas:
     :return:
     """
-    data = pd.read_csv(
-        "data/dataset1/dataset1.csv", index_col=0, parse_dates=True
-    )
+    data, _ = load_data("dataset1")
+    data = np.log(data.pct_change(1).dropna() + 1)
+
     generated = pd.DataFrame()
-    for i, c in enumerate(assets):
-        # define model
+    for c in assets:
         model = arch_model(
             data[c], mean="Zero", vol="GARCH", p=1, q=1, rescale=True
         )
         model_fit = model.fit()
-        sim = model.simulate(params=model_fit.params, nobs=520) / 10
+        sim = model.simulate(params=model_fit.params, nobs=520) / model.scale
         generated = pd.concat([generated, sim["data"]], axis=1)
 
-    generated.columns = ["BTC", "US_B", "EUR_FX", "GOLDS_C", "SPX_X"]
+    generated.columns = assets
     for i, c in enumerate(generated.columns):
         ostd = np.std(generated[c])
         generated[c] *= sigmas[i] / ostd
@@ -91,7 +93,7 @@ def generate_data_cluster(
     sLength,
     size1: int = 15,
     mu0: list = [0] * 5,
-    sigma0: list = [0.08, 0.003, 0.01, 0.005, 0.007],
+    sigma0: list = [0.04, 0.003, 0.01, 0.005, 0.007],
     sigma1F: float = 0.25,
     process="garch",
 ):
@@ -180,9 +182,7 @@ def create_art_market_budget(col_cluster_mapper):
     return market_budget
 
 
-def getNMF(
-    train_data, n_components, market_budget, threshold, method="rb_factor"
-):
+def getNMF(train_data, n_components):
     model = ConvexNMF(
         n_components=n_components,
         random_state=None,
@@ -190,26 +190,31 @@ def getNMF(
         verbose=0,
     )
     model.fit(train_data)
-
-    embedding = pd.DataFrame(model.W)
     loading = pd.DataFrame(model.G)
 
     returns = pd.DataFrame(train_data)
-    if method == "ae_rp_c":
-        weights = ae_riskparity_weights(
-            returns,
-            embedding,
-            loading,
-            market_budget=market_budget,
-            risk_parity="cluster",
-            threshold=threshold,
-        )
-    elif method == "rb_factor":
-        weights = get_rb_factor_weights(returns, loading)
-    else:
-        raise NotImplementedError()
+    weights = get_rb_factor_weights(returns, loading)
 
-    return weights  # , inner_weights
+    return weights
+
+
+def herc_weights(returns: np.ndarray, optimal_num_clusters) -> pd.Series:
+    asset_names = [str(i) for i in range(returns.shape[-1])]
+    hercEW_single = HierarchicalEqualRiskContribution()
+    hercEW_single.allocate(asset_returns=returns,
+                           asset_names=asset_names,
+                           risk_measure="equal_weighting",
+                           optimal_num_clusters=optimal_num_clusters,
+                           linkage="single")
+
+    weights = hercEW_single.weights.T
+    weights = weights[0].loc[asset_names]
+
+    return weights
+
+
+def getHCAA(train_data, n_components):
+    return herc_weights(train_data, optimal_num_clusters=n_components)
 
 
 def rebalance(
@@ -233,14 +238,18 @@ def rebalance(
                 w_ = methods_mapper[func_name](
                     train_returns,
                     n_components,
-                    market_budget=market_budget,
-                    threshold=1e-2,
                 )
-                # inner_weights = pd.concat([inner_weights, in_w_])
-            else:
-                assert func_name in ["IVP", "HRP"]
+            elif func_name == "HCAA":
+                w_ = methods_mapper[func_name](train_returns, n_components)
+            elif func_name in ["IVP", "HRP"]:
                 w_ = methods_mapper[func_name](cov=cov_, corr=corr_)
+            else:
+                raise NotImplementedError(func_name)
             r_ = pd.Series(np.dot(returns, w_))
+
+            t_mt = torsion(cov_, 'minimum-torsion', method='exact')
+            _, nb = EffectiveBets(w_, cov_, t_mt)
+            nb = np.real(np.array(nb)[0, 0])
 
             # Vol target leverage (Jaeger et al 2021):
             if vol_target is not None:
@@ -266,11 +275,13 @@ def rebalance(
             r_ = pd.Series([np.nan] * len(returns))
             w_ = pd.Series([np.nan] * returns.shape[-1])
             lev = None
+            nb = np.nan
 
         res[func_name]["leverage"] = lev
         res[func_name]["test_target_vol"] = tvs
         res[func_name]["returns"] = r_
         res[func_name]["weights"] = w_
+        res[func_name]["mt_bets"] = nb
 
     return res
 
@@ -301,6 +312,7 @@ def worker(
     r = {i: pd.Series(dtype=np.float32) for i in methods_mapper}
     leverage = {i: [] for i in methods_mapper}
     test_target_vol = {i: [] for i in methods_mapper}
+    mt_bets = {i: [] for i in methods_mapper}
     weights = {i: pd.DataFrame() for i in methods_mapper}
 
     pointers = range(sLength, len(returns), rebal)
@@ -327,6 +339,9 @@ def worker(
             test_target_vol[func_name].append(
                 rebal_res[func_name]["test_target_vol"]
             )
+            mt_bets[func_name].append(
+                rebal_res[func_name]["mt_bets"]
+            )
             r[func_name] = r[func_name].append(
                 rebal_res[func_name]["returns"], ignore_index=True
             )
@@ -343,7 +358,8 @@ def worker(
 
         port_returns[func_name] = r_
 
-    return port_returns, weights, cluster_mapper, leverage, test_target_vol
+    return (port_returns, weights, cluster_mapper, leverage,
+            test_target_vol, mt_bets)
 
 
 def mc_hrp(
@@ -363,6 +379,7 @@ def mc_hrp(
     weights = {k: pd.DataFrame() for k in methods_mapper}
     leverage = {k: [] for k in methods_mapper}
     test_target_vol = {k: [] for k in methods_mapper}
+    mt_bets = {k: [] for k in methods_mapper}
 
     if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
@@ -392,12 +409,15 @@ def mc_hrp(
                 test_target_vol[func_name].append(
                     results[numIter][4][func_name]
                 )
+                mt_bets[func_name].append(
+                    results[numIter][5][func_name]
+                )
 
             clusters.append(results[numIter][2])
     else:
         clusters = []
         for numIter in range(num_iters):
-            (returns_iter, weights_iter, cluster_iter, _, _,) = worker(
+            (returns_iter, weights_iter, cluster_iter, _, _, _) = worker(
                 num_iters - numIter,
                 methods_mapper,
                 dgp_name,
@@ -419,6 +439,7 @@ def mc_hrp(
     for func_name in methods_mapper:
         returns[func_name].columns = list(range(num_iters))
         weights[func_name].columns = list(range(num_iters))
+        mt_bets[func_name] = pd.DataFrame((mt_bets[func_name]))
 
     # 5) Report results
     # stats = pd.DataFrame.from_dict(returns, orient='columns')
@@ -429,14 +450,16 @@ def mc_hrp(
     for func_name in methods_mapper:
         returns[func_name].to_csv(f"{save_dir}/returns_{func_name}.csv")
         weights[func_name].to_csv(f"{save_dir}/weights_{func_name}.csv")
+        mt_bets[func_name].to_csv(f"{save_dir}/mt_bets_{func_name}.csv")
 
     json.dump(clusters, open(f"{save_dir}/clusters.json", "w"))
     json.dump(leverage, open(f"{save_dir}/leverage.json", "w"))
     json.dump(test_target_vol, open(f"{save_dir}/test_target_vol.json", "w"))
+
     return
 
 
-METHODS_MAPPER = {"IVP": getIVP_mc, "HRP": getHRP, "NMF": getNMF}
+METHODS_MAPPER = {"HCAA": getHCAA, "HRP": getHRP, "NMF": getNMF}
 
 if __name__ == "__main__":
     import datetime as dt
