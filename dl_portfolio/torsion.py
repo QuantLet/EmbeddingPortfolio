@@ -76,6 +76,9 @@ def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
              cv_results[0].keys()]
 
     for i in cv_results.keys():
+        if i > 0:
+            portfolios = ["aerp", "rb_factor"]
+
         i_n_bets = {p: [] for p in portfolios}
         i_rcs = {p: [] for p in portfolios}
         for cv in cv_results[i].keys():
@@ -137,7 +140,7 @@ def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
             n_bets[p][i] = i_n_bets[p]
             rcs[p].append(pd.DataFrame(i_rcs[p], index=dates))
 
-    for p in portfolios:
+    for p in n_bets:
         n_bets[p] = n_bets[p].mean(1)
 
     n_bets = pd.DataFrame(n_bets)
