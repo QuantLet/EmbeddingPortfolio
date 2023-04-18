@@ -77,7 +77,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--base_dir",
         type=str,
-        help="Directory with ae model logs, ex: 'final_models/ae/dataset1/m_0_dataset1_nbb_resample_bl_60_seed_0_1647953383912806'",
+        help="Directory with AE model logs, "
+             "ex: 'final_models/ae/dataset1/m_0_dataset1_nbb_resample_bl_60_seed_0_1647953383912806'",
     )
 
     args = parser.parse_args()
