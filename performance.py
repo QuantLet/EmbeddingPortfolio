@@ -48,8 +48,7 @@ PORTFOLIOS = [
     "hcaa",
     "aerp",
     "erc",
-    "rb_factor",
-    "rb_factor_full_erc",
+    "rb_factor"
 ]
 
 np.random.seed(0) # there is some variance with HCAA...
@@ -224,8 +223,7 @@ if __name__ == "__main__":
         if i == 0:
             portfolios = PORTFOLIOS
         else:
-            portfolios = [p for p in PORTFOLIOS if "ae" in p]
-
+            portfolios = [p for p in PORTFOLIOS if "ae" in p or p == 'rb_factor']
         cv_results[i] = get_cv_results(
             path,
             args.test_set,
@@ -239,8 +237,9 @@ if __name__ == "__main__":
             ae_config=config,
             excess_ret=config.excess_ret,
             reorder_features=CLUSTER_NAMES is not None,
-            verbose=True,
+            verbose=False,
         )
+
     LOGGER.info("Done.")
     pd.to_pickle(cv_results, f"{save_dir}/cv_results.p")
 
@@ -269,10 +268,6 @@ if __name__ == "__main__":
         total_rmse = []
         total_r2 = []
         for cv in returns.keys():
-            # scaler = preprocessing.MinMaxScaler(feature_range=(-1, 1))
-            # scaler.fit(returns[cv])
-            # same_ret = pd.DataFrame(scaler.transform(returns[cv]), index=returns.index, columns=returns.columns)
-            # same_pred = pd.DataFrame(scaler.transform(pred[cv]), index=returns.index, columns=returns.columns)
             total_rmse.append(
                 float(
                     np.sqrt(
@@ -571,7 +566,8 @@ if __name__ == "__main__":
             cv_returns[cv] = cv_results[0][cv]["returns"].copy()
             date = cv_results[0][cv]["returns"].index[0]
             for port in PORTFOLIOS:
-                if port not in ["equal", "equal_class"] and "ae" not in port:
+                if (port not in ["equal", "equal_class"]) and (
+                        "ae" not in port) and (port != "rb_factor"):
                     weights = pd.DataFrame(cv_results[0][cv]["port"][port]).T
                     weights.index = [date]
                     port_weights[cv][port] = weights
@@ -638,13 +634,6 @@ if __name__ == "__main__":
                 show=args.show,
                 legend=args.legend,
             )
-            for p_name in port_weights.keys():
-                bar_plot_weights(
-                    port_weights[p_name],
-                    save_path=f"{save_dir}/weights_{p_name}.png",
-                    legend=args.legend,
-                    show=args.show,
-                )
 
         # Get statistics
         risk_contribution, factor_weights = get_factors_rc_and_weights(

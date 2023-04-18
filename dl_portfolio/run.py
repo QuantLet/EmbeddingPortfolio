@@ -101,11 +101,14 @@ def run_ae(
         # Build model
         if config.encoding_dim is None:
             if config.nmf_model is not None:
+                LOGGER.debug(f"Load encoding dim from NMF model at"
+                             f" {config.nmf_model}/{cv}")
                 nmf_model = pickle.load(
                     open(f"{config.nmf_model}/{cv}/model.p", "rb")
                 )
                 encoding_dim = nmf_model.G.shape[-1]
             else:
+                LOGGER.debug("Find optimal encoding dim")
                 p_range = config.p_range
                 assert max(p_range) < train_data.shape[-1]
                 assert p_range is not None
@@ -146,7 +149,12 @@ def run_ae(
             encoder_bias=config.encoder_bias,
             decoder_bias=config.decoder_bias,
         )
-        if config.nmf_model is not None:
+        if config.nmf_initializer:
+            LOGGER.info(
+                f"Initilize weights with NMF model from {config.nmf_model}/"
+                f"{cv}"
+            )
+            assert config.nmf_model is not None
             train_data, _, _, _, _ = get_features(
                 data,
                 config.data_specs[cv]["start"],
@@ -158,11 +166,6 @@ def run_ae(
                 resample=config.resample,
                 excess_ret=config.excess_ret,
                 **scaler_params,
-            )
-
-            LOGGER.info(
-                f"Initilize weights with NMF model from {config.nmf_model}/"
-                f"{cv}"
             )
             nmf_model = pickle.load(
                 open(f"{config.nmf_model}/{cv}/model.p", "rb")
