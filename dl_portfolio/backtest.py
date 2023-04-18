@@ -276,7 +276,7 @@ def get_ts_weights_from_cv_results(cv_results, port) -> pd.DataFrame:
     dates = [cv_results[0][cv]["returns"].index[0] for cv in cv_results[0]]
     weights = pd.DataFrame()
     for cv in cv_results[0]:
-        if "ae" in port:
+        if "ae" in port or port == 'rb_factor':
             avg_weights_cv = pd.DataFrame()
             for i in cv_results:
                 w = pd.DataFrame(cv_results[i][cv]["port"][port]).T
@@ -313,7 +313,7 @@ def get_dl_average_weights(cv_results):
     for cv in cv_results[0]:
         date = cv_results[0][cv]["returns"].index[0]
         for port in portfolios:
-            if "ae" in port:
+            if "ae" in port or port == "rb_factor":
                 weights = pd.DataFrame()
                 for i in cv_results:
                     w = pd.DataFrame(cv_results[i][cv]["port"][port]).T
@@ -826,26 +826,29 @@ def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame):
     n_bets = {p: [] for p in portfolios}
     for p in portfolios:
         for i in cv_results.keys():
-            p_n_bets = []
-            for cv in cv_results[i].keys():
-                ret = pd.concat(
-                    [
-                        cv_results[i][cv]["train_returns"],
-                        cv_results[i][cv]["returns"]
-                    ]
-                )
-                Sigma = np.cov(ret.T)
-                if p == "equal":
-                    a = np.ones(d) / d
-                elif p == "equal_class":
-                    assert market_budget is not None
-                    a = equal_class_weights(market_budget).loc[assets].values
-                else:
-                    a = cv_results[i][cv]["port"][p].copy().values
-                p_n_bets.append(
-                    -get_neg_entropy_from_weights_principal(a.reshape(-1,1), Sigma)
-                )
-            n_bets[p].append(p_n_bets)
+            if i > 0 and p not in ["aerp", "rb_factor"]:
+                break
+            else:
+                p_n_bets = []
+                for cv in cv_results[i].keys():
+                    ret = pd.concat(
+                        [
+                            cv_results[i][cv]["train_returns"],
+                            cv_results[i][cv]["returns"]
+                        ]
+                    )
+                    Sigma = np.cov(ret.T)
+                    if p == "equal":
+                        a = np.ones(d) / d
+                    elif p == "equal_class":
+                        assert market_budget is not None
+                        a = equal_class_weights(market_budget).loc[assets].values
+                    else:
+                        a = cv_results[i][cv]["port"][p].copy().values
+                    p_n_bets.append(
+                        -get_neg_entropy_from_weights_principal(a.reshape(-1,1), Sigma)
+                    )
+                n_bets[p].append(p_n_bets)
         n_bets[p] = np.mean(pd.DataFrame(p_n_bets), axis=1)
     n_bets = pd.DataFrame(n_bets)
 
@@ -870,37 +873,40 @@ def get_factors_rc_and_weights(
     factor_weights = {p: [] for p in portfolios}
     for p in portfolios:
         for i in cv_results.keys():
-            p_rc = []
-            p_fw = []
-            for cv in cv_results[i].keys():
-                ret = pd.concat(
-                    [
-                        cv_results[i][cv]["train_returns"],
-                        cv_results[i][cv]["returns"]
-                    ]
-                )
-                Sigma = np.cov(ret.T)
-                W_tilde = np.dot(
-                    np.diag(
-                        cv_results[i][cv]["scaler"]["attributes"]["scale_"]
-                    ),
-                    cv_results[i][cv]["loading"]
-                )
-                if p == "equal":
-                    a = np.ones(d) / d
-                elif p == "equal_class":
-                    assert market_budget is not None
-                    a = equal_class_weights(market_budget).loc[assets]
-                else:
-                    a = cv_results[i][cv]["port"][p].copy()
-                rc_z, rc_y = compute_factor_risk_contribution(a,
-                                                              W_tilde,
-                                                              Sigma)
-                w_z, w_y = compute_factor_weight(a, W_tilde)
-                p_rc.append(np.concatenate([rc_z, rc_y]))
-                p_fw.append(np.concatenate([w_z, w_y]))
-            risk_contribution[p].append(pd.DataFrame(p_rc))
-            factor_weights[p].append(pd.DataFrame(p_fw))
+            if i > 0 and p not in ["aerp", "rb_factor"]:
+                break
+            else:
+                p_rc = []
+                p_fw = []
+                for cv in cv_results[i].keys():
+                    ret = pd.concat(
+                        [
+                            cv_results[i][cv]["train_returns"],
+                            cv_results[i][cv]["returns"]
+                        ]
+                    )
+                    Sigma = np.cov(ret.T)
+                    W_tilde = np.dot(
+                        np.diag(
+                            cv_results[i][cv]["scaler"]["attributes"]["scale_"]
+                        ),
+                        cv_results[i][cv]["loading"]
+                    )
+                    if p == "equal":
+                        a = np.ones(d) / d
+                    elif p == "equal_class":
+                        assert market_budget is not None
+                        a = equal_class_weights(market_budget).loc[assets]
+                    else:
+                        a = cv_results[i][cv]["port"][p].copy()
+                    rc_z, rc_y = compute_factor_risk_contribution(a,
+                                                                  W_tilde,
+                                                                  Sigma)
+                    w_z, w_y = compute_factor_weight(a, W_tilde)
+                    p_rc.append(np.concatenate([rc_z, rc_y]))
+                    p_fw.append(np.concatenate([w_z, w_y]))
+                risk_contribution[p].append(pd.DataFrame(p_rc))
+                factor_weights[p].append(pd.DataFrame(p_fw))
     return risk_contribution, factor_weights
 
 
