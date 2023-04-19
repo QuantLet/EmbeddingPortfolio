@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Union, Optional
@@ -9,7 +11,6 @@ from dl_portfolio.constant import AVAILABLE_METHODS
 def hedged_portfolio_weights_wrapper(
     cv: int,
     returns: pd.DataFrame,
-    cluster: pd.Series,
     cv_garch_dir: str,
     cv_data_dir: str,
     or_port_weights: Dict,
@@ -21,12 +22,15 @@ def hedged_portfolio_weights_wrapper(
     assets = list(returns.columns)
     # Load target
     train_target = pd.read_csv(
-        f"{cv_data_dir}/train_linear_activation.csv", index_col=0
+        f"{cv_data_dir}/train_linear_activation.csv", index_col=0,
+        parse_dates=True
     )
-    train_target.index = pd.to_datetime(train_target.index)
+    train_target = (train_target <= 0).astype(int)
+
     # Load prediction
     train_probas = pd.read_csv(
-        f"{cv_garch_dir}/train_activation_probas.csv", index_col=0
+        f"{cv_garch_dir}/train_activation_probas.csv", index_col=0,
+        parse_dates=True
     )
     train_probas.index = pd.to_datetime(
         [pd.to_datetime(d).date() for d in train_probas.index]
@@ -36,15 +40,28 @@ def hedged_portfolio_weights_wrapper(
     probas.index = pd.to_datetime(
         [pd.to_datetime(d).date() for d in probas.index]
     )
+    n_cluster = probas.shape[-1]
+    # Load clusters
+    cluster_assignment = json.load(open(
+        f"{cv_data_dir}/cluster_assignment.json", "r"))
+    cluster = pd.Series(index=assets)
+    for k in cluster_assignment:
+        e = cluster_assignment[k]
+        cluster.loc[e] = int(k)
+    cluster = cluster.astype(int)
+    # Remove unassigned assets
+    cluster[cluster >= n_cluster] = np.nan
 
-    # Handle stupid renaming of columns from R
+    # Handle renaming of columns from R
     probas = probas[train_probas.columns]  # Just to be sure
     columns = list(train_probas.columns)
     columns = [c.replace(".", "-") for c in columns]
+    columns = [c.replace("X", "") for c in columns]
+    columns = [int(c) for c in columns]
+    train_target.columns = columns
     train_probas.columns = columns
     probas.columns = columns
 
-    train_target = returns.loc[train_probas.index]
     train_returns = returns.loc[train_probas.index]
     test_returns = returns.loc[probas.index]
 
@@ -97,7 +114,6 @@ def hedged_portfolio_weights(
     :return:
     """
     assert method in AVAILABLE_METHODS, method
-
     cluster_names = np.unique(cluster.dropna()).tolist()
     unnassigned = cluster.index[cluster.isna()]
     weights = pd.DataFrame()
@@ -317,15 +333,14 @@ def get_best_threshold(
     returns: pd.DataFrame,
     weights: pd.DataFrame,
     probas: pd.DataFrame,
-    cluster: pd.Series,
-    cluster_name: List[str],
+    cluster: pd.Series = None,
+    cluster_name: List[str] = None,
     target: Optional[pd.DataFrame] = None,
     method: Optional[str] = "hedged_strat_cum_excess_return_cluster",
 ) -> float:
-    # TODO: this should be improved: maybe get optimal threshold based on ROC_CURVE instead of grid search. Must pass target as parameter
-
-    thresholds = np.linspace(0, np.max(probas[cluster_name]) + 1e-6, 50)
+    thresholds = np.linspace(0, np.max(probas.loc[:, cluster_name]) + 1e-6, 50)
     if method == "hedged_strat_cum_excess_return_cluster":
+        assert cluster is not None
         metric = [
             [
                 hedged_strat_cum_excess_return_cluster(
@@ -338,6 +353,7 @@ def get_best_threshold(
         metric.sort(key=lambda x: x[0])
         optimal_t = metric[-1][1]
     elif method == "hedged_equal_cum_excess_return_cluster":
+        assert cluster is not None
         metric = [
             [
                 hedged_equal_cum_excess_return_cluster(
@@ -351,8 +367,10 @@ def get_best_threshold(
         optimal_t = metric[-1][1]
     elif method == "calibrated_exceedance":
         assert target is not None
+        assert cluster_name is not None
         optimal_t = calibrated_exceedance_threshold(
-            target[cluster_name], probas[cluster_name], thresholds
+            target.loc[:, cluster_name], probas.loc[:, cluster_name],
+            thresholds
         )
     else:
         raise NotImplementedError(method)

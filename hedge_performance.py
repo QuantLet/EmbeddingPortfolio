@@ -12,12 +12,18 @@ from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
-DATA_BASE_DIR_1 = "./activationProba/data/dataset1"
-GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
-PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230219_144811"
+DATA_BASE_DIR_1 = "activationProba/data/dataset1"
+# GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
+# PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230220_110629"
+
+GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230407134753"
+PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230418_203337"
+
 DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
-GARCH_BASE_DIR_2 = "activationProba/output/dataset2/final"
-PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230219_145632"
+# GARCH_BASE_DIR_2 = "activationProba/output/dataset2/final"
+# PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230220_111557"
+PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230417_234323"
+GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230407170225"
 
 if __name__ == "__main__":
     import argparse
@@ -43,7 +49,18 @@ if __name__ == "__main__":
     )
     parser.add_argument("--save", action="store_true", help="Save results")
     parser.add_argument("--show", action="store_true", help="Show performance")
+    parser.add_argument(
+        "-vol",
+        "--volatility_target",
+        help="Volatility target",
+        dest="volatility_target",
+        default=0.05,
+    )
     args = parser.parse_args()
+
+    if args.volatility_target == "":
+        args.volatility_target = None
+
     assert args.method in AVAILABLE_METHODS, args.method
 
     # ------------------------------------------------ input ------------------------------------------------
@@ -92,25 +109,12 @@ if __name__ == "__main__":
         raise NotImplementedError(dataset)
 
     port_weights = pickle.load(open(f"{perf_dir}/portfolios_weights.p", "rb"))
-
-    linear_activation = pd.read_csv(
-        f"./activationProba/data/{dataset}/linear_activation.csv", index_col=0
-    )
-    linear_activation.index = pd.to_datetime(linear_activation.index)
-    target = (linear_activation <= 0).astype(int)
     returns = data.pct_change(1).dropna()
-    cluster_assignment = pickle.load(
-        open(f"{perf_dir}/cluster_assignment.p", "rb")
-    )
-    # Reorder series
-    for cv in cluster_assignment:
-        cluster_assignment[cv] = cluster_assignment[cv].loc[assets]
 
     strats = [
-        s for s in list(port_weights.keys()) if "ae" in s and s != "aeerc"
+        s for s in list(port_weights.keys()) if s in ["aerp", "rb_factor"]
     ]
-    cv_folds = list(cluster_assignment.keys())
-
+    cv_folds = range(sum([cv.isdigit() for cv in os.listdir(data_base_dir)]))
     LOGGER.info(f"Method for optimal threshold is: {args.method}")
     if args.n_jobs > 1:
         LOGGER.info(f"Compute weights with {args.n_jobs} jobs...")
@@ -119,7 +123,6 @@ if __name__ == "__main__":
                 delayed(hedged_portfolio_weights_wrapper)(
                     cv,
                     returns,
-                    cluster_assignment[cv],
                     f"{garch_base_dir}/{cv}",
                     f"{data_base_dir}/{cv}",
                     port_weights,
@@ -136,7 +139,6 @@ if __name__ == "__main__":
             _, cv_results[cv] = hedged_portfolio_weights_wrapper(
                 cv,
                 returns,
-                cluster_assignment[cv],
                 f"{garch_base_dir}/{cv}",
                 f"{data_base_dir}/{cv}",
                 port_weights,
@@ -145,6 +147,7 @@ if __name__ == "__main__":
             )
     LOGGER.info("Done.")
 
+    pickle.dump(cv_results, open(f"{perf_dir}/hedged_results.p", "wb"))
     # Now parse cv portfolio weights and train weights
     LOGGER.info("Portfolio returns...")
     cv_portfolio = {
@@ -168,7 +171,12 @@ if __name__ == "__main__":
     }
     # Get portfolio returns
     port_perf, leverage = cv_portfolio_perf_df(
-        cv_portfolio, portfolios=strats, train_weights=train_weights
+        cv_portfolio,
+        portfolios=strats,
+        volatility_target=args.volatility_target,
+        train_weights=train_weights,
+        market_budget=market_budget,
+        dataset=args.dataset,
     )
     LOGGER.info("Done.")
 
