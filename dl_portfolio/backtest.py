@@ -597,6 +597,8 @@ def get_portfolio_perf_wrapper(
                 )
 
                 if weights[portfolio].shape[0] > 1:
+                    assert not prev_weights[portfolio].iloc[-1:, :].isna().any(
+                    ).any()
                     assert isinstance(weights[portfolio], pd.DataFrame)
                     assert isinstance(prev_weights[portfolio], pd.DataFrame)
                     cost = pd.concat(
@@ -606,7 +608,10 @@ def get_portfolio_perf_wrapper(
                         ], ignore_index=True
                     )
                     cost = fee * np.abs(cost.diff().dropna()).sum(1)
-                    cost = pd.Series(cost.values, index=returns.index)
+                    try:
+                        cost = pd.Series(cost.values, index=returns.index)
+                    except Exception as _exc:
+                        raise _exc
                     assert cost.isna().sum() == 0
                 else:
                     mu = np.abs(prev_weights[portfolio] - weights[portfolio])
@@ -617,6 +622,7 @@ def get_portfolio_perf_wrapper(
             base_vol = np.max(
                 (np.std(train_port_perf[-20:]), np.std(train_port_perf[-60:]))
             ) * np.sqrt(252)
+            assert base_vol != 0
             assert not np.isinf(base_vol)
             assert not np.isnan(base_vol)
 
@@ -690,6 +696,7 @@ def cv_portfolio_perf_df(
 
     assets = cv_portfolio[0]["train_returns"].columns
     for cv in cv_portfolio:
+        LOGGER.debug(f"CV {cv}")
         weights = cv_portfolio[cv]["port"].copy()
         if cv == 0:
             prev_weights = {
@@ -710,16 +717,22 @@ def cv_portfolio_perf_df(
                     pw = equal_class_weights(market_budget)
                 else:
                     pw = prev_weights[p].loc[start_date]
+                if (pw == 0).all():
+                    prev_weights[p] = pd.DataFrame(
+                        prices.loc[end_date] * 0.).T
+                else:
+                    shares = pw / prices.loc[start_date]
+                    prev_weights[p] = shares * prices.loc[end_date] / (
+                            shares * prices.loc[end_date]).sum()
 
-                shares = pw / prices.loc[start_date]
-                prev_weights[p] = shares * prices.loc[end_date] / (
-                        shares * prices.loc[end_date]).sum()
-                prev_weights[p] = pd.DataFrame(prev_weights[p],
-                                               columns=[end_date]).T
+                    prev_weights[p] = pd.DataFrame(prev_weights[p],
+                                                   columns=[end_date]).T
+                assert not prev_weights[p].isna().any().any()
         if train_weights is not None:
             train_w = train_weights[cv]
         else:
             train_w = {p: weights[p].iloc[0, :] for p in weights}
+            assert (train_w[p].sum() != 0).any()
 
         risk_free = load_risk_free()
         risk_free = impute_missing_risk_free(risk_free)
