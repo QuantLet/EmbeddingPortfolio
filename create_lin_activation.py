@@ -1,8 +1,10 @@
+import json
 import os
 import sys
 
 import pandas as pd
 
+from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.data import load_data
 from dl_portfolio.utils import get_linear_encoder
 from dl_portfolio.logger import LOGGER
@@ -51,6 +53,11 @@ def create_linear_features(base_dir):
                 f"{cv}/test_linear_activation.csv"
             )
             test_lin_activation = pd.concat([test_lin_activation, test_act])
+        loading = pd.read_pickle(f"{base_dir}/{cv}/decoder_weights.p")
+        cluster_assignment, _ = get_cluster_labels(loading)
+        json.dump(cluster_assignment,
+                  open(f"activationProba/data/{config.dataset}/{cv}/"
+                       f"cluster_assignment.json", "w"))
 
     if config.encoding_dim is not None:
         _, _, train_lin_activation = get_linear_encoder(
@@ -72,7 +79,6 @@ def create_linear_features(base_dir):
 
 if __name__ == "__main__":
     import argparse
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--base_dir",
