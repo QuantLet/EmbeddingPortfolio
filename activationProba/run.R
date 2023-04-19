@@ -80,7 +80,7 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
     }
     cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
     cv_activation_probas = xts(cv_activation_probas, order.by = index(test_data))
-    
+
     if (save){
       write.zoo(cv_train_activation_probas,
                 file = file.path(cv_save_dir, "train_activation_probas.csv"),

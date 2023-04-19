@@ -21,7 +21,11 @@ load_data = function(path, end_date = NULL, start_date = NULL, window_size = NUL
     data = data[index(data) <= end_date,]
   }
   if (!is.null(window_size)) {
-    start_date = index(data)[length(index(data)) - window_size + 1]
+    if (length(index(data)) <= window_size){
+      start_date = index(data)[1]
+    } else {
+      start_date = index(data)[length(index(data)) - config$window_size + 1]
+    }
   }
   if (!is.null(start_date)) {
     data = data[start_date <= index(data),]
