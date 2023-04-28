@@ -28,14 +28,14 @@ def create_linear_features(base_dir):
     for cv in cvs:
         LOGGER.info(f"Saving to: 'activationProba/data/{config.dataset}/{cv}'")
         os.mkdir(f"activationProba/data/{config.dataset}/{cv}")
-        _, _, train_act = get_linear_encoder(
+        _, _, train_act, intercept = get_linear_encoder(
             config, "train", data, assets, base_dir, cv
         )
-        _, _, val_act = get_linear_encoder(
+        _, _, val_act, _ = get_linear_encoder(
             config, "val", data, assets, base_dir, cv
         )
         if include_test:
-            _, _, test_act = get_linear_encoder(
+            _, _, test_act, _ = get_linear_encoder(
                 config, "test", data, assets, base_dir, cv
             )
         train_act = pd.concat([train_act, val_act])
@@ -58,12 +58,14 @@ def create_linear_features(base_dir):
         json.dump(cluster_assignment,
                   open(f"activationProba/data/{config.dataset}/{cv}/"
                        f"cluster_assignment.json", "w"))
+        json.dump(intercept, open(f"activationProba/data/{config.dataset}/"
+                                  f"{cv}/intercept.json", "w"))
 
     if config.encoding_dim is not None:
-        _, _, train_lin_activation = get_linear_encoder(
+        _, _, train_lin_activation, intercept = get_linear_encoder(
             config, "train", data, assets, base_dir, 0
         )
-        _, _, val_lin_activation = get_linear_encoder(
+        _, _, val_lin_activation, _ = get_linear_encoder(
             config, "val", data, assets, base_dir, 0
         )
         if include_test:

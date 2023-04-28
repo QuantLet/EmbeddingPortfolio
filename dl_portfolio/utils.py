@@ -24,6 +24,40 @@ def reorder_columns(data, new_order):
     return data.iloc[:, new_order]
 
 
+def get_intercept_from_model(model, scaler=None, batch_norm=False) -> list:
+    model_layers = [layer.name for layer in model.layers]
+    assert "decoder" in model_layers
+
+    beta_tilde = model.get_layer("decoder").get_weights()[1]
+    if scaler is not None:
+        beta_tilde = (beta_tilde * scaler["scale_"]) + scaler["mean_"]
+
+    if batch_norm:
+        batch_norm_layer = [x for x in model_layers if "batch_normalization"
+                            in x][0]
+        batch_norm = model.get_layer(batch_norm_layer)
+        epsilon = batch_norm.epsilon
+        gamma_bn = np.array(batch_norm.gamma)
+        beta_bn = np.array(batch_norm.beta)
+        mu_bn = np.array(batch_norm.moving_mean)
+        scale_bn = np.sqrt(np.array(batch_norm.moving_variance) + epsilon)
+
+        W = model.get_layer("decoder").get_weights()[0].T
+        if scaler is not None:
+            W_tilde = np.dot(np.diag(scaler["scale_"]), W)
+        else:
+            W_tilde = W
+
+        beta = beta_tilde + np.dot(
+            W_tilde,
+            (beta_bn - (gamma_bn / scale_bn) * mu_bn)
+        )
+    else:
+        beta = beta_tilde
+
+    return beta.tolist()
+
+
 def load_result_wrapper(
     config,
     test_set: str,
@@ -109,7 +143,7 @@ def get_linear_encoder(
     :return:
     """
     model_type = config.model_type
-    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
+    assert model_type in ["ae_model", "convex_nmf", "semi_nmf"]
     assert test_set in ["train", "val", "test"]
 
     if config.scaler_func:
@@ -163,6 +197,9 @@ def get_linear_encoder(
 
     assert dense_layer.layers[-1].activation == activations.linear
     assert encoder.layers[1].activation == activations.linear
+
+    intercept = get_intercept_from_model(model, scaler=scaler["attributes"],
+                                         batch_norm=config.batch_normalization)
 
     data_spec = config.data_specs[cv]
     if test_set == "test":
@@ -234,7 +271,7 @@ def get_linear_encoder(
         lin_activation = reorder_columns(lin_activation, new_order)
         lin_activation.columns = base_order
 
-    return model, test_features, lin_activation
+    return model, test_features, lin_activation, intercept
 
 
 def load_result(
@@ -258,7 +295,7 @@ def load_result(
     :return:
     """
     model_type = config.model_type
-    assert model_type in ["pca_ae_model", "ae_model", "convex_nmf", "semi_nmf"]
+    assert model_type in ["ae_model", "convex_nmf", "semi_nmf"]
     assert test_set in ["train", "val", "test"]
 
     if config.scaler_func is not None:
