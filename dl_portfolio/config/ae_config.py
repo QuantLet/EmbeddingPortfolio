@@ -4,11 +4,13 @@ import tensorflow as tf
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 
-dataset = "dataset2"
+dataset = "dataset1"
 show_plot = False
 save = True
 nmf_model = None
-nmf_initializer = False
+nmf_initializer = True
+nmf_norm_G = "l2"
+nmf_norm_W = None
 
 resample = {
     "method": "nbb",
@@ -19,7 +21,7 @@ resample = {
 excess_ret = False
 seed = None
 
-encoding_dim = 5
+encoding_dim = 4
 p_range = None
 n_exp = None
 encoder_bias = True
@@ -65,18 +67,18 @@ callbacks = {
     }
 }
 
-val_start = pd.date_range("1990-01-01", "2021-10-01", freq="1MS")
-test_start = pd.date_range("1990-02-01", "2021-11-01", freq="1MS")
+val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
+test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
+end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
+
 val_start = [str(d.date()) for d in val_start]
 test_start = [str(d.date()) for d in test_start]
-
-end = pd.date_range("1990-02-01", "2021-12-01", freq="1M")
 end = [str(d.date()) for d in end]
 
 data_specs = {}
-for i in range(len(val_start)):
+for i in range(len(val_start)-2, len(val_start)):
     data_specs[i] = {
-        "start": "1989-02-01",
+        "start": "2015-09-01",
         "val_start": val_start[i],
         "test_start": test_start[i],
         "end": end[i],

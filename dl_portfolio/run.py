@@ -169,7 +169,6 @@ def run_ae(
                 f"Initilize weights with NMF model from {config.nmf_model}/"
                 f"{cv}"
             )
-            assert config.nmf_model is not None
             train_data, _, _, _, _ = get_features(
                 data,
                 config.data_specs[cv]["start"],
@@ -178,13 +177,22 @@ def run_ae(
                 val_start=config.data_specs[cv]["val_start"],
                 test_start=config.data_specs[cv].get("test_start"),
                 scaler=scaler_method,
-                resample=config.resample,
                 excess_ret=config.excess_ret,
                 **scaler_params,
             )
-            nmf_model = pickle.load(
-                open(f"{config.nmf_model}/{cv}/model.p", "rb")
-            )
+            if config.nmf_model is not None:
+                nmf_model = pickle.load(
+                    open(f"{config.nmf_model}/{cv}/model.p", "rb")
+                )
+            else:
+                nmf_model = ConvexNMF(
+                    n_components=encoding_dim,
+                    random_state=seed,
+                    norm_G=config.nmf_norm_G,
+                    norm_W=config.nmf_norm_W,
+                )
+                nmf_model.fit(train_data)
+
             # Set encoder weights
             weights = nmf_model.encoding.copy()
             # Add small constant to avoid 0 weights at beginning of
