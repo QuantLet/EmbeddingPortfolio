@@ -165,10 +165,6 @@ def run_ae(
             decoder_bias=config.decoder_bias,
         )
         if config.nmf_initializer:
-            LOGGER.info(
-                f"Initilize weights with NMF model from {config.nmf_model}/"
-                f"{cv}"
-            )
             train_data, _, _, _, _ = get_features(
                 data,
                 config.data_specs[cv]["start"],
@@ -181,10 +177,17 @@ def run_ae(
                 **scaler_params,
             )
             if config.nmf_model is not None:
+                LOGGER.info(
+                    f"Initilize weights with NMF model from {config.nmf_model}/"
+                    f"{cv}"
+                )
                 nmf_model = pickle.load(
                     open(f"{config.nmf_model}/{cv}/model.p", "rb")
                 )
             else:
+                LOGGER.info(
+                    "Initilize weights with NMF model"
+                )
                 nmf_model = ConvexNMF(
                     n_components=encoding_dim,
                     random_state=seed,
