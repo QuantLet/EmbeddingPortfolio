@@ -19,9 +19,9 @@ resample = {
 excess_ret = False
 seed = None
 
-encoding_dim = None
-p_range = list(range(2, 11))
-n_exp = 100
+encoding_dim = 5
+p_range = None
+n_exp = None
 encoder_bias = True
 decoder_bias = True
 batch_normalization = True
@@ -38,8 +38,8 @@ scaler_func = {"name": "StandardScaler"}
 model_type = "ae_model"
 
 learning_rate = 1e-3
-epochs = 1000
-batch_size = 32
+epochs = 5000
+batch_size = 128
 loss = "mse"
 
 # Constraints and regularizer
