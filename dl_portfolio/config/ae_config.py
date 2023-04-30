@@ -38,7 +38,7 @@ scaler_func = {"name": "StandardScaler"}
 model_type = "ae_model"
 
 learning_rate = 1e-3
-epochs = 5000
+epochs = 3000
 batch_size = 128
 loss = "mse"
 
@@ -81,4 +81,3 @@ for i in range(len(val_start)):
         "test_start": test_start[i],
         "end": end[i],
     }
-
