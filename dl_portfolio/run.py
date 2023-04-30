@@ -109,6 +109,21 @@ def run_ae(
                 encoding_dim = nmf_model.G.shape[-1]
             else:
                 LOGGER.debug("Find optimal encoding dim")
+                LOGGER.info(f"Assets: {assets}")
+                data_spec = config.data_specs[cv]
+                (train_data, val_data, test_data, scaler,
+                 dates,) = get_features(
+                    data,
+                    data_spec["start"],
+                    data_spec["end"],
+                    assets,
+                    val_start=data_spec["val_start"],
+                    test_start=data_spec.get("test_start"),
+                    scaler=scaler_method,
+                    resample=None,
+                    excess_ret=config.excess_ret,
+                    **scaler_params,
+                )
                 p_range = config.p_range
                 assert max(p_range) < train_data.shape[-1]
                 assert p_range is not None
@@ -317,26 +332,7 @@ def run_ae(
         )
 
         # Get encoder weights
-        decoder_weights = None
-        if config.model_type in ["ae_model2", "nl_pca_ae_model"]:
-            encoder_layer1 = get_layer_by_name(name="encoder1", model=model)
-            encoder_weights1 = encoder_layer1.get_weights()[0]
-            encoder_layer2 = get_layer_by_name(name="encoder2", model=model)
-            encoder_weights2 = encoder_layer2.get_weights()[0]
-            encoder_weights = np.dot(encoder_weights1, encoder_weights2)
-            encoder_weights = pd.DataFrame(encoder_weights, index=assets)
-            heat_map(
-                pd.DataFrame(encoder_weights1), show=True, vmin=0.0, vmax=1.0
-            )
-            heat_map(
-                pd.DataFrame(encoder_weights2), show=True, vmin=0.0, vmax=1.0
-            )
-            heat_map(encoder_weights, show=True)
-        elif config.model_type == "pca_ae_model":
-            encoder_layer = get_layer_by_name(name="encoder", model=model)
-            encoder_weights = encoder_layer.get_weights()
-            encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
-        elif config.model_type == "ae_model":
+        if config.model_type == "ae_model":
             encoder_layer = get_layer_by_name(name="encoder", model=model)
             decoder_layer = get_layer_by_name(name="decoder", model=model)
             encoder_weights = encoder_layer.get_weights()
@@ -344,6 +340,8 @@ def run_ae(
             encoder_weights = pd.DataFrame(encoder_weights[0], index=assets)
             decoder_weights = pd.DataFrame(decoder_weights[0].T, index=assets)
             LOGGER.debug(f"Decoder weights:\n{decoder_weights}")
+        else:
+            raise NotImplementedError(config.model_type)
 
         LOGGER.debug(f"Encoder weights:\n{encoder_weights}")
         # Get prediction on test_data
@@ -428,7 +426,7 @@ def run_ae(
             )
             LOGGER.info(
                 f"Orthogonality constraint (decoder)"
-                f"\n{np.dot(decoder_weights.T, encoder_weights)}"
+                f"\n{np.dot(decoder_weights.T, decoder_weights)}"
             )
 
         if config.show_plot:

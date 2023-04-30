@@ -4,10 +4,10 @@ import tensorflow as tf
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
 
-dataset = "dataset1"
+dataset = "dataset2"
 show_plot = False
 save = True
-nmf_model = "final_models/nmf/dataset1/m_0_seed_0_20230406_182202"
+nmf_model = None
 nmf_initializer = False
 
 resample = {
@@ -20,6 +20,8 @@ excess_ret = False
 seed = None
 
 encoding_dim = None
+p_range = list(range(2, 11))
+n_exp = 100
 encoder_bias = True
 decoder_bias = True
 batch_normalization = True
@@ -63,18 +65,18 @@ callbacks = {
     }
 }
 
-val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
-test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
-end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
-
+val_start = pd.date_range("1990-01-01", "2021-10-01", freq="1MS")
+test_start = pd.date_range("1990-02-01", "2021-11-01", freq="1MS")
 val_start = [str(d.date()) for d in val_start]
 test_start = [str(d.date()) for d in test_start]
+
+end = pd.date_range("1990-02-01", "2021-12-01", freq="1M")
 end = [str(d.date()) for d in end]
 
 data_specs = {}
 for i in range(len(val_start)):
     data_specs[i] = {
-        "start": "2016-06-30",
+        "start": "1989-02-01",
         "val_start": val_start[i],
         "test_start": test_start[i],
         "end": end[i],
