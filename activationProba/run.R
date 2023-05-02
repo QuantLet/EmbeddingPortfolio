@@ -43,28 +43,46 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       train_data = data$train[, ind]
       test_data = data$test[, ind]
       
+      if (config$evt) {
+        # Take loss series
+        train_data = - train_data
+        test_data = - train_data
+      }
+      
       # Model selection
-      best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = arima)
-      if (save){
-        model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
-        if (debug) {
-          print(paste("Saving model to", model_path))
+      if (is.null(config$selected_model)) {
+        best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = arima)
+        garch.model = best_model$model
+        if (save){
+          model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
+          if (debug) {
+            print(paste("Saving model to", model_path))
+          }
+          saveRDS(garch.model, file = model_path)
         }
-        saveRDS(best_model$model, file = model_path)
+      } else {
+        garch.model = readRDS(file.path(config$selected_model, cv, paste0(factor.name, "_model.rds")))
       }
       # Now get probas
-      if (!is.null(best_model$model)) {
+      if (!is.null(garch.model)) {
         # First get proba on train set for proba threshold tuning
-        dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
-        n.fitted = length(best_model$model@fitted)
-        train_probas = unname(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func))
+        if (config$evt) {
+          evt_res = fit_evt(train_data, formula(garch.model), threshold=0.)
+          EVTmodel = evt_res$EVTmodel
+          garch.model = evt_res$GARCHmodel
+          train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel))
+        } else {
+          EVTmodel = NULL
+          dist_func = get_dist_functon(garch.model@fit$params$cond.dist)
+          train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, dist_func))
+        }
         nans = nrow(train_data) - length(train_probas)
         if (nans > 0) {
           train_probas = c(rep(NaN, nans), train_probas) # c(rep(NaN, nans), as.vector(train_probas[,1]))
         }
         # Now predict probas on test set
-        probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
-                               fit_model, next_proba, parallel = !debug, arima=arima)
+        probas = predict_proba(train_data, test_data, config$window_size, garch.model,
+                               fit_model, next_proba, parallel = !debug, arima=arima, EVTmodel=EVTmodel)
         probas = probas$proba
       } else {
         train_probas = rep(NaN, length(index(train_data)))

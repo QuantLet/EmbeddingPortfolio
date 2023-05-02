@@ -4,6 +4,82 @@ if (!require(forecast)) install.packages("forecast", repos="http://cran.us.r-pro
 if (!require(parallel)) install.packages("parallel", repos="http://cran.us.r-project.org")
 if (!require(doParallel)) install.packages("doParallel", repos="http://cran.us.r-project.org")
 
+if (!require(ismev)) install.packages("ismev", repos="http://cran.us.r-project.org")
+if (!require(POT)) install.packages("POT", repos="http://cran.us.r-project.org")
+
+# library(ismev)
+# library(POT)
+
+get_proba_evt_model = function(p, EVTmodel) {
+  if (p <  EVTmodel$threshold) {
+    proba = pnorm(p)
+  } else {
+    # Extract scale and shape parameter estimates
+    EVTmodel.scale = EVTmodel$mle[1]
+    EVTmodel.shape = EVTmodel$mle[2]
+    proba = pgpd(p, loc = EVTmodel$threshold, scale = EVTmodel.scale, shape = EVTmodel.shape)
+  }  
+  proba = 1 - proba
+  return (proba)
+}
+
+fit_evt = function(data, formula, q_fit=NULL, threshold=NULL) {
+  data = preprocess_data(data)
+  # Fit GARCH
+  garch.model = fGarch::garchFit(
+    formula = formula,
+    data = data,
+    cond.dist = "QMLE",
+    trace = FALSE
+  )
+  
+  # Get standardized residuals
+  model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
+  
+  # Fit GPD to residuals
+  if (is.null(threshold)){
+    stopifnot(!is.null(q_fit))
+    threshold = quantile(model.residuals, (1 - q_fit))
+  } else {
+    stopifnot(is.null(q_fit))
+  }
+  # Fit GPD to residuals
+  EVTmodel.fit = gpd.fit(
+    xdat = model.residuals,
+    threshold = threshold,
+    show = FALSE
+  )
+  return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
+}
+
+get_proba_evt = function(garch.model, q_fit=NULL, threshold=NULL) {
+  # Get standardized residuals
+  model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
+  
+  # Fit GPD to residuals
+  if (is.null(threshold)){
+    stopifnot(!is.null(q_fit))
+    threshold = quantile(model.residuals, (1 - q_fit))
+  } else {
+    stopifnot(is.null(q_fit))
+  }
+  # Fit GPD to residuals
+  EVTmodel.fit = gpd.fit(
+    xdat = model.residuals,
+    threshold = threshold,
+    show = FALSE
+  )
+  
+  # Calculate proba
+  # First predict next value
+  model.forecast = fGarch::predict(object = garch.model, n.ahead = 1)
+  model.mean = model.forecast$meanForecast # conditional mean
+  model.sd = model.forecast$standardDeviation # conditional volatility
+  # proba
+  p = -model.mean / model.sd
+  model.proba = get_proba_evt_model(p, EVTmodel.fit)
+  return (list(EVTmodel=EVTmodel.fit, EVTproba=model.proba))
+}
 
 get_cv_data = function(dataset, cv, window_size = NULL) {
   # load dataset
@@ -24,7 +100,7 @@ load_data = function(path, end_date = NULL, start_date = NULL, window_size = NUL
     if (length(index(data)) <= window_size){
       start_date = index(data)[1]
     } else {
-      start_date = index(data)[length(index(data)) - config$window_size + 1]
+      start_date = index(data)[length(index(data)) - window_size + 1]
     }
   }
   if (!is.null(start_date)) {
@@ -59,7 +135,6 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
       formula = formula,
       data = data,
       cond.dist = cond.dist,
-      # algorithm = "lbfgsb",
       trace = FALSE)
     return(list(model = garch.model, aic = garch.model@fit$ics[1]))
   },
@@ -71,8 +146,7 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
     silent = FALSE)
 }
 
-
-model_selection = function(data, model.params, fit_model, parallel = TRUE, arima = TRUE) {
+preprocess_data = function(arima = TRUE){
   if (!arima) {
     print("ARIMA is False, center data")
     data.mu = mean(data, na.rm=TRUE)
@@ -81,6 +155,13 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE, arima
   # Normalize data to have variance 1
   data.sd = sd(data)
   data = data / data.sd
+  
+  return (data)
+}
+
+model_selection = function(data, model.params, fit_model, parallel = TRUE, arima = TRUE) {
+  data = preprocess_data(data)
+  
   tuning.grid = expand.grid(
     cond.dist = model.params$cond.dist,
     garch.order.p = model.params$garch.order.p,
@@ -138,7 +219,7 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE, arima
 }
 
 predict_proba = function(train_data, test_data, window_size, model,
-                         fit_model, next_proba, parallel = TRUE, arima = TRUE) {
+                         fit_model, next_proba, parallel = TRUE, arima = TRU,E, EVTmodel=NULL) {
   if (!arima) {
     print("ARIMA is False")
   }
@@ -167,7 +248,7 @@ predict_proba = function(train_data, test_data, window_size, model,
       # For first observation in test set, just predict the proba using previously trained model
       if (i == 1) {
         forecast = tryCatch(
-          next_proba(model),
+          next_proba(model, EVTmodel=EVTmodel),
           error = function(e) NaN,
           silent = FALSE
         )
@@ -207,7 +288,7 @@ predict_proba = function(train_data, test_data, window_size, model,
     for (i in 1:nrow(test_data)) {
       if (i == 1) {
         if (!is.null(model)) {
-          forecast = next_proba(model)
+          forecast = next_proba(model, EVTmodel = EVTmodel)
         } else {
           forecast = NaN
         }
@@ -271,10 +352,10 @@ prediction_conf = function(object, conf = 0.95) {
   return (list(int_u=int_u, int_l=int_l))
 }
 
-next_proba = function(object, conf = 0.95) {
-  cond.dist = object@fit$params$cond.dist
+next_proba = function(model, conf = 0.95, EVTmodel=NULL) {
+  cond.dist = model@fit$params$cond.dist
   # Predict next value
-  model.forecast = fGarch::predict(object = object, n.ahead = 1, conf = conf)
+  model.forecast = fGarch::predict(object = model, n.ahead = 1, conf = conf)
   meanForecast = model.forecast$meanForecast # conditional mean from mean model
   meanError = model.forecast$meanError # Error
   sdForecast = model.forecast$standardDeviation # conditional volatility
@@ -283,17 +364,16 @@ next_proba = function(object, conf = 0.95) {
   Z_hat = -meanForecast / sdForecast
   if (cond.dist == "norm") {
     proba = pnorm(Z_hat)
-  }
-  if (cond.dist == "snorm") {
+  } else if (cond.dist == "snorm") {
     proba = psnorm(Z_hat)
-  }
-  if (cond.dist == "std") {
+  } else if (cond.dist == "std") {
     proba = fGarch::pstd(Z_hat)
-  }
-  if (cond.dist == "sstd") {
+  } else if (cond.dist == "sstd") {
     proba = fGarch::psstd(Z_hat)
+  } else if (cond.dist == "QMLE") {
+    stopifnot(!is.null(EVTmodel))
+    proba = get_proba_evt_model(Z_hat)
   }
-  
   return (c(proba, meanForecast, meanError, sdForecast))
 }
 
