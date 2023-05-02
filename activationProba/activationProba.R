@@ -8,7 +8,7 @@ if (!require(rjson)) install.packages("rjson")
 config_path = "./config/config.json"
 save = TRUE
 save_dir = "output"
-do.debug = FALSE
+do.debug = TRUE
 
 # ------------------------ Script ------------------------
 

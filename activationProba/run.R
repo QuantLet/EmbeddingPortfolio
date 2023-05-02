@@ -39,14 +39,13 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       #   break
       # }
       factor.name = factors[ind]
-      print(factor.name)
       train_data = data$train[, ind]
       test_data = data$test[, ind]
       
       if (config$evt) {
         # Take loss series
         train_data = - train_data
-        test_data = - train_data
+        test_data = - test_data
       }
       
       # Model selection
