@@ -26,16 +26,25 @@ get_proba_evt_model = function(p, EVTmodel) {
 fit_evt = function(data, formula, q_fit=NULL, threshold=NULL, arima=TRUE) {
   data = preprocess_data(data, arima=arima)
   # Fit GARCH
-  garch.model = fGarch::garchFit(
-    formula = formula,
-    data = data,
-    cond.dist = "QMLE",
-    trace = FALSE
+  tryCatch(
+    {
+      garch.model = fGarch::garchFit(
+        formula = formula,
+        data = data,
+        cond.dist = "QMLE",
+        trace = FALSE
+      )
+    }, error = function(e)
+    {
+      message(e)
+          return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
+    },
+    silent = FALSE
   )
-  
+
   # Get standardized residuals
   model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
-  
+
   # Fit GPD to residuals
   if (is.null(threshold)){
     stopifnot(!is.null(q_fit))
@@ -319,11 +328,32 @@ predict_proba = function(train_data, test_data, window_size, model,
         }
         temp = temp / sd(temp)
         if (!is.null(EVTmodel)){
-          evt_res = fit_evt(temp, formula, threshold=0.)
-          EVTmodel = evt_res$EVTmodel
-          model = evt_res$GARCHmodel
-          if (!is.null(model) | !is.null(EVTmodel)) {
-            forecast = next_proba(model, EVTmodel = EVTmodel)
+          tryCatch(
+            {
+              evt_res = fit_evt(temp, formula, threshold=0.)
+            }, error = function(e)
+            {
+              message(e)
+              evt_res = NULL
+            },
+            silent = FALSE)
+          if (!is.null(evt_res)) {
+            EVTmodel = evt_res$EVTmodel
+            model = evt_res$GARCHmodel
+            if (!is.null(model) | !is.null(EVTmodel)) {
+              tryCatch(
+                {
+                  forecast = next_proba(model, EVTmodel = EVTmodel)
+                }, 
+                error = function(e)
+                  {
+                    forecast = NaN
+                  },
+                silent = FALSE
+                )
+            } else {
+              forecast = NaN
+            }
           } else {
             forecast = NaN
           }
