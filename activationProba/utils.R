@@ -328,42 +328,35 @@ predict_proba = function(train_data, test_data, window_size, model,
         }
         temp = temp / sd(temp)
         if (!is.null(EVTmodel)){
-          tryCatch(
-            {
-              evt_res = fit_evt(temp, formula, threshold=0.)
-            }, error = function(e)
-            {
-              message(e)
-              evt_res = NULL
-            },
+          evt_res = tryCatch(
+            fit_evt(temp, formula, threshold=0.),
+            error = function(e) list(EVTmodel=NULL, GARCHmodel=NULL),
             silent = FALSE)
-          if (!is.null(evt_res)) {
-            EVTmodel = evt_res$EVTmodel
-            model = evt_res$GARCHmodel
-            if (!is.null(model) | !is.null(EVTmodel)) {
-              tryCatch(
-                {
-                  forecast = next_proba(model, EVTmodel = EVTmodel)
-                }, 
-                error = function(e)
-                  {
-                    forecast = NaN
-                  },
-                silent = FALSE
-                )
-            } else {
-              forecast = NaN
-            }
-          } else {
+          EVTmodel = evt_res$EVTmodel
+          model = evt_res$GARCHmodel
+          if (is.null(model) | is.null(EVTmodel)) {
             forecast = NaN
+          } else {
+            forecast = tryCatch(
+              next_proba(model, EVTmodel = EVTmodel),
+              error = function(e) NaN,
+              silent = FALSE
+            )
           }
         } else {
-          model = fit_model(temp, cond.dist, formula = formula, arima=arima)
+          model = tryCatch(
+            fit_model(temp, cond.dist, formula = formula, arima=arima),
+            error = function(e) list(model = NULL, aic = Inf),
+            silent = FALSE)
           model = model$model
-          if (!is.null(model)) {
-            forecast = next_proba(model)
-          } else {
+          if (is.null(model)) {
             forecast = NaN
+          } else {
+            forecast = tryCatch(
+              next_proba(model),
+              error = function(e) NaN,
+              silent = FALSE
+            )
           }
         }
       }
