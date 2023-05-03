@@ -69,6 +69,15 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
           evt_res = fit_evt(train_data, formula(garch.model), threshold=0.)
           EVTmodel = evt_res$EVTmodel
           garch.model = evt_res$GARCHmodel
+          if (save){
+            model_path = file.path(cv_save_dir, paste0(factor.name, "_qmle_garchmodel.rds"))
+            if (debug) {
+              print(paste("Saving model to", model_path))
+            }
+            saveRDS(garch.model, file = model_path)
+            model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
+            saveRDS(EVTmodel, file = model_path)
+          }
           train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel))
         } else {
           EVTmodel = NULL
