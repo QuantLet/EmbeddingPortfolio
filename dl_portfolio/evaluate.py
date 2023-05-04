@@ -7,6 +7,18 @@ import numpy as np
 from joblib import Parallel, delayed
 
 
+def total_r2(y_true, y_pred):
+    assert isinstance(y_true, np.ndarray)
+    assert isinstance(y_pred, np.ndarray)
+    assert len(y_true.shape) == 2
+    assert len(y_pred.shape) == 2
+
+    numerator = np.sum(((y_true - y_pred) ** 2).sum(axis=1))
+    denominator = np.sum((y_true ** 2).sum(axis=1))
+
+    return 1 - numerator/denominator
+
+
 def average_prediction(cv_results: Dict, excess_ret=True):
     """
 
