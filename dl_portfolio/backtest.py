@@ -188,7 +188,8 @@ def backtest_stats(
     return stats
 
 
-def get_target_vol_other_weights(portfolio: str, window_size=250):
+def get_target_vol_other_weights(portfolio: str, window_size=250, fee=2e-4,
+                                 leverage_cost=True, volatility_target=0.05):
     # Load pyrobustm results
     if portfolio == "GMV_robust_dataset1":
         dataset = "dataset1"
@@ -250,11 +251,15 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
         train_returns = returns.loc[:test_start].iloc[-window_size - 1 : -1]
         test_returns = returns.loc[test_start:test_end]
 
-        risk_free = load_risk_free()
-        risk_free = risk_free.reindex(test_returns.index)
-        risk_free = impute_missing_risk_free(risk_free)
-        if risk_free.isna().any().any():
-            assert not risk_free.isna().any()
+        if leverage_cost:
+            risk_free = load_risk_free()
+            risk_free = risk_free.reindex(test_returns.index)
+            risk_free = impute_missing_risk_free(risk_free)
+            if risk_free.isna().any().any():
+                assert not risk_free.isna().any()
+            risk_free = risk_free["risk_free"]
+        else:
+            risk_free = None
 
         one_cv_perf, l = get_portfolio_perf_wrapper(
             train_returns,
@@ -263,7 +268,9 @@ def get_target_vol_other_weights(portfolio: str, window_size=250):
             portfolios=["other"],
             prev_weights=prev_w,
             train_weights={"other": w["other"].iloc[0, :]},
-            risk_free=risk_free["risk_free"],
+            risk_free=risk_free,
+            fee=fee,
+            volatility_target=volatility_target,
         )
         leverage.append(l["other"])
         prev_w = w.copy()
@@ -601,13 +608,15 @@ def get_portfolio_perf_wrapper(
                     ).any()
                     assert isinstance(weights[portfolio], pd.DataFrame)
                     assert isinstance(prev_weights[portfolio], pd.DataFrame)
-                    cost = pd.concat(
+                    mu = pd.concat(
                         [
                             prev_weights[portfolio].iloc[-1:, :],
                             weights[portfolio],
                         ], ignore_index=True
                     )
-                    cost = fee * np.abs(cost.diff().dropna()).sum(1)
+                    mu = np.abs(mu.diff().dropna())
+                    mu = np.sum(mu, axis=1) # sum over each day
+                    cost = fee * mu
                     try:
                         cost = pd.Series(cost.values, index=returns.index)
                     except Exception as _exc:
@@ -802,11 +811,10 @@ def get_number_of_nmf_bets(rc: Dict, metric: str ="shannon_entropy"):
     """
     assert metric in ["shannon_entropy", "herfindahl"]
 
-    n_exp = len(list(rc.values())[0])
     # Get proba measure from risk contribution
     p_rc = {
-        p: [(rc[p][i].abs().T / np.sum(
-            rc[p][i].abs().T, axis=0)).T for i in range(n_exp)]
+        p: [(rc[p][i].abs().T / np.sum(rc[p][i].abs().T, axis=0)).T for i in
+            range(len(rc[p]))]
         for p in rc
     }
 
@@ -821,7 +829,7 @@ def get_number_of_nmf_bets(rc: Dict, metric: str ="shannon_entropy"):
     number_bets = {
         p: pd.concat(
             [
-                p_rc[p][i].apply(func, axis=1) for i in range(n_exp)
+                p_rc[p][i].apply(func, axis=1) for i in range(len(p_rc[p]))
             ],
             axis=1
         ).mean(1)
@@ -937,91 +945,95 @@ def one_cv(
     reorder_features=True,
     **kwargs,
 ):
-    ae_config = kwargs.get("ae_config")
-    res = {}
+    try:
+        ae_config = kwargs.get("ae_config")
+        res = {}
 
-    (
-        model,
-        scaler,
-        dates,
-        test_data,
-        test_features,
-        pred,
-        embedding,
-        decoding,
-        _,
-        decoder_bias,
-    ) = load_result(
-        ae_config,
-        test_set,
-        data,
-        assets,
-        base_dir,
-        cv,
-        reorder_features=reorder_features,
-    )
-
-    data = data.pct_change(1).dropna()
-    data = data[assets]
-    assert np.sum(data.isna().sum()) == 0
-    train_returns = data.loc[dates["train"]]
-    returns = data.loc[dates[test_set]]
-
-    if excess_ret:
-        risk_free_rate = load_risk_free()
-        train_rf = risk_free_rate.reindex(train_returns.index)
-        train_rf = impute_missing_risk_free(train_rf)
-        excess_train_returns = train_returns - train_rf.values
-
-        rf = risk_free_rate.reindex(returns.index)
-        rf = impute_missing_risk_free(rf)
-        excess_returns = returns - rf.values
-        residuals = excess_returns - pred
-    else:
-        residuals = returns - pred
-
-    if window is not None:
-        assert isinstance(window, int)
-        train_returns = train_returns.iloc[-window:]
-
-    if scaler:
-        std = scaler["attributes"]["scale_"]
-        if std is None:
-            std = 1.0
-        scaled_residuals = residuals * std
-    else:
-        scaled_residuals = residuals * 1.0
-
-    res["embedding"] = embedding
-    res["loading"] = decoding
-    res["scaler"] = scaler
-    res["test_features"] = test_features
-    res["test_pred"] = pred
-    res["Su"] = scaled_residuals.cov()
-    res["w"] = decoding
-    res["train_returns"] = train_returns
-    res["returns"] = returns
-    res["decoder_bias"] = decoder_bias
-    if excess_ret:
-        res["excess_train_returns"] = excess_train_returns
-        res["excess_returns"] = excess_returns
-    if compute_weights:
-        assert market_budget is not None
-        res["port"] = portfolio_weights(
-            train_returns,
-            # shrink_cov=res['H'],
-            budget=market_budget.loc[assets],
-            embedding=embedding,
-            loading=decoding,
-            portfolio=portfolios,
-            **kwargs,
+        (
+            model,
+            scaler,
+            dates,
+            test_data,
+            test_features,
+            pred,
+            embedding,
+            decoding,
+            _,
+            decoder_bias,
+        ) = load_result(
+                ae_config,
+                test_set,
+                data,
+                assets,
+                base_dir,
+                cv,
+                reorder_features=reorder_features,
         )
-    else:
-        res["port"] = None
 
-    # clusters, _ = get_cluster_labels(embedding)
-    res["mean_mse"] = np.mean((residuals ** 2).mean(1))
-    res["mse"] = np.sum((residuals ** 2).mean(1))
+        data = data.pct_change(1).dropna()
+        data = data[assets]
+        assert np.sum(data.isna().sum()) == 0
+        train_returns = data.loc[dates["train"]]
+        returns = data.loc[dates[test_set]]
+
+        if excess_ret:
+            risk_free_rate = load_risk_free()
+            train_rf = risk_free_rate.reindex(train_returns.index)
+            train_rf = impute_missing_risk_free(train_rf)
+            excess_train_returns = train_returns - train_rf.values
+
+            rf = risk_free_rate.reindex(returns.index)
+            rf = impute_missing_risk_free(rf)
+            excess_returns = returns - rf.values
+            residuals = excess_returns - pred
+        else:
+            residuals = returns - pred
+
+        if window is not None:
+            assert isinstance(window, int)
+            train_returns = train_returns.iloc[-window:]
+
+        if scaler:
+            std = scaler["attributes"]["scale_"]
+            if std is None:
+                std = 1.0
+            scaled_residuals = residuals * std
+        else:
+            scaled_residuals = residuals * 1.0
+
+        res["embedding"] = embedding
+        res["loading"] = decoding
+        res["scaler"] = scaler
+        res["test_features"] = test_features
+        res["test_pred"] = pred
+        res["Su"] = scaled_residuals.cov()
+        res["w"] = decoding
+        res["train_returns"] = train_returns
+        res["returns"] = returns
+        res["decoder_bias"] = decoder_bias
+        if excess_ret:
+            res["excess_train_returns"] = excess_train_returns
+            res["excess_returns"] = excess_returns
+        if compute_weights:
+            assert market_budget is not None
+            res["port"] = portfolio_weights(
+                train_returns,
+                # shrink_cov=res['H'],
+                budget=market_budget.loc[assets],
+                embedding=embedding,
+                loading=decoding,
+                portfolio=portfolios,
+                **kwargs,
+            )
+        else:
+            res["port"] = None
+
+        # clusters, _ = get_cluster_labels(embedding)
+        res["mean_mse"] = np.mean((residuals ** 2).mean(1))
+        res["mse"] = np.sum((residuals ** 2).mean(1))
+    except Exception as _exc:
+        LOGGER.exception(f"Error with one_cv cv {cv} in {base_dir}...")
+        raise _exc
 
     return cv, res
 
