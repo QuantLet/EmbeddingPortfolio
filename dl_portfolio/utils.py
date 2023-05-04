@@ -8,6 +8,7 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import activations
 
+from dl_portfolio.cluster import compute_serial_matrix
 from dl_portfolio.data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.constant import (
@@ -15,6 +16,7 @@ from dl_portfolio.constant import (
     BASE_FACTOR_ORDER_DATASET1_4,
     BASE_FACTOR_ORDER_DATASET2_5,
 )
+from sklearn import metrics
 
 
 LOG_BASE_DIR = "./dl_portfolio/log"
@@ -274,6 +276,52 @@ def get_linear_encoder(
     return model, test_features, lin_activation, intercept
 
 
+def get_features_order(loadings: pd.DataFrame, ref_cluster: pd.DataFrame):
+    """
+
+    :param loadings:
+    :param ref_cluster:
+    :return:
+    """
+    encoding_dim = ref_cluster.shape[-1]
+    dist = metrics.pairwise_distances(pd.concat([loadings.T, ref_cluster.T]))
+    # Keep only the distances between loadings and ref_cluster
+    dist = dist[:encoding_dim, encoding_dim:]
+    return np.argmin(dist, axis=0)
+
+
+def get_average_factor_loadings_over_runs(weights: pd.DataFrame,
+                                          encoding_dim: int):
+    """
+    Group the different factors obtained from various NMReLu runs, into
+    n_encoding groups and then average the factor loadings to get a unique d
+    * p matrix of factor loadings.
+
+    :param weights: typically: weights = pd.concat(
+        [pd.read_pickle(f"{d}/{cv}/decoder_weights.p").T for d in dirs]
+    )
+    :param encoding_dim:
+    :return:
+    """
+    # Get the distance between each factor loading vector
+    dist = metrics.pairwise_distances(weights)
+    assert all(np.diag(dist) < 1e-6)
+    # Make the diagonal zero
+    dist[np.diag_indices(len(dist))] = 0
+    # Reorder the distance matrix
+    seriated_dist, res_order, res_linkage = compute_serial_matrix(dist,
+                                                                  method="single")
+    new_order = [weights.index[i] for i in res_order]
+    weights = weights.loc[new_order]
+    # Now group by factor and take the average
+    n_runs = int(len(weights) / encoding_dim)
+    factor = np.array([[i] * n_runs for i in range(encoding_dim)]).flatten()
+    weights["factor"] = factor
+    weights = weights.groupby("factor").mean().T
+
+    return weights
+
+
 def load_result(
     config,
     test_set: str,
@@ -320,6 +368,7 @@ def load_result(
             kernel_regularizer.encoding_dim = encoding_dim
         else:
             encoding_dim = config.encoding_dim
+            kernel_regularizer = config.kernel_regularizer
 
         model, encoder, extra_features = build_model(
             config.model_type,

@@ -27,7 +27,6 @@ from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 def portfolio_weights(
     returns,
     budget=None,
-    embedding=None,
     loading=None,
     portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "erc"],
     **kwargs,
@@ -39,7 +38,6 @@ def portfolio_weights(
 
     mu = returns.mean()
     S = returns.cov()
-    n_assets = S.shape[0]
 
     if "markowitz" in portfolio:
         LOGGER.info("Computing Markowitz weights...")
@@ -50,31 +48,14 @@ def portfolio_weights(
         port_w["ivp"] = ivp_weights(S)
 
     if "erc" in portfolio:
-        LOGGER.info("Computing Riskparity weights...")
+        LOGGER.info("Computing ERC weights...")
         assert budget is not None
         port_w["erc"] = riskparity_weights(S, budget=budget["rc"].values)
 
-    if "kmaa" in portfolio:
-        LOGGER.info("Computing KMeans Asset Allocation weights...")
-        assert embedding is not None
-        port_w["kmaa"] = kmaa_weights(returns, n_clusters=embedding.shape[-1])
-
     if "aerp" in portfolio:
         LOGGER.info("Computing AE Risk Parity weights...")
-        assert embedding is not None
-        port_w["aerp"] = ae_rp_weights(returns, embedding)
-
-    if "aeerc" in portfolio:
-        LOGGER.info("Computing AE Risk Contribution weights...")
-        assert budget is not None
-        assert embedding is not None
-        port_w["aeerc"] = ae_riskparity_weights(
-            returns, embedding, loading, budget, risk_parity="budget"
-        )
-
-    if "aeaa" in portfolio:
-        LOGGER.info("Computing AE Asset Allocation weights...")
-        port_w["aeaa"] = aeaa_weights(returns, loading)
+        assert loading is not None
+        port_w["aerp"] = ae_rp_weights(returns, loading)
 
     if "hrp" in portfolio:
         port_w["hrp"] = getHRP(cov=S.values, corr=returns.corr().values,
@@ -90,11 +71,6 @@ def portfolio_weights(
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
         port_w['rb_factor'] = get_rb_factor_weights(returns, loading)
-
-    if "rb_factor_full_erc" in portfolio:
-        LOGGER.info('Computing RB factor weights...')
-        port_w['rb_factor_full_erc'] = get_full_rb_factor_weights(returns,
-                                                                  loading)
 
     return port_w
 
@@ -542,9 +518,18 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2,
     """
     assets = returns.columns.tolist()
     n_components = loading.shape[-1]
+    # reset columns
+    loading.columns = range(n_components)
     cluster_ind = loading[
         loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
-    assert len(cluster_ind.unique()) == n_components
+
+    if len(cluster_ind.unique()) != n_components:
+        print(cluster_ind.unique())
+        print(loading)
+        print("here")
+
+    assert len(cluster_ind.unique()) == n_components, (cluster_ind.unique(),
+                                                       n_components)
 
     inner_weights = pd.DataFrame(0, columns=loading.columns, index=assets)
     for i in range(n_components):
@@ -735,12 +720,12 @@ def equal_class_weights(market_budget: pd.DataFrame):
     return weights
 
 
-def ae_rp_weights(returns, embedding, erc=True, cluster_erc=False):
-    max_cluster = embedding.shape[-1] - 1
+def ae_rp_weights(returns, loading, erc=True, cluster_erc=False):
+    max_cluster = loading.shape[-1] - 1
     # First get cluster allocation to forget about small contribution
     # Rename columns in case of previous renaming
-    embedding.columns = list(range(len(embedding.columns)))
-    clusters, _ = get_cluster_labels(embedding)
+    loading.columns = list(range(len(loading.columns)))
+    clusters, _ = get_cluster_labels(loading)
     clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
 
     # Now get weights of assets inside each cluster

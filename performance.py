@@ -20,7 +20,9 @@ from dl_portfolio.backtest import (
     get_dl_average_weights,
     cv_portfolio_perf_df,
     get_number_of_nmf_bets,
-    get_factors_rc_and_weights
+    get_factors_rc_and_weights,
+    get_cv_portfolio_weights,
+    get_cv_loadings,
 )
 
 from dl_portfolio.cluster import (
@@ -226,30 +228,38 @@ if __name__ == "__main__":
     port_perf = {}
 
     N_EXP = len(paths)
+
+    cv_loading = get_cv_loadings(args.base_dir)
+    cv_port_weights = get_cv_portfolio_weights(
+        args.base_dir,
+        config,
+        args.test_set,
+        PORTFOLIOS,
+        market_budget,
+        window=args.window,
+        n_jobs=args.n_jobs,
+        dataset=config.dataset,
+    )
+
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
-        if i == 0:
-            portfolios = PORTFOLIOS
-        else:
-            portfolios = [p for p in PORTFOLIOS if "ae" in p or p == 'rb_factor']
         cv_results[i] = get_cv_results(
             path,
             args.test_set,
             n_folds,
             dataset=config.dataset,
-            portfolios=portfolios,
-            market_budget=market_budget,
-            compute_weights=not args.eval_only,
+            # portfolios=portfolios,
+            # market_budget=market_budget,
             window=args.window,
             n_jobs=args.n_jobs,
             ae_config=config,
             excess_ret=config.excess_ret,
-            reorder_features=CLUSTER_NAMES is not None,
             verbose=False,
         )
 
     LOGGER.info("Done.")
-    pd.to_pickle(cv_results, f"{save_dir}/cv_results.p")
+    if args.save:
+        pd.to_pickle(cv_results, f"{save_dir}/cv_results.p")
 
     CV_DATES = [
         str(cv_results[0][cv]["returns"].index[0].date())
@@ -553,18 +563,17 @@ if __name__ == "__main__":
         # Portfolio performance
         LOGGER.info("Backtest weights...")
         # Get average weights for AE portfolio across runs
-        port_weights = get_dl_average_weights(cv_results)
+        # port_weights = get_dl_average_weights(cv_results)
         # Build dictionary for cv_portfolio_perf
         cv_returns = {}
+        port_weights = {cv: {} for cv in cv_results[0]}
         for cv in cv_results[0]:
             cv_returns[cv] = cv_results[0][cv]["returns"].copy()
             date = cv_results[0][cv]["returns"].index[0]
-            for port in PORTFOLIOS:
-                if (port not in ["equal", "equal_class"]) and (
-                        "ae" not in port) and (port != "rb_factor"):
-                    weights = pd.DataFrame(cv_results[0][cv]["port"][port]).T
-                    weights.index = [date]
-                    port_weights[cv][port] = weights
+            for port in cv_port_weights[0]:
+                weights = pd.DataFrame(cv_port_weights[cv][port]).T
+                weights.index = [date]
+                port_weights[cv][port] = weights
 
         port_weights_df = {}
         for port in port_weights[0]:
@@ -587,7 +596,6 @@ if __name__ == "__main__":
                 "port": {
                     port: port_weights_df[port][cv]
                     for port in port_weights_df
-                    # if port not in ['equal', 'equal_classs']
                 },
             }
             for cv in cv_returns
@@ -632,6 +640,8 @@ if __name__ == "__main__":
         # Get statistics
         risk_contribution, factor_weights = get_factors_rc_and_weights(
             cv_results,
+            cv_port_weights,
+            cv_loading,
             market_budget.drop("CRIX") if config.dataset == "dataset1"  else
             market_budget
         )

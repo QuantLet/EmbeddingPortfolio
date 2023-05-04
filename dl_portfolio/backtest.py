@@ -1,3 +1,6 @@
+import glob
+import os
+
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
@@ -10,9 +13,10 @@ from dl_portfolio.logger import LOGGER
 from dl_portfolio.data import (
     load_data,
     load_risk_free,
-    impute_missing_risk_free,
+    impute_missing_risk_free, get_features,
 )
-from dl_portfolio.utils import load_result
+from dl_portfolio.utils import load_result, \
+    get_average_factor_loadings_over_runs
 from dl_portfolio.constant import (
     DATA_SPECS_AE_DATASET1,
     DATA_SPECS_AE_DATASET2,
@@ -877,7 +881,8 @@ def get_number_of_pc_bets(cv_results, market_budget: pd.DataFrame):
 
 
 def get_factors_rc_and_weights(
-        cv_results: Dict, market_budget: pd.DataFrame):
+        cv_results: Dict, cv_port_weights: Dict, cv_loadings: Dict,
+        market_budget: pd.DataFrame):
     """
 
     :param cv_results:
@@ -888,46 +893,41 @@ def get_factors_rc_and_weights(
     """
     assets = market_budget.index.tolist()
     d = len(assets)
-    portfolios = list(cv_results[0][0]["port"].keys()) + ["equal",
-                                                          "equal_class"]
+    portfolios = list(cv_port_weights[0].keys()) + ["equal", "equal_class"]
     risk_contribution = {p: [] for p in portfolios}
     factor_weights = {p: [] for p in portfolios}
     for p in portfolios:
-        for i in cv_results.keys():
-            if i > 0 and p not in ["aerp", "rb_factor"]:
-                break
+        p_rc = []
+        p_fw = []
+        for cv in cv_results[0].keys():
+            ret = pd.concat(
+                [
+                    cv_results[0][cv]["train_returns"],
+                    cv_results[0][cv]["returns"]
+                ]
+            )
+            Sigma = np.cov(ret.T)
+            W_tilde = np.dot(
+                np.diag(
+                    cv_results[0][cv]["scaler"]["attributes"]["scale_"]
+                ),
+                cv_loadings[cv]
+            )
+            if p == "equal":
+                a = np.ones(d) / d
+            elif p == "equal_class":
+                assert market_budget is not None
+                a = equal_class_weights(market_budget).loc[assets]
             else:
-                p_rc = []
-                p_fw = []
-                for cv in cv_results[i].keys():
-                    ret = pd.concat(
-                        [
-                            cv_results[i][cv]["train_returns"],
-                            cv_results[i][cv]["returns"]
-                        ]
-                    )
-                    Sigma = np.cov(ret.T)
-                    W_tilde = np.dot(
-                        np.diag(
-                            cv_results[i][cv]["scaler"]["attributes"]["scale_"]
-                        ),
-                        cv_results[i][cv]["loading"]
-                    )
-                    if p == "equal":
-                        a = np.ones(d) / d
-                    elif p == "equal_class":
-                        assert market_budget is not None
-                        a = equal_class_weights(market_budget).loc[assets]
-                    else:
-                        a = cv_results[i][cv]["port"][p].copy()
-                    rc_z, rc_y = compute_factor_risk_contribution(a,
-                                                                  W_tilde,
-                                                                  Sigma)
-                    w_z, w_y = compute_factor_weight(a, W_tilde)
-                    p_rc.append(np.concatenate([rc_z, rc_y]))
-                    p_fw.append(np.concatenate([w_z, w_y]))
-                risk_contribution[p].append(pd.DataFrame(p_rc))
-                factor_weights[p].append(pd.DataFrame(p_fw))
+                a = cv_port_weights[cv][p].copy()
+            rc_z, rc_y = compute_factor_risk_contribution(a,
+                                                          W_tilde,
+                                                          Sigma)
+            w_z, w_y = compute_factor_weight(a, W_tilde)
+            p_rc.append(np.concatenate([rc_z, rc_y]))
+            p_fw.append(np.concatenate([w_z, w_y]))
+        risk_contribution[p].append(pd.DataFrame(p_rc))
+        factor_weights[p].append(pd.DataFrame(p_fw))
     return risk_contribution, factor_weights
 
 
@@ -939,10 +939,10 @@ def one_cv(
     test_set,
     portfolios,
     market_budget=None,
-    compute_weights=True,
+    compute_weights=False,
     window: Optional[int] = 250,
-    excess_ret=True,
-    reorder_features=True,
+    excess_ret=False,
+    reorder_features=False,
     **kwargs,
 ):
     try:
@@ -1016,11 +1016,10 @@ def one_cv(
             res["excess_returns"] = excess_returns
         if compute_weights:
             assert market_budget is not None
+            assert portfolios is not None
             res["port"] = portfolio_weights(
                 train_returns,
-                # shrink_cov=res['H'],
                 budget=market_budget.loc[assets],
-                embedding=embedding,
                 loading=decoding,
                 portfolio=portfolios,
                 **kwargs,
@@ -1028,7 +1027,6 @@ def one_cv(
         else:
             res["port"] = None
 
-        # clusters, _ = get_cluster_labels(embedding)
         res["mean_mse"] = np.mean((residuals ** 2).mean(1))
         res["mse"] = np.sum((residuals ** 2).mean(1))
     except Exception as _exc:
@@ -1038,25 +1036,157 @@ def one_cv(
     return cv, res
 
 
+def get_cv_loadings(base_dir: str):
+    dirs = sorted(glob.glob(f"{base_dir}/m_**"))
+    cvs = sorted([int(cv) for cv in os.listdir(f"{dirs[0]}") if cv.isdigit()])
+
+    cv_loading = {}
+    for cv in cvs:
+        if len(dirs) > 1:
+            loading = pd.concat(
+                [pd.read_pickle(f"{d}/{cv}/decoder_weights.p").T for d in
+                 dirs],
+                ignore_index=True
+            )
+            encoding_dim = int(len(loading) / len(dirs))
+            loading = get_average_factor_loadings_over_runs(loading,
+                                                            encoding_dim)
+        else:
+            loading = pd.read_pickle(f"{dirs[0]}/{cv}/decoder_weights.p")
+        cv_loading[cv] = loading
+
+    return cv_loading
+
+
+def get_cv_portfolio_weights(
+    base_dir,
+    config,
+    test_set,
+    portfolios,
+    market_budget,
+    window: Optional[int] = 250,
+    n_jobs: int = 1,
+    dataset="dataset2",
+    **kwargs,
+):
+    assert test_set in ["val", "test"]
+    data, assets = load_data(dataset=dataset)
+    dirs = sorted(glob.glob(f"{base_dir}/m_**"))
+    cvs = sorted([int(cv) for cv in os.listdir(f"{dirs[0]}") if cv.isdigit()])
+
+    def worker(
+            config,
+            data: pd.DataFrame,
+            assets: List,
+            dirs: List,
+            cv: int,
+            portfolios: List,
+            market_budget: pd.DataFrame,
+            window: Optional[int] = 250,
+            **kwargs,
+    ):
+        try:
+            # First get average factor loadings
+            if len(dirs) > 1:
+                loading = pd.concat(
+                    [pd.read_pickle(f"{d}/{cv}/decoder_weights.p").T for d in
+                     dirs],
+                    ignore_index=True
+                )
+                encoding_dim = int(len(loading) / len(dirs))
+                loading = get_average_factor_loadings_over_runs(loading,
+                                                                encoding_dim)
+            else:
+                loading = pd.read_pickle(f"{dirs[0]}/{cv}/decoder_weights.p")
+
+            # Get train returns
+            data_spec = config.data_specs[cv]
+            _, _, _, _, dates = get_features(
+                data,
+                data_spec["start"],
+                data_spec["end"],
+                assets,
+                val_start=data_spec["val_start"],
+                test_start=data_spec.get("test_start"),
+                scaler=None,
+            )
+            data = data.pct_change(1).dropna()
+            data = data[assets]
+            assert np.sum(data.isna().sum()) == 0
+            train_returns = data.loc[dates["train"]]
+            if window is not None:
+                assert isinstance(window, int)
+                train_returns = train_returns.iloc[-window:]
+            port = portfolio_weights(
+                train_returns,
+                budget=market_budget.loc[assets],
+                loading=loading,
+                portfolio=portfolios,
+                **kwargs,
+            )
+
+        except Exception as _exc:
+            LOGGER.exception(f"Error with one_cv cv {cv} in {base_dir}...")
+            raise _exc
+
+        return cv, port
+
+    if n_jobs > 1:
+        with Parallel(n_jobs=n_jobs) as _parallel_pool:
+            cv_port = _parallel_pool(
+                delayed(worker)(
+                    config,
+                    data,
+                    assets,
+                    dirs,
+                    cv,
+                    portfolios,
+                    market_budget,
+                    window=window,
+                    **kwargs,
+                )
+                for cv in cvs
+            )
+        # Build dictionary
+        cv_port = {
+            cv_port[i][0]: cv_port[i][1] for i in range(len(cv_port))
+        }
+        # Reorder dictionary
+        cv_port = {cv: cv_port[cv] for cv in cvs}
+    else:
+        cv_port = {}
+        for cv in cvs:
+            _, cv_port[cv] = worker(
+                config,
+                data,
+                assets,
+                dirs,
+                cv,
+                portfolios,
+                market_budget,
+                window=window,
+                **kwargs,
+            )
+
+    return cv_port
+
+
 def get_cv_results(
     base_dir,
     test_set,
     n_folds,
     portfolios=None,
     market_budget=None,
-    compute_weights=True,
+    compute_weights=False,
     window: Optional[int] = None,
     n_jobs: int = 1,
     dataset="global",
-    reorder_features=True,
+    reorder_features=False,
     **kwargs,
 ):
     assert test_set in ["val", "test"]
 
-    ae_config = kwargs.get("ae_config")
-
     data, assets = load_data(dataset=dataset)
-
     if n_jobs > 1:
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_results = _parallel_pool(
