@@ -23,25 +23,29 @@ get_proba_evt_model = function(p, EVTmodel) {
   return (proba)
 }
 
-fit_evt = function(data, formula, q_fit=NULL, threshold=NULL, arima=TRUE) {
+fit_evt = function(data, formula=NULL, garch.model=NULL, q_fit=NULL, threshold=NULL, arima=TRUE) {
   data = preprocess_data(data, arima=arima)
-  # Fit GARCH
-  tryCatch(
-    {
-      garch.model = fGarch::garchFit(
-        formula = formula,
-        data = data,
-        cond.dist = "QMLE",
-        trace = FALSE
-      )
-    }, error = function(e)
-    {
-      message(e)
-          return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
-    },
-    silent = FALSE
-  )
-
+  if (is.null(garch.model)){
+    stopifnot(!is.null(formula))
+    # Fit GARCH
+    tryCatch(
+      {
+        garch.model = fGarch::garchFit(
+          formula = formula,
+          data = data,
+          cond.dist = "QMLE",
+          trace = FALSE
+        )
+      }, error = function(e)
+      {
+        message(e)
+        return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
+      },
+      silent = FALSE
+    )
+  }
+  
+  
   # Get standardized residuals
   model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
 
@@ -123,7 +127,9 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
   # Select mean model
   if (is.null(formula)) {
     if (arima) {
-      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE) # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, 
+                                      max.p = 3, max.q = 3, seasonal = FALSE, 
+                                      parallel=TRUE, num.cores = parallel::detectCores() - 1)
       arima.order = unname(forecast::arimaorder(ARIMAfit))
       if (arima.order[2] > 0) {
         data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
@@ -157,7 +163,6 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
 
 preprocess_data = function(data, arima = TRUE){
   if (!arima) {
-    print("ARIMA is False, center data")
     data.mu = mean(data, na.rm=TRUE)
     data = data - data.mu
   }
@@ -229,9 +234,6 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE, arima
 
 predict_proba = function(train_data, test_data, window_size, model,
                          fit_model, next_proba, parallel = TRUE, arima = TRUE, EVTmodel=NULL) {
-  if (!arima) {
-    print("ARIMA is False")
-  }
   formula = model@formula
   cond.dist = model@fit$params$cond.dist
 
@@ -276,7 +278,7 @@ predict_proba = function(train_data, test_data, window_size, model,
         
         if (!is.null(EVTmodel)){
           evt_res = tryCatch(
-            fit_evt(temp, formula = formula, threshold=0.),
+            fit_evt(temp, formula = formula, threshold=0., arima=arima),
             error = function(e) list(EVTmodel = NULL, GARCHmodel = NULL),
             silent = FALSE)
           EVTmodel = evt_res$EVTmodel
@@ -329,7 +331,7 @@ predict_proba = function(train_data, test_data, window_size, model,
         temp = temp / sd(temp)
         if (!is.null(EVTmodel)){
           evt_res = tryCatch(
-            fit_evt(temp, formula, threshold=0.),
+            fit_evt(temp, formula, threshold=0., arima=arima),
             error = function(e) list(EVTmodel=NULL, GARCHmodel=NULL),
             silent = FALSE)
           EVTmodel = evt_res$EVTmodel

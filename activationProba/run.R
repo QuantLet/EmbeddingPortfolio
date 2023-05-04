@@ -1,6 +1,6 @@
 source("utils.R")
 
-run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
+run = function(config, save_dir=NULL, debug=FALSE){
   if (is.null(save_dir)){
     save = FALSE
   } else {
@@ -50,7 +50,7 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       
       # Model selection
       if (is.null(config$selected_model)) {
-        best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = arima)
+        best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = config$arima)
         garch.model = best_model$model
         if (save){
           model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
@@ -66,17 +66,29 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       if (!is.null(garch.model)) {
         # First get proba on train set for proba threshold tuning
         if (config$evt) {
-          evt_res = fit_evt(train_data, formula(garch.model), threshold=0.)
-          EVTmodel = evt_res$EVTmodel
-          garch.model = evt_res$GARCHmodel
-          if (save){
-            model_path = file.path(cv_save_dir, paste0(factor.name, "_qmle_garchmodel.rds"))
-            if (debug) {
-              print(paste("Saving model to", model_path))
+          if (garch.model@fit$params$cond.dist == "QMLE"){
+            evt_res = fit_evt(train_data, formula=NULL, garch.model=garch.model, threshold=0.)
+            EVTmodel = evt_res$EVTmodel
+            if (save){
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
+              if (debug) {
+                print(paste("Saving model to", model_path))
+              }
+              saveRDS(EVTmodel, file = model_path)
             }
-            saveRDS(garch.model, file = model_path)
-            model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
-            saveRDS(EVTmodel, file = model_path)
+          } else {
+            evt_res = fit_evt(train_data, formula(garch.model), threshold=0.)
+            EVTmodel = evt_res$EVTmodel
+            garch.model = evt_res$GARCHmodel
+            if (save){
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_qmle_garchmodel.rds"))
+              if (debug) {
+                print(paste("Saving model to", model_path))
+              }
+              saveRDS(garch.model, file = model_path)
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
+              saveRDS(EVTmodel, file = model_path)
+            }
           }
           train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel))
         } else {
@@ -86,11 +98,11 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
         }
         nans = nrow(train_data) - length(train_probas)
         if (nans > 0) {
-          train_probas = c(rep(NaN, nans), train_probas) # c(rep(NaN, nans), as.vector(train_probas[,1]))
+          train_probas = c(rep(NaN, nans), train_probas)
         }
         # Now predict probas on test set
         probas = predict_proba(train_data, test_data, config$window_size, garch.model,
-                               fit_model, next_proba, parallel = !debug, arima=arima, EVTmodel=EVTmodel)
+                               fit_model, next_proba, parallel = !debug, arima=config$arima, EVTmodel=EVTmodel)
         probas = probas$proba
       } else {
         train_probas = rep(NaN, length(index(train_data)))

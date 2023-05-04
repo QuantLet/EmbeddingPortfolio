@@ -2,22 +2,20 @@
   "window_size": 250,
   "model.params": {
     "cond.dist": [
-      "norm",
-      "std",
-      "snorm",
-      "sstd"
+      "norm"
     ],
     "garch.order.p": [
-      1,
-      2
+      1
     ],
     "garch.order.q": [
-      0,
-      1,
-      2
+      0
     ]
   },
-  "dataset": "dataset2",
-  "cvs": 382,
-  "n_factors": null
+  "arima": true,
+  "selected_model": null, 
+  "ignored": "output/dataset1/20230501034824_encoding_4",
+  "evt": false,
+  "dataset": "dataset1",
+  "cvs": 69,
+  "n_factors": 4
 }
