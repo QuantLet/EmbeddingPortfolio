@@ -511,11 +511,6 @@ if __name__ == "__main__":
                     plt.show()
                 plt.close()
 
-                if CLUSTER_NAMES is not None:
-                    cluster_assignment[cv] = assign_cluster_from_consmat(
-                        cons_mat, CLUSTER_NAMES, t=0
-                    )
-
                 if cv == 0:
                     order0 = cons_mat.index
                     avg_cons_mat = avg_cons_mat.loc[order0, :]
@@ -537,12 +532,12 @@ if __name__ == "__main__":
                 plt.show()
             plt.close()
             LOGGER.info("Done.")
-        else:
-            cluster_assignment = {}
-            for cv in range(n_folds):
-                cluster_assignment[cv], _ = get_cluster_labels(
-                    cv_results[0][cv]["loading"]
-                )
+
+        cluster_assignment = {}
+        for cv in range(n_folds):
+            cluster_assignment[cv], _ = get_cluster_labels(
+                cv_loading[cv]
+            )
 
         LOGGER.info("Saving final results...")
         # Save final result
