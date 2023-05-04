@@ -33,6 +33,7 @@ from dl_portfolio.data import load_data
 from dl_portfolio.evaluate import (
     average_prediction_cv,
     load_prediction_cv,
+    total_r2
 )
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import (
@@ -121,8 +122,14 @@ if __name__ == "__main__":
         default=0.05,
     )
     args = parser.parse_args()
-    if args.volatility_target == "":
-        args.volatility_target = None
+
+    try:
+        args.volatility_target = float(args.volatility_target)
+    except ValueError:
+        if args.volatility_target == "":
+            args.volatility_target = None
+        else:
+            raise ValueError(args.volatility_target)
     logging.basicConfig(level=args.loglevel)
     LOGGER.setLevel(args.loglevel)
     meta = vars(args)
@@ -145,11 +152,11 @@ if __name__ == "__main__":
     LOGGER.info("Loading data...")
     # Load paths
     models = os.listdir(args.base_dir)
-    paths = [
+    paths = sorted([
         f"{args.base_dir}/{d}"
         for d in models
         if os.path.isdir(f"{args.base_dir}/{d}") and d[0] != "."
-    ]
+    ])
     n_folds = os.listdir(paths[0])
     n_folds = sum([d.isdigit() for d in n_folds])
     sys.path.append(paths[0])
@@ -193,6 +200,7 @@ if __name__ == "__main__":
     else:
         raise NotImplementedError(config.dataset)
 
+    CLUSTER_NAMES = None
     if config.dataset == "dataset1":
         if config.encoding_dim == 3:
             CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_3
@@ -264,26 +272,19 @@ if __name__ == "__main__":
             )
 
         LOGGER.info("Prediction metric")
-        # Compute pred metric
-        total_rmse = []
-        total_r2 = []
-        for cv in returns.keys():
-            total_rmse.append(
-                float(
-                    np.sqrt(
-                        np.mean(
-                            np.mean((returns[cv] - pred[cv]).values ** 2, axis=-1)
+        EVALUATION["model"]["total_r2"] = {
+            a: [
+                np.mean(
+                    [
+                        total_r2(
+                            cv_results[i][cv]["returns"][[a]].values,
+                            cv_results[i][cv]["test_pred"][[a]].values
                         )
-                    )
-                )
-            )
-            total_r2.append(
-                metrics.r2_score(
-                    returns[cv], pred[cv], multioutput="uniform_average"
-                )
-            )
-        EVALUATION["model"]["cv_total_rmse"] = total_rmse
-        EVALUATION["model"]["cv_total_r2"] = total_r2
+                        for i in cv_results
+                    ]
+                ) for cv in cv_results[0]
+            ] for a in ASSETS
+        }
 
         # Now make one df
         returns = pd.concat(returns.values())
@@ -310,13 +311,6 @@ if __name__ == "__main__":
         EVALUATION["model"]["total_rmse"] = float(
             np.sqrt(np.mean(np.mean((returns - pred).values ** 2, axis=-1)))
         )
-        EVALUATION["model"]["r2"] = {
-            a: metrics.r2_score(returns[a], pred[a]) for a in returns.columns
-        }
-        EVALUATION["model"]["total_r2"] = metrics.r2_score(
-            returns, pred, multioutput="uniform_average"
-        )
-
         LOGGER.info("Done.")
 
         if False:
@@ -490,8 +484,8 @@ if __name__ == "__main__":
 
             LOGGER.info("Consensus matrix...")
             # Consensus matrix
-            assets = cv_labels[cv][0]["label"].index
-            avg_cons_mat = pd.DataFrame(0, columns=assets, index=assets)
+            ASSETS = cv_labels[cv][0]["label"].index
+            avg_cons_mat = pd.DataFrame(0, columns=ASSETS, index=ASSETS)
             cluster_assignment = {}
             if args.save:
                 if not os.path.isdir(f"{save_dir}/cv_cons_mat/"):
