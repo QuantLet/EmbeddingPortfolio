@@ -12,9 +12,10 @@ from dl_portfolio.cluster import compute_serial_matrix
 from dl_portfolio.data import get_features
 from dl_portfolio.pca_ae import build_model
 from dl_portfolio.constant import (
-    BASE_FACTOR_ORDER_DATASET1_3,
     BASE_FACTOR_ORDER_DATASET1_4,
     BASE_FACTOR_ORDER_DATASET2_5,
+    DATASET1_REF_CLUSTER,
+    DATASET2_REF_CLUSTER,
 )
 from sklearn import metrics
 
@@ -249,25 +250,23 @@ def get_linear_encoder(
     lin_activation = pd.DataFrame(lin_activation, index=index)
 
     if reorder_features:
-        embedding = pd.read_pickle(f"{base_dir}/{cv}/encoder_weights.p")
+        decoding = pd.read_pickle(f"{base_dir}/{cv}/decoder_weights.p")
         if config.dataset == "dataset1":
-            if config.encoding_dim == 3:
-                base_order = BASE_FACTOR_ORDER_DATASET1_3
-            elif config.encoding_dim == 4:
+            if config.encoding_dim == 4:
                 base_order = BASE_FACTOR_ORDER_DATASET1_4
+                ref_cluster = DATASET1_REF_CLUSTER
             else:
                 raise NotImplementedError()
-
         elif config.dataset == "dataset2":
             if config.encoding_dim == 5:
                 base_order = BASE_FACTOR_ORDER_DATASET2_5
+                ref_cluster = DATASET2_REF_CLUSTER
             else:
                 raise NotImplementedError()
         else:
             raise NotImplementedError()
 
-        assert len(embedding.columns) == len(base_order)
-        new_order = [embedding.loc[c].idxmax() for c in base_order]
+        new_order = get_features_order(decoding, ref_cluster)
         test_features = reorder_columns(test_features, new_order)
         test_features.columns = base_order
         lin_activation = reorder_columns(lin_activation, new_order)
@@ -287,7 +286,7 @@ def get_features_order(loadings: pd.DataFrame, ref_cluster: pd.DataFrame):
     dist = metrics.pairwise_distances(pd.concat([loadings.T, ref_cluster.T]))
     # Keep only the distances between loadings and ref_cluster
     dist = dist[:encoding_dim, encoding_dim:]
-    return np.argmin(dist, axis=0)
+    return np.argmin(dist, axis=1).tolist()
 
 
 def get_average_factor_loadings_over_runs(weights: pd.DataFrame,
@@ -498,21 +497,21 @@ def load_result(
 
     if reorder_features:
         if config.dataset == "dataset1":
-            if config.encoding_dim == 3:
-                base_order = BASE_FACTOR_ORDER_DATASET1_3
-            elif config.encoding_dim == 4:
+            if config.encoding_dim == 4:
                 base_order = BASE_FACTOR_ORDER_DATASET1_4
+                ref_cluster = DATASET1_REF_CLUSTER
             else:
                 raise NotImplementedError()
         elif config.dataset == "dataset2":
             if config.encoding_dim == 5:
                 base_order = BASE_FACTOR_ORDER_DATASET2_5
+                ref_cluster = DATASET2_REF_CLUSTER
             else:
                 raise NotImplementedError()
         else:
             raise NotImplementedError()
 
-        new_order = [embedding.loc[c].idxmax() for c in base_order]
+        new_order = get_features_order(decoding, ref_cluster)
         test_features = reorder_columns(test_features, new_order)
         test_features.columns = base_order
         embedding = reorder_columns(embedding, new_order)

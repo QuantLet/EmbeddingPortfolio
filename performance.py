@@ -39,7 +39,6 @@ from dl_portfolio.evaluate import (
 )
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import (
-    BASE_FACTOR_ORDER_DATASET1_3,
     BASE_FACTOR_ORDER_DATASET1_4,
     BASE_FACTOR_ORDER_DATASET2_5,
 )
@@ -204,9 +203,7 @@ if __name__ == "__main__":
 
     CLUSTER_NAMES = None
     if config.dataset == "dataset1":
-        if config.encoding_dim == 3:
-            CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_3
-        elif config.encoding_dim == 4:
+        if config.encoding_dim == 4:
             CLUSTER_NAMES = BASE_FACTOR_ORDER_DATASET1_4
         else:
             CLUSTER_NAMES = None
@@ -248,13 +245,11 @@ if __name__ == "__main__":
             args.test_set,
             n_folds,
             dataset=config.dataset,
-            # portfolios=portfolios,
-            # market_budget=market_budget,
             window=args.window,
             n_jobs=args.n_jobs,
             ae_config=config,
             excess_ret=config.excess_ret,
-            verbose=False,
+            reorder_features=CLUSTER_NAMES is not None,
         )
 
     LOGGER.info("Done.")

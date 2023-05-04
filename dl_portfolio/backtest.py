@@ -1180,7 +1180,7 @@ def get_cv_results(
     compute_weights=False,
     window: Optional[int] = None,
     n_jobs: int = 1,
-    dataset="global",
+    dataset="dataset2",
     reorder_features=False,
     **kwargs,
 ):

@@ -206,6 +206,8 @@ def assign_cluster_from_consmat(
 
 
 def get_cluster_labels(loading: pd.DataFrame, threshold: float = 1e-2):
+    loading = loading.copy()
+    loading.columns = list(range(len(loading.columns)))
     encoding_dim = loading.shape[-1]
     if threshold is None:
         kmeans = KMeans(n_clusters=encoding_dim, random_state=0).fit(
