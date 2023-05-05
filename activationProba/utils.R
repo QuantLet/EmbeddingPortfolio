@@ -39,7 +39,7 @@ fit_evt = function(data, formula=NULL, garch.model=NULL, q_fit=NULL, threshold=N
       }, error = function(e)
       {
         message(e)
-        return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
+        return (list(EVTmodel=NULL, GARCHmodel=NULL))
       },
       silent = FALSE
     )
