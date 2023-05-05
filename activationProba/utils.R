@@ -25,44 +25,41 @@ get_proba_evt_model = function(p, EVTmodel) {
 
 fit_evt = function(data, formula=NULL, garch.model=NULL, q_fit=NULL, threshold=NULL, arima=TRUE) {
   data = preprocess_data(data, arima=arima)
-  if (is.null(garch.model)){
-    stopifnot(!is.null(formula))
-    # Fit GARCH
-    tryCatch(
-      {
+  tryCatch(
+    {
+      if (is.null(garch.model)){
+        stopifnot(!is.null(formula))
+        # Fit GARCH
         garch.model = fGarch::garchFit(
           formula = formula,
           data = data,
           cond.dist = "QMLE",
           trace = FALSE
         )
-      }, error = function(e)
-      {
-        message(e)
-        return (list(EVTmodel=NULL, GARCHmodel=NULL))
-      },
-      silent = FALSE
-    )
-  }
-  
-  
-  # Get standardized residuals
-  model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
-
-  # Fit GPD to residuals
-  if (is.null(threshold)){
-    stopifnot(!is.null(q_fit))
-    threshold = quantile(model.residuals, (1 - q_fit))
-  } else {
-    stopifnot(is.null(q_fit))
-  }
-  # Fit GPD to residuals
-  EVTmodel.fit = gpd.fit(
-    xdat = model.residuals,
-    threshold = threshold,
-    show = FALSE
+      }
+      # Get standardized residuals
+      model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
+      # Fit GPD to residuals
+      if (is.null(threshold)){
+        stopifnot(!is.null(q_fit))
+        threshold = quantile(model.residuals, (1 - q_fit))
+      } else {
+        stopifnot(is.null(q_fit))
+      }
+      # Fit GPD to residuals
+      EVTmodel.fit = gpd.fit(
+        xdat = model.residuals,
+        threshold = threshold,
+        show = FALSE
+      )
+      return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
+    }, error = function(e)
+    {
+      message(e)
+      return (list(EVTmodel=NULL, GARCHmodel=NULL))
+    },
+    silent = FALSE
   )
-  return (list(EVTmodel=EVTmodel.fit, GARCHmodel=garch.model))
 }
 
 get_proba_evt = function(garch.model, q_fit=NULL, threshold=NULL) {

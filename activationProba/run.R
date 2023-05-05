@@ -90,7 +90,11 @@ run = function(config, save_dir=NULL, debug=FALSE){
               saveRDS(EVTmodel, file = model_path)
             }
           }
-          train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel))
+          if (is.null(garch.model) | is.null(evt_res$EVTmodel)) {
+            train_probas = rep(NaN, length(index(train_data)))
+          } else {
+            train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel)) 
+          }
         } else {
           EVTmodel = NULL
           dist_func = get_dist_functon(garch.model@fit$params$cond.dist)
@@ -101,9 +105,13 @@ run = function(config, save_dir=NULL, debug=FALSE){
           train_probas = c(rep(NaN, nans), train_probas)
         }
         # Now predict probas on test set
-        probas = predict_proba(train_data, test_data, config$window_size, garch.model,
-                               fit_model, next_proba, parallel = !debug, arima=config$arima, EVTmodel=EVTmodel)
-        probas = probas$proba
+        if (is.null(garch.model)) {
+          probas = rep(NaN, length(index(test_data)))
+        } else {
+          probas = predict_proba(train_data, test_data, config$window_size, garch.model,
+                                 fit_model, next_proba, parallel = !debug, arima=config$arima, EVTmodel=EVTmodel)
+          probas = probas$proba
+        }
       } else {
         train_probas = rep(NaN, length(index(train_data)))
         probas = rep(NaN, length(index(test_data)))
