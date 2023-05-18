@@ -63,12 +63,11 @@ def torsion(Sigma, model, method='exact', max_niter=10000):
     return t
 
 
-def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
-                         level: str):
+def get_min_torsion_bets(cv_results, cv_port_weights,
+                         market_budget: pd.DataFrame, level: str):
     assets = market_budget.index.tolist()
     d = len(assets)
-    portfolios = list(cv_results[0][0]["port"].keys()) + ["equal",
-                                                          "equal_class"]
+    portfolios = list(cv_port_weights[0].keys()) + ["equal", "equal_class"]
     n_bets = {p: pd.DataFrame() for p in portfolios}
     rcs = {p: [] for p in portfolios}
 
@@ -121,7 +120,7 @@ def get_min_torsion_bets(cv_results, market_budget: pd.DataFrame,
                     a = equal_class_weights(market_budget).loc[
                         assets].values
                 else:
-                    a = cv_results[i][cv]["port"][p].values
+                    a = cv_port_weights[cv][p].values
 
                 if level == "factor":
                     # Get factor weights
