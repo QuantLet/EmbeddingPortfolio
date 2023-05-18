@@ -681,6 +681,9 @@ def run_nmf(
 
         if config.save:
             LOGGER.debug(f"Saving result at cv {cv} at {save_path} ...")
+            decoder_weights = pd.DataFrame(nmf.decoding, index=assets)
+            decoder_weights.to_pickle(f"{save_path}/decoder_weights.p")
+
             nmf.save(f"{save_path}/model.p")
             if scaler:
                 config.scaler_func["attributes"] = scaler.__dict__
