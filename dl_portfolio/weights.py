@@ -64,6 +64,18 @@ def portfolio_weights(
         LOGGER.info('Computing HCAA weights...')
         port_w['hcaa'] = herc_weights(returns,  risk_measure="equal")
 
+    if 'herc_vol' in portfolio:
+        LOGGER.info('Computing HERC VOL weights...')
+        port_w['herc_vol'] = herc_weights(returns,  risk_measure="vol")
+
+    if 'herc_es' in portfolio:
+        LOGGER.info('Computing HERC ES weights...')
+        port_w['herc_es'] = herc_weights(returns, risk_measure="CVaR")
+
+    if 'herc_var' in portfolio:
+        LOGGER.info('Computing HERC VaR weights...')
+        port_w['herc_var'] = herc_weights(returns, risk_measure="VaR")
+
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
         port_w['rb_factor'] = get_rb_factor_weights(returns, loading)

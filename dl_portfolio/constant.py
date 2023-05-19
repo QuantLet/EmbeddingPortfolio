@@ -27,8 +27,11 @@ PORTFOLIOS = [
     "aerp",
     "hrp",
     "hcaa",
+    "herc_vol",
+    "herc_var",
+    "herc_es",
     "rb_factor",
-    "rb_factor_full_erc"
+    "rb_factor_full_erc",
 ]
 
 BASE_FACTOR_ORDER_DATASET1_4 = ["Crypto", "Bonds", "Stocks", "Forex"]
@@ -128,6 +131,7 @@ AVAILABLE_METHODS = [
     "calibrated_exceedance",
     "hedged_strat_cum_excess_return_cluster",
     "hedged_equal_cum_excess_return_cluster",
+    "roc_curve",
 ]
 METHODS_MAPPING = {k: i for i, k in enumerate(AVAILABLE_METHODS)}
 

@@ -48,6 +48,9 @@ PORTFOLIOS = [
     "equal_class",
     "hrp",
     "hcaa",
+    "herc_vol",
+    "herc_var",
+    "herc_es",
     "aerp",
     "erc",
     "rb_factor"
@@ -56,14 +59,6 @@ PORTFOLIOS = [
 np.random.seed(0) # there is some variance with HCAA...
 
 if __name__ == "__main__":
-    if "hcaa" in PORTFOLIOS:
-        try:
-            from portfoliolab.clustering.herc import \
-                HierarchicalEqualRiskContribution
-        except ModuleNotFoundError as _exc:
-            LOGGER.exception("You must install portfoliolab or remove 'hcaa' "
-                             "from the portfolios list or implement "
-                             "'HierarchicalEqualRiskContribution' yourself!")
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--base_dir", type=str, help="Experiments dir")
