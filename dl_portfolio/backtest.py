@@ -1019,7 +1019,6 @@ def one_cv(
             assert portfolios is not None
             res["port"] = portfolio_weights(
                 train_returns,
-                budget=market_budget.loc[assets],
                 loading=decoding,
                 portfolio=portfolios,
                 **kwargs,
@@ -1081,7 +1080,6 @@ def get_cv_portfolio_weights(
             dirs: List,
             cv: int,
             portfolios: List,
-            market_budget: pd.DataFrame,
             window: Optional[int] = 250,
             **kwargs,
     ):
@@ -1119,7 +1117,6 @@ def get_cv_portfolio_weights(
                 train_returns = train_returns.iloc[-window:]
             port = portfolio_weights(
                 train_returns,
-                budget=market_budget.loc[assets],
                 loading=loading,
                 portfolio=portfolios,
                 **kwargs,
@@ -1141,7 +1138,6 @@ def get_cv_portfolio_weights(
                     dirs,
                     cv,
                     portfolios,
-                    market_budget,
                     window=window,
                     **kwargs,
                 )

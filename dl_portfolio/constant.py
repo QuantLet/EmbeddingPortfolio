@@ -24,15 +24,20 @@ PORTFOLIOS = [
     "equal",
     "equal_class",
     "erc",
+    "erc_cdar",
+    "erc_es",
     "aerp",
     "hrp",
     "hcaa",
     "herc_vol",
-    "herc_var",
+    "herc_cdar",
     "herc_es",
     "rb_factor",
-    "rb_factor_full_erc",
+    "rb_factor_full_vol",
+    "rb_factor_cdar",
+    "rb_factor_es",
 ]
+
 
 BASE_FACTOR_ORDER_DATASET1_4 = ["Crypto", "Bonds", "Stocks", "Forex"]
 BASE_FACTOR_ORDER_DATASET2_5 = ["USB", "FRB", "CD", "StocksUS", "Stocks"]

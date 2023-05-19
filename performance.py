@@ -49,11 +49,16 @@ PORTFOLIOS = [
     "hrp",
     "hcaa",
     "herc_vol",
-    "herc_var",
+    "herc_cdar",
     "herc_es",
     "aerp",
     "erc",
-    "rb_factor"
+    "erc_cdar",
+    "erc_es",
+    "rb_factor",
+    "rb_factor_full_vol",
+    "rb_factor_cdar",
+    "rb_factor_es",
 ]
 
 np.random.seed(0) # there is some variance with HCAA...

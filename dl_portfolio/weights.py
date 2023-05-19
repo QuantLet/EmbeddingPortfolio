@@ -1,11 +1,12 @@
 import pandas as pd
 import numpy as np
 
+import riskfolio as rf
 import riskparityportfolio as rp
 
 import cvxpy as cp
 
-from typing import Union
+from typing import Union, Optional
 from sklearn.cluster import KMeans
 from sklearn.covariance import shrunk_covariance
 
@@ -26,7 +27,6 @@ from scipy.optimize import minimize
 
 def portfolio_weights(
     returns,
-    budget=None,
     loading=None,
     portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "erc"],
 ):
@@ -48,8 +48,15 @@ def portfolio_weights(
 
     if "erc" in portfolio:
         LOGGER.info("Computing ERC weights...")
-        assert budget is not None
-        port_w["erc"] = riskparity_weights(S, budget=budget["rc"].values)
+        port_w["erc"] = riskparity_weights(returns)
+
+    if "erc_es" in portfolio:
+        LOGGER.info("Computing ERC ES weights...")
+        port_w["erc_es"] = riskparity_weights(returns, risk_measure="CVaR")
+
+    if "erc_cdar" in portfolio:
+        LOGGER.info("Computing ERC CDaR weights...")
+        port_w["erc_cdar"] = riskparity_weights(returns, risk_measure="CDaR")
 
     if "aerp" in portfolio:
         LOGGER.info("Computing AE Risk Parity weights...")
@@ -72,13 +79,27 @@ def portfolio_weights(
         LOGGER.info('Computing HERC ES weights...')
         port_w['herc_es'] = herc_weights(returns, risk_measure="CVaR")
 
-    if 'herc_var' in portfolio:
-        LOGGER.info('Computing HERC VaR weights...')
-        port_w['herc_var'] = herc_weights(returns, risk_measure="VaR")
+    if 'herc_cdar' in portfolio:
+        LOGGER.info('Computing HERC CDaR weights...')
+        port_w['herc_cdar'] = herc_weights(returns, risk_measure="CDaR")
 
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
         port_w['rb_factor'] = get_rb_factor_weights(returns, loading)
+
+    if "rb_factor_full_vol" in portfolio:
+        LOGGER.info('Computing RB factor full Vol weights...')
+        port_w['rb_factor_full_vol'] = get_rb_factor_full(
+            returns, loading, risk_measure="MV")
+
+    if "rb_factor_cdar" in portfolio:
+        LOGGER.info('Computing RB factor CDaR weights...')
+        port_w['rb_factor_cdar'] = get_rb_factor_full(
+            returns, loading, risk_measure="CDaR")
+    if "rb_factor_es" in portfolio:
+        LOGGER.info('Computing RB factor ES weights...')
+        port_w['rb_factor_es'] = get_rb_factor_full(
+            returns, loading, risk_measure="CVaR")
 
     return port_w
 
@@ -443,11 +464,26 @@ def ivolp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
     return weights
 
 
-def riskparity_weights(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
+def riskparity_weights_old(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
     weights = rp.RiskParityPortfolio(covariance=S, budget=budget).weights
     weights = pd.Series(weights, index=S.index)
 
     return weights
+
+
+def riskparity_weights(returns: pd.DataFrame(),
+                       risk_measure: str = "MV",
+                       budget: Optional[np.ndarray] = None,
+                       **kwargs) -> pd.Series:
+    if budget is not None and len(budget.shape) == 1:
+        budget = budget.reshape(-1, 1)
+
+    port = rf.Portfolio(returns=returns)
+    port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
+    weights = port.rp_optimization(model="Classic", rm=risk_measure,
+                                   b=budget, **kwargs)
+
+    return weights["weights"]
 
 
 def rb_perfect_corr(
@@ -523,6 +559,61 @@ def compute_parity_cvar_weights(returns):
     weights = 1 / np.array([expected_shortfall(returns[c]) for c in
                             returns.columns])
     weights = weights / np.sum(weights)
+    return weights
+
+
+def get_rb_factor_full(returns, loading, threshold=1e-2, risk_measure="MV",
+                       simple=False):
+    """
+    Compute inner weights with rb_perfect_corr and apply inverse volatility
+    at the factor level
+    :param returns:
+    :param loading:
+    :param threshold:
+    :return:
+    """
+    assets = returns.columns.tolist()
+    n_components = loading.shape[-1]
+    # reset columns
+    loading.columns = range(n_components)
+    cluster_ind = loading[
+        loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
+
+    assert len(cluster_ind.unique()) == n_components, (cluster_ind.unique(),
+                                                       n_components)
+
+    inner_weights = pd.DataFrame(0, columns=loading.columns, index=assets)
+
+    for i in range(n_components):
+        c_assets = cluster_ind[cluster_ind == i].index
+
+        port = rf.Portfolio(returns=returns[c_assets])
+        port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
+
+        budget = loading.loc[c_assets, i].copy()
+        if simple:
+            budget.values[:] = 1
+        budget = budget / np.linalg.norm(budget)
+        budget = budget ** 2  # Must sum to 1, also is interpretable as
+        w = port.rp_optimization(model="Classic", rm=risk_measure,
+                                 b=budget.values.reshape(-1, 1))
+        inner_weights.loc[c_assets, i] = w["weights"]
+
+    # intra weights
+    factor_returns = np.array(
+        [np.dot(returns, inner_weights.values[:, i]) for i in range(
+            n_components)])
+    if factor_returns.shape[0] > 1:
+        factor_returns = pd.DataFrame(factor_returns).T
+        port = rf.Portfolio(returns=factor_returns)
+        port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
+        cluster_weights = port.rp_optimization(model="Classic", rm=risk_measure)
+        cluster_weights = cluster_weights["weights"]
+    else:
+        cluster_weights = np.array([1.])
+
+    weights = (inner_weights * cluster_weights).sum(axis=1)
+
     return weights
 
 
