@@ -2,16 +2,11 @@ import pandas as pd
 import numpy as np
 
 import riskfolio as rf
-import riskparityportfolio as rp
-
-import cvxpy as cp
 
 from typing import Union, Optional
 from sklearn.cluster import KMeans
 from sklearn.covariance import shrunk_covariance
 
-from pypfopt.efficient_frontier import EfficientFrontier
-from pypfopt import risk_models
 
 from dl_portfolio.alm import fmin_ALM, _epsilon, test_principal_port
 from dl_portfolio.logger import LOGGER
@@ -37,10 +32,6 @@ def portfolio_weights(
 
     mu = returns.mean()
     S = returns.cov()
-
-    if "markowitz" in portfolio:
-        LOGGER.info("Computing Markowitz weights...")
-        port_w["markowitz"] = markowitz_weights(mu, S)
 
     if "ivp" in portfolio:
         LOGGER.info("Computing IVP weights...")
@@ -354,90 +345,6 @@ def get_cluster_var(cov, cluster_items, weights=None):
     return np.linalg.multi_dot((weights, cov_slice, weights))
 
 
-def get_inner_cluster_weights(cov, loading, clusters, market_budget=None):
-    weights = {}
-    n_clusters = len(clusters)
-    for c in clusters:
-        cluster_items = clusters[c]
-        if cluster_items:
-            if len(cluster_items) == 1:
-                weights[c] = pd.Series([1.0], index=cluster_items)
-            else:
-                if market_budget is not None:
-                    budget = market_budget.loc[cluster_items, "rc"]
-                else:
-                    budget = loading.loc[cluster_items, c] ** 2 / np.sum(
-                        loading.loc[cluster_items, c] ** 2
-                    )
-                cov_slice = cov.loc[cluster_items, cluster_items]
-                weights[c] = pd.Series(
-                    rp.RiskParityPortfolio(
-                        covariance=cov_slice, budget=budget.values
-                    ).weights,
-                    index=cluster_items,
-                )
-    reorder_weights = {}
-    i = 0
-    for c in weights:
-        reorder_weights[i] = weights[c]
-        i += 1
-    weights = {i: weights[c] for i, c in enumerate(list(weights.keys()))}
-    return weights
-
-
-def markowitz_weights(
-    mu: Union[pd.Series, np.ndarray],
-    S: pd.DataFrame,
-    fix_cov: bool = False,
-    risk_free_rate: float = 0.0,
-) -> pd.Series:
-    if fix_cov:
-        S = risk_models.fix_nonpositive_semidefinite(S, fix_method="spectral")
-    weights = None
-    try:
-        LOGGER.info(f"Trying Markowitz with default 'ECOS' solver")
-        ef = EfficientFrontier(mu, S, verbose=False)
-        # ef.add_objective(objective_functions.L2_reg, gamma=0)
-        weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
-        weights = pd.Series(weights, index=weights.keys())
-        LOGGER.info("Success")
-    except Exception as _exc:
-        LOGGER.info(f"Error with max sharpe: {_exc}")
-        try:
-            LOGGER.info(f"Trying Markowitz with 'SCS' solver")
-            ef = EfficientFrontier(mu, S, verbose=True, solver="SCS")
-            # ef.add_objective(objective_functions.L2_reg, gamma=0)
-            weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
-            weights = pd.Series(weights, index=weights.keys())
-            LOGGER.info("Success")
-        except Exception as _exc:
-            LOGGER.info(f"Error with max sharpe: {_exc}")
-            try:
-                LOGGER.info(f"Trying Markowitz with 'OSQP' solver")
-                ef = EfficientFrontier(mu, S, verbose=True, solver="OSQP")
-                # ef.add_objective(objective_functions.L2_reg, gamma=0)
-                weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
-                weights = pd.Series(weights, index=weights.keys())
-                LOGGER.info("Success")
-            except Exception as _exc:
-                LOGGER.info(f"Error with max sharpe: {_exc}")
-                try:
-                    LOGGER.info(f"Trying Markowitz with 'CVXOPT' solver")
-
-                    # ef = EfficientFrontier(mu, S, verbose=True, solver=cp.CVXOPT, solver_options={'feastol': 1e-4})
-                    ef = EfficientFrontier(mu, S, verbose=True, solver=cp.SCS)
-                    weights = ef.max_sharpe(risk_free_rate=risk_free_rate)
-                    weights = pd.Series(weights, index=weights.keys())
-                    LOGGER.info("Success")
-                except Exception as _exc:
-                    LOGGER.info(f"Error with max sharpe: {_exc}")
-
-    if weights is None:
-        raise _exc
-
-    return weights
-
-
 def ivp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
     # Compute the inverse-variance portfolio
     ivp = 1.0 / np.diag(S.values)
@@ -460,13 +367,6 @@ def ivolp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
         weights = pd.Series(weights, index=S.index)
     else:
         weights = pd.Series(weights)
-
-    return weights
-
-
-def riskparity_weights_old(S: pd.DataFrame(), budget: np.ndarray) -> pd.Series:
-    weights = rp.RiskParityPortfolio(covariance=S, budget=budget).weights
-    weights = pd.Series(weights, index=S.index)
 
     return weights
 
@@ -509,43 +409,6 @@ def rb_perfect_corr(
 
     weights = budget / sigmas
     weights /= np.sum(weights)
-
-    return weights
-
-
-def get_full_rb_factor_weights(returns, loading, threshold=1e-2):
-    """
-    Compute inner weights with rb_perfect_corr and apply inverse volatility
-    at the factor level
-    :param returns:
-    :param loading:
-    :param threshold:
-    :return:
-    """
-    assets = returns.columns.tolist()
-    n_components = loading.shape[-1]
-    cluster_ind = loading[
-        loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
-    assert len(cluster_ind.unique()) == n_components
-    budget = loading ** 2
-
-    inner_weights = pd.DataFrame(0, columns=loading.columns, index=assets)
-    for i in range(n_components):
-        inner_weights.loc[:, i] = rb_perfect_corr(
-            np.std(returns, axis=0), budget.iloc[:, i], corr=1)
-
-    factor_returns = np.array(
-        [np.dot(returns, inner_weights.values[:, i]) for i in range(
-            n_components)])
-    if factor_returns.shape[0] > 1:
-        cluster_weights = rp.RiskParityPortfolio(
-            covariance=np.cov(factor_returns),
-            budget=np.ones(n_components)/n_components
-        ).weights
-    else:
-        cluster_weights = np.array([1.])
-    weights = inner_weights * cluster_weights
-    weights = weights.sum(axis=1)
 
     return weights
 
@@ -617,8 +480,7 @@ def get_rb_factor_full(returns, loading, threshold=1e-2, risk_measure="MV",
     return weights
 
 
-def get_rb_factor_weights(returns, loading, threshold=1e-2,
-                          erc_factor=False, simple=False):
+def get_rb_factor_weights(returns, loading, threshold=1e-2, simple=False):
     """
     Compute inner weights with rb_perfect_corr and apply inverse volatility
     at the factor level
@@ -644,7 +506,7 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2,
         if simple:
             budget.values[:] = 1
         budget = budget / np.linalg.norm(budget)
-        budget = budget**2 # Must sum to 1, also is interpretable as
+        budget = budget**2  # Must sum to 1, also is interpretable as
         # explained variance
         inner_weights.loc[c_assets, i] = rb_perfect_corr(
             np.std(returns[c_assets], axis=0), budget, corr=1)
@@ -652,96 +514,16 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2,
     factor_returns = np.array(
         [np.dot(returns, inner_weights.values[:, i]) for i in range(
             n_components)])
-    if erc_factor:
-        cluster_weights = rp.RiskParityPortfolio(
-            covariance=np.cov(factor_returns),
-            budget=np.ones(n_components)/n_components
-        ).weights
+
+    assert len(factor_returns.shape) == 2
+    if factor_returns.shape[0] > 1:
+        cluster_sigmas = np.sqrt(np.diag(np.cov(factor_returns)))
+        cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
     else:
-        assert len(factor_returns.shape) == 2
-        if factor_returns.shape[0] > 1:
-            cluster_sigmas = np.sqrt(np.diag(np.cov(factor_returns)))
-            cluster_weights = 1 / cluster_sigmas / np.sum(1 / cluster_sigmas)
-        else:
-            cluster_weights = np.array([1.])
+        cluster_weights = np.array([1.])
 
     weights = inner_weights * cluster_weights
     weights = weights.sum(axis=1)
-
-    return weights
-
-
-def ae_riskparity_weights(
-    returns,
-    embedding,
-    loading,
-    market_budget,
-    risk_parity="budget",
-    threshold=0.1,
-):
-    """
-
-    :param returns:
-    :param embedding: To get cluster assignment
-    :param loading: To get inner cluster weights
-    :param market_budget:
-    :param risk_parity: if 'budget' then use budget for risk allocation, if 'cluster' use relative asset cluster
-    importance from the embedding matrix
-    :return:
-    """
-    assert risk_parity in ["budget", "cluster"]
-    # Rename columns in case of previous renaming
-    loading.columns = list(range(len(loading.columns)))
-    embedding.columns = list(range(len(embedding.columns)))
-    max_cluster = embedding.shape[-1] - 1
-    # First get cluster allocation to forget about small contribution
-    clusters, _ = get_cluster_labels(embedding, threshold=threshold)
-    clusters = {c: clusters[c] for c in clusters if c <= max_cluster}
-
-    # Now get weights of assets inside each cluster
-    if risk_parity == "budget":
-        inner_cluster_weights = get_inner_cluster_weights(
-            returns.cov(), loading, clusters, market_budget=market_budget
-        )
-    elif risk_parity == "cluster":
-        inner_cluster_weights = get_inner_cluster_weights(
-            returns.cov(), loading, clusters
-        )
-    else:
-        raise NotImplementedError(risk_parity)
-
-    # Now compute return of each cluster
-    cluster_returns = pd.DataFrame()
-    for c in inner_cluster_weights:
-        cret = (
-            returns[inner_cluster_weights[c].index] * inner_cluster_weights[c]
-        ).sum(1)
-        cluster_returns = pd.concat([cluster_returns, cret], 1)
-    cluster_returns.columns = list(inner_cluster_weights.keys())
-
-    # Now get risk contribution of each cluster defined by user
-    cluster_rc = {
-        c: (inner_cluster_weights[c]).idxmax() for c in inner_cluster_weights
-    }
-    cluster_rc = {
-        c: market_budget.loc[cluster_rc[c], "rc"] for c in cluster_rc
-    }
-
-    # Compute cluster weights with risk parity portfolio
-    cov = cluster_returns.cov()
-    budget = np.array(list(cluster_rc.values()))
-    budget = budget / np.sum(budget)
-    cluster_weight = rp.RiskParityPortfolio(
-        covariance=cov, budget=budget
-    ).weights
-    # Compute asset weight inside global portfolio
-    weights = pd.Series(dtype="float32")
-    for c in inner_cluster_weights:
-        weights = pd.concat(
-            [weights, inner_cluster_weights[c] * cluster_weight[c]]
-        )
-    weights = weights.reindex(returns.columns)  # reorder
-    weights.fillna(0.0, inplace=True)
 
     return weights
 

@@ -18,8 +18,6 @@ setup(
         "jax[cpu]",
         "matplotlib>=3.2.2",
         "seaborn==0.11.1",
-        "pyportfolioopt==1.4.1",
-        "riskparityportfolio==0.2",
         "joblib>=1.0.0",
         "scikit-learn>=0.24.0",
         "fastcluster==1.2.6",
