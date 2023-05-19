@@ -635,6 +635,10 @@ if __name__ == "__main__":
             market_budget.drop("CRIX") if config.dataset == "dataset1"  else
             market_budget
         )
+        if args.save:
+            pd.to_pickle(cv_loading, f"{save_dir}/cv_loading.p")
+            pd.to_pickle(cv_port_weights, f"{save_dir}/cv_port_weights.p")
+
         number_bets = get_number_of_nmf_bets(risk_contribution)
         if args.save:
             number_bets.to_csv(f"{save_dir}/number_bets.csv")

@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 
 import riskparityportfolio as rp
+import riskfolio as rf
+
 import cvxpy as cp
 
 from typing import Union
@@ -67,6 +69,10 @@ def portfolio_weights(
                                       optimal_num_clusters=kwargs.get(
                                           'optimal_num_clusters'),
                                       risk_measure='equal_weighting')
+
+    if 'hcaa_new' in portfolio:
+        LOGGER.info('Computing HCAA weights...')
+        port_w['hcaa_new'] = herc_weights_new(returns,  risk_measure="equal")
 
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
@@ -506,6 +512,18 @@ def get_full_rb_factor_weights(returns, loading, threshold=1e-2):
     return weights
 
 
+def expected_shortfall(returns, level: float = 0.05):
+    VaR = np.quantile(returns, level)
+    return np.mean(returns[returns <= VaR])
+
+
+def compute_parity_cvar_weights(returns):
+    weights = 1 / np.array([expected_shortfall(returns[c]) for c in
+                            returns.columns])
+    weights = weights / np.sum(weights)
+    return weights
+
+
 def get_rb_factor_weights(returns, loading, threshold=1e-2,
                           erc_factor=False, simple=False):
     """
@@ -522,11 +540,6 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2,
     loading.columns = range(n_components)
     cluster_ind = loading[
         loading ** 2 >= threshold].idxmax(axis=1).dropna().astype(int)
-
-    if len(cluster_ind.unique()) != n_components:
-        print(cluster_ind.unique())
-        print(loading)
-        print("here")
 
     assert len(cluster_ind.unique()) == n_components, (cluster_ind.unique(),
                                                        n_components)
@@ -551,7 +564,6 @@ def get_rb_factor_weights(returns, loading, threshold=1e-2,
             covariance=np.cov(factor_returns),
             budget=np.ones(n_components)/n_components
         ).weights
-
     else:
         assert len(factor_returns.shape) == 2
         if factor_returns.shape[0] > 1:
@@ -795,5 +807,15 @@ def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: s
     weights = hercEW_single.weights.T
     weights = weights[0]
     weights = weights[returns.columns]
+
+    return weights
+
+
+def herc_weights_new(returns: pd.DataFrame, linkage: str = 'single',
+                     risk_measure: str = "equal", **kwargs):
+    port = rf.HCPortfolio(returns=returns)
+    weights = port.optimization(model="HERC", rm=risk_measure,
+                                linkage=linkage, **kwargs)
+    weights = weights.loc[returns.columns, "weights"]
 
     return weights
