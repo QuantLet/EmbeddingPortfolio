@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 
 import riskparityportfolio as rp
-import riskfolio as rf
 
 import cvxpy as cp
 
@@ -17,13 +16,12 @@ from dl_portfolio.alm import fmin_ALM, _epsilon, test_principal_port
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.cluster import get_cluster_labels
 from dl_portfolio.constant import PORTFOLIOS
+from dl_portfolio.herc import HCPortfolio
 from prado.hrp import correlDist, getQuasiDiag, getRecBipart
 
 import scipy
 import scipy.cluster.hierarchy as sch
 from scipy.optimize import minimize
-
-from portfoliolab.clustering.herc import HierarchicalEqualRiskContribution
 
 
 def portfolio_weights(
@@ -31,7 +29,6 @@ def portfolio_weights(
     budget=None,
     loading=None,
     portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "erc"],
-    **kwargs,
 ):
     assert all([p in PORTFOLIOS for p in portfolio]), [
         p for p in portfolio if p not in PORTFOLIOS
@@ -65,14 +62,7 @@ def portfolio_weights(
 
     if 'hcaa' in portfolio:
         LOGGER.info('Computing HCAA weights...')
-        port_w['hcaa'] = herc_weights(returns,
-                                      optimal_num_clusters=kwargs.get(
-                                          'optimal_num_clusters'),
-                                      risk_measure='equal_weighting')
-
-    if 'hcaa_new' in portfolio:
-        LOGGER.info('Computing HCAA weights...')
-        port_w['hcaa_new'] = herc_weights_new(returns,  risk_measure="equal")
+        port_w['hcaa'] = herc_weights(returns,  risk_measure="equal")
 
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
@@ -794,26 +784,9 @@ def getHRP(cov, corr, index):
     return hrp
 
 
-def herc_weights(returns: pd.DataFrame, linkage: str = 'single', risk_measure: str = 'equal_weighting',
-                 covariance_matrix=None, optimal_num_clusters=None) -> pd.Series:
-    hercEW_single = HierarchicalEqualRiskContribution()
-    hercEW_single.allocate(asset_names=returns.columns,
-                           asset_returns=returns,
-                           covariance_matrix=covariance_matrix,
-                           risk_measure=risk_measure,
-                           optimal_num_clusters=optimal_num_clusters,
-                           linkage=linkage)
-
-    weights = hercEW_single.weights.T
-    weights = weights[0]
-    weights = weights[returns.columns]
-
-    return weights
-
-
-def herc_weights_new(returns: pd.DataFrame, linkage: str = 'single',
-                     risk_measure: str = "equal", **kwargs):
-    port = rf.HCPortfolio(returns=returns)
+def herc_weights(returns: pd.DataFrame, linkage: str = 'single',
+                 risk_measure: str = "equal", **kwargs):
+    port = HCPortfolio(returns=returns)
     weights = port.optimization(model="HERC", rm=risk_measure,
                                 linkage=linkage, **kwargs)
     weights = weights.loc[returns.columns, "weights"]

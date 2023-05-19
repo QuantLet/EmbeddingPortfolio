@@ -7,8 +7,7 @@ import random
 import numpy as np
 import pandas as pd
 from joblib import Parallel, delayed
-from portfoliolab.clustering import HierarchicalEqualRiskContribution
-
+import riskfolio as rf
 import prado.cla.CLA as CLA
 from dl_portfolio.data import load_data
 from dl_portfolio.logger import LOGGER
@@ -198,17 +197,14 @@ def getNMF(train_data, n_components):
     return weights
 
 
-def herc_weights(returns: np.ndarray, optimal_num_clusters) -> pd.Series:
-    asset_names = [str(i) for i in range(returns.shape[-1])]
-    hercEW_single = HierarchicalEqualRiskContribution()
-    hercEW_single.allocate(asset_returns=returns,
-                           asset_names=asset_names,
-                           risk_measure="equal_weighting",
-                           optimal_num_clusters=optimal_num_clusters,
-                           linkage="single")
-
-    weights = hercEW_single.weights.T
-    weights = weights[0].loc[asset_names]
+def herc_weights(returns: np.ndarray, optimal_num_clusters, **kwargs) -> \
+        pd.Series:
+    df = pd.DataFrame(returns)
+    port = rf.HCPortfolio(returns=df)
+    weights = port.optimization(
+        model="HERC", rm="equal", linkage="single",
+        optimal_num_clusters=optimal_num_clusters, **kwargs)
+    weights = weights.loc[df.columns, "weights"]
 
     return weights
 
