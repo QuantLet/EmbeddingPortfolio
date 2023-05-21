@@ -95,6 +95,8 @@ def load_result_wrapper(
             decod,
             relu_act,
             decoder_bias,
+            _,
+            _,
         ) = load_result(
             config, test_set, data, assets, base_dir, cv, reorder_features
         )
@@ -132,6 +134,7 @@ def get_linear_encoder(
     assets: List[str],
     base_dir: str,
     cv: str,
+    layer="encoder",
     reorder_features=False,
 ):
     """
@@ -193,14 +196,30 @@ def get_linear_encoder(
     encoder = tf.keras.Model(
         inputs=model.input, outputs=model.get_layer(layer_name).output
     )
-    dense_layer = tf.keras.Model(
-        inputs=model.input, outputs=model.get_layer("encoder").output
-    )
-    dense_layer.layers[-1].activation = activations.linear
+    if layer in ["batch_norm", "uncorrelated_features_layer"]:
+        # Take activations after batch normalization
+        activation_layer = tf.keras.Model(
+            inputs=model.input, outputs=model.get_layer(layer_name).output
+        )
+        batch_norm_layer = model.layers[2]
+        boundary = np.array(
+            batch_norm_layer.gamma * (
+                    - batch_norm_layer.moving_mean /
+                    np.sqrt(
+                        batch_norm_layer.moving_variance + batch_norm_layer.epsilon)
+            ) + batch_norm_layer.beta
+        )
+    elif layer == "relu":
+        # Take activations after Relu layer
+        activation_layer = tf.keras.Model(
+            inputs=model.input, outputs=model.get_layer("encoder").output
+        )
+        boundary = np.zeros(model.layers[1].output.shape[-1])
+    else:
+        raise NotImplementedError(layer)
+    activation_layer.get_layer("encoder").activation = activations.linear
 
-    assert dense_layer.layers[-1].activation == activations.linear
     assert encoder.layers[1].activation == activations.linear
-
     intercept = get_intercept_from_model(model, scaler=scaler["attributes"],
                                          batch_norm=config.batch_normalization)
 
@@ -244,7 +263,7 @@ def get_linear_encoder(
 
     # Prediction
     test_features = encoder.predict(test_data)
-    lin_activation = dense_layer.predict(test_data)
+    lin_activation = activation_layer.predict(test_data)
     index = dates[test_set]
     test_features = pd.DataFrame(test_features, index=index)
     lin_activation = pd.DataFrame(lin_activation, index=index)
@@ -271,8 +290,12 @@ def get_linear_encoder(
         test_features.columns = base_order
         lin_activation = reorder_columns(lin_activation, new_order)
         lin_activation.columns = base_order
+        boundary = boundary[new_order]
+        boundary = {c: float(boundary[i]) for i, c in enumerate(base_order)}
+    else:
+        boundary = {i: float(boundary[i]) for i in range(len(boundary))}
 
-    return model, test_features, lin_activation, intercept
+    return model, test_features, lin_activation, intercept, boundary
 
 
 def get_features_order(loadings: pd.DataFrame, ref_cluster: pd.DataFrame):
@@ -521,6 +544,25 @@ def load_result(
         if relu_activation is not None:
             relu_activation = reorder_columns(relu_activation, new_order)
             relu_activation.columns = base_order
+    else:
+        new_order = None
+
+    if "ae" in model_type:
+        if config.batch_normalization:
+            batch_norm_layer = model.layers[2]
+            u_relu = np.array(
+                batch_norm_layer.gamma * (
+                        - batch_norm_layer.moving_mean /
+                        np.sqrt(
+                            batch_norm_layer.moving_variance + batch_norm_layer.epsilon)
+                ) + batch_norm_layer.beta
+            )
+            u_relu = pd.DataFrame(
+                np.repeat(u_relu.reshape(1, -1), len(test_data), axis=0),
+                index=test_features.index,
+                columns=test_features.columns)
+    else:
+        u_relu = None
 
     return (
         model,
@@ -533,6 +575,8 @@ def load_result(
         decoding,
         relu_activation,
         decoder_bias,
+        u_relu,
+        new_order,
     )
 
 

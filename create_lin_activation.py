@@ -10,7 +10,7 @@ from dl_portfolio.utils import get_linear_encoder
 from dl_portfolio.logger import LOGGER
 
 
-def create_linear_features(base_dir):
+def create_linear_features(base_dir, reorder_features, layer="batch_norm"):
     sys.path.append(base_dir)
     import ae_config as config
 
@@ -28,15 +28,18 @@ def create_linear_features(base_dir):
     for cv in cvs:
         LOGGER.info(f"Saving to: 'activationProba/data/{config.dataset}/{cv}'")
         os.mkdir(f"activationProba/data/{config.dataset}/{cv}")
-        _, _, train_act, intercept = get_linear_encoder(
-            config, "train", data, assets, base_dir, cv
+        _, _, train_act, intercept, boundary = get_linear_encoder(
+            config, "train", data, assets, base_dir, cv, layer=layer,
+            reorder_features=reorder_features,
         )
-        _, _, val_act, _ = get_linear_encoder(
-            config, "val", data, assets, base_dir, cv
+        _, _, val_act, _, boundary = get_linear_encoder(
+            config, "val", data, assets, base_dir, cv, layer=layer,
+            reorder_features=reorder_features,
         )
         if include_test:
-            _, _, test_act, _ = get_linear_encoder(
-                config, "test", data, assets, base_dir, cv
+            _, _, test_act, _, boundary = get_linear_encoder(
+                config, "test", data, assets, base_dir, cv, layer=layer,
+                reorder_features=reorder_features,
             )
         train_act = pd.concat([train_act, val_act])
         train_act.to_csv(
@@ -60,13 +63,17 @@ def create_linear_features(base_dir):
                        f"cluster_assignment.json", "w"))
         json.dump(intercept, open(f"activationProba/data/{config.dataset}/"
                                   f"{cv}/intercept.json", "w"))
+        json.dump(boundary, open(f"activationProba/data/{config.dataset}/"
+                                  f"{cv}/boundary.json", "w"))
 
     if config.encoding_dim is not None:
-        _, _, train_lin_activation, intercept = get_linear_encoder(
-            config, "train", data, assets, base_dir, 0
+        _, _, train_lin_activation, intercept, boundary = get_linear_encoder(
+            config, "train", data, assets, base_dir, 0, layer=layer,
+            reorder_features=reorder_features,
         )
-        _, _, val_lin_activation, _ = get_linear_encoder(
-            config, "val", data, assets, base_dir, 0
+        _, _, val_lin_activation, _, boundary = get_linear_encoder(
+            config, "val", data, assets, base_dir, 0, layer=layer,
+            reorder_features=reorder_features,
         )
         if include_test:
             lin_act = pd.concat(
@@ -88,9 +95,20 @@ if __name__ == "__main__":
         help="Directory with AE model logs, "
              "ex: 'final_models/ae/dataset1/m_0_dataset1_nbb_resample_bl_60_seed_0_1647953383912806'",
     )
-
+    parser.add_argument(
+        "--reorder_features",
+        action="store_true",
+    )
+    parser.add_argument(
+        "--layer",
+        type=str,
+        default="batch_norm",
+        help="Name of the layer from which to compute output",
+    )
     args = parser.parse_args()
 
     LOGGER.info(f"Create linear activation for model {args.base_dir}")
-    create_linear_features(args.base_dir)
+    create_linear_features(args.base_dir,
+                           reorder_features=args.reorder_features,
+                           layer=args.layer)
     LOGGER.info("Done")
