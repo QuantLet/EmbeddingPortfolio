@@ -20,8 +20,8 @@ run = function(config, save_dir=NULL, debug=FALSE){
     data = get_cv_data(config$dataset, cv, window_size = config$window_size)
     print(paste0("Last train: ", index(tail(data$train, 1))[1]))
     print(paste0("First test: ", index(data$test)[1]))
-    
     factors = colnames(data$train)
+
     # Initialize tables
     if (counter == 1) {
       activation_probas = data.frame(matrix(ncol = length(factors), nrow = 0))
@@ -41,7 +41,9 @@ run = function(config, save_dir=NULL, debug=FALSE){
       factor.name = factors[ind]
       train_data = data$train[, ind]
       test_data = data$test[, ind]
-      
+      boundary = data$boundary[factor.name][[1]]
+      scaled_b = preprocess_data(boundary, train_data, arima = config$arima)
+
       if (config$evt) {
         # Take loss series
         train_data = - train_data
@@ -93,12 +95,14 @@ run = function(config, save_dir=NULL, debug=FALSE){
           if (is.null(garch.model) | is.null(evt_res$EVTmodel)) {
             train_probas = rep(NaN, length(index(train_data)))
           } else {
-            train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel)) 
+            z = (scaled_b - garch.model@fitted) / garch.model@sigma.t
+            train_probas = unname(sapply(z, get_proba_evt_model, evt_res$EVTmodel)) 
           }
         } else {
           EVTmodel = NULL
           dist_func = get_dist_functon(garch.model@fit$params$cond.dist)
-          train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, dist_func))
+          z = (scaled_b - garch.model@fitted) / garch.model@sigma.t
+          train_probas = unname(sapply(z, dist_func))
         }
         nans = nrow(train_data) - length(train_probas)
         if (nans > 0) {
@@ -108,7 +112,7 @@ run = function(config, save_dir=NULL, debug=FALSE){
         if (is.null(garch.model)) {
           probas = rep(NaN, length(index(test_data)))
         } else {
-          probas = predict_proba(train_data, test_data, config$window_size, garch.model,
+          probas = predict_proba(train_data, test_data, boundary, config$window_size, garch.model,
                                  fit_model, next_proba, parallel = !debug, arima=config$arima, EVTmodel=EVTmodel)
           probas = probas$proba
         }

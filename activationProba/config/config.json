@@ -8,12 +8,10 @@
       1
     ],
     "garch.order.q": [
-      0
+      1
     ]
   },
   "arima": true,
-  "selected_model": null, 
-  "ignored": "output/dataset1/20230501034824_encoding_4",
   "evt": false,
   "dataset": "dataset1",
   "cvs": 69,
