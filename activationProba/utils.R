@@ -24,7 +24,7 @@ get_proba_evt_model = function(p, EVTmodel) {
 }
 
 fit_evt = function(data, formula=NULL, garch.model=NULL, q_fit=NULL, threshold=NULL, arima=TRUE) {
-  data = preprocess_data(data, data, arima=arima)
+  data = preprocess_data(data, arima=arima)
   tryCatch(
     {
       if (is.null(garch.model)){
@@ -62,13 +62,41 @@ fit_evt = function(data, formula=NULL, garch.model=NULL, q_fit=NULL, threshold=N
   )
 }
 
+get_proba_evt = function(garch.model, q_fit=NULL, threshold=NULL) {
+  # Get standardized residuals
+  model.residuals  = fGarch::residuals(garch.model , standardize = TRUE)
+  
+  # Fit GPD to residuals
+  if (is.null(threshold)){
+    stopifnot(!is.null(q_fit))
+    threshold = quantile(model.residuals, (1 - q_fit))
+  } else {
+    stopifnot(is.null(q_fit))
+  }
+  # Fit GPD to residuals
+  EVTmodel.fit = gpd.fit(
+    xdat = model.residuals,
+    threshold = threshold,
+    show = FALSE
+  )
+  
+  # Calculate proba
+  # First predict next value
+  model.forecast = fGarch::predict(object = garch.model, n.ahead = 1)
+  model.mean = model.forecast$meanForecast # conditional mean
+  model.sd = model.forecast$standardDeviation # conditional volatility
+  # proba
+  p = -model.mean / model.sd
+  model.proba = get_proba_evt_model(p, EVTmodel.fit)
+  return (list(EVTmodel=EVTmodel.fit, EVTproba=model.proba))
+}
+
 get_cv_data = function(dataset, cv, window_size = NULL) {
   # load dataset
   train_data = load_data(path = file.path("data", dataset, cv, "train_linear_activation.csv"), window_size=window_size)
   test_data = load_data(path = file.path("data", dataset, cv, "test_linear_activation.csv"))
-  boundary = fromJSON(file = file.path("data", dataset, cv, "boundary.json"))
-
-  return(list(train = train_data, test = test_data, boundary = boundary))
+  
+  return(list(train = train_data, test = test_data))
 }
 
 load_data = function(path, end_date = NULL, start_date = NULL, window_size = NULL) {
@@ -130,20 +158,20 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
     silent = FALSE)
 }
 
-preprocess_data = function(x, tofit, arima=True){
+preprocess_data = function(data, arima = TRUE){
   if (!arima) {
-    print("dmean")
-    data.mu = mean(tofit, na.rm=TRUE)
-    x = x - data.mu
+    data.mu = mean(data, na.rm=TRUE)
+    data = data - data.mu
   }
   # Normalize data to have variance 1
-  data.sd = sd(tofit)
-  x = x / data.sd
-  return (x)
+  data.sd = sd(data)
+  data = data / data.sd
+  
+  return (data)
 }
 
 model_selection = function(data, model.params, fit_model, parallel = TRUE, arima = TRUE) {
-  data = preprocess_data(data, data, arima=arima)
+  data = preprocess_data(data, arima=arima)
   
   tuning.grid = expand.grid(
     cond.dist = model.params$cond.dist,
@@ -201,9 +229,8 @@ model_selection = function(data, model.params, fit_model, parallel = TRUE, arima
   return(list(model = best_model, aic = aic))
 }
 
-predict_proba = function(train_data, test_data, boundary, window_size, model,
-                         fit_model, next_proba, parallel = TRUE, arima = TRUE,
-                         EVTmodel=NULL) {
+predict_proba = function(train_data, test_data, window_size, model,
+                         fit_model, next_proba, parallel = TRUE, arima = TRUE, EVTmodel=NULL) {
   formula = model@formula
   cond.dist = model@fit$params$cond.dist
 
@@ -228,9 +255,8 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
     ) %dopar% {
       # For first observation in test set, just predict the proba using previously trained model
       if (i == 1) {
-        scaled_b = preprocess_data(boundary, train_data, arima = arima)
         forecast = tryCatch(
-          next_proba(model, scaled_b, EVTmodel=EVTmodel),
+          next_proba(model, EVTmodel=EVTmodel),
           error = function(e) NaN,
           silent = FALSE
         )
@@ -241,8 +267,11 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
         temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
-        temp = preprocess_data(temp, temp, arima=arima)
-        scaled_b = preprocess_data(boundary, temp, arima=arima)
+        if (!arima) {
+          temp = temp - mean(temp, na.rm=TRUE)
+        }
+        # Normalize data to have variance 1
+        temp = temp / sd(temp)
         
         if (!is.null(EVTmodel)){
           evt_res = tryCatch(
@@ -253,7 +282,7 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
           model = evt_res$GARCHmodel
           if (!is.null(model) | !is.null(EVTmodel)) {
             forecast = tryCatch(
-              next_proba(model, scaled_b, EVTmodel=EVTmodel),
+              next_proba(model, EVTmodel=EVTmodel),
               error = function(e) NaN,
               silent = FALSE
             )
@@ -268,7 +297,7 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
           model = model$model
           if (!is.null(model)) {
             forecast = tryCatch(
-              next_proba(model, scaled_b),
+              next_proba(model),
               error = function(e) NaN,
               silent = FALSE
             )
@@ -285,8 +314,7 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
     for (i in 1:nrow(test_data)) {
       if (i == 1) {
         if (!is.null(model)) {
-          scaled_b = preprocess_data(boundary, train_data, arima = arima)
-          forecast = next_proba(model, scaled_b, EVTmodel = EVTmodel)
+          forecast = next_proba(model, EVTmodel = EVTmodel)
         } else {
           forecast = NaN
         }
@@ -294,9 +322,10 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
         temp = rbind(train_data, test_data[1:(i - 1),])
         temp = tail(temp, window_size)
         # Normalize data to have unit variance
-        temp = preprocess_data(temp, temp, arima=arima)
-        scaled_b = preprocess_data(boundary, temp, arima=arima)
-
+        if (!arima) {
+          temp = temp - mean(temp, na.rm=TRUE)
+        }
+        temp = temp / sd(temp)
         if (!is.null(EVTmodel)){
           evt_res = tryCatch(
             fit_evt(temp, formula, threshold=0., arima=arima),
@@ -308,7 +337,7 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
             forecast = NaN
           } else {
             forecast = tryCatch(
-              next_proba(model, scaled_b, EVTmodel = EVTmodel),
+              next_proba(model, EVTmodel = EVTmodel),
               error = function(e) NaN,
               silent = FALSE
             )
@@ -323,7 +352,7 @@ predict_proba = function(train_data, test_data, boundary, window_size, model,
             forecast = NaN
           } else {
             forecast = tryCatch(
-              next_proba(model, scaled_b),
+              next_proba(model),
               error = function(e) NaN,
               silent = FALSE
             )
@@ -374,7 +403,7 @@ prediction_conf = function(object, conf = 0.95) {
   return (list(int_u=int_u, int_l=int_l))
 }
 
-next_proba = function(model, boundary, conf = 0.95, EVTmodel=NULL) {
+next_proba = function(model, conf = 0.95, EVTmodel=NULL) {
   cond.dist = model@fit$params$cond.dist
   # Predict next value
   model.forecast = fGarch::predict(object = model, n.ahead = 1, conf = conf)
@@ -383,7 +412,7 @@ next_proba = function(model, boundary, conf = 0.95, EVTmodel=NULL) {
   sdForecast = model.forecast$standardDeviation # conditional volatility
 
   # Calculate proba
-  Z_hat = (boundary - meanForecast) / sdForecast
+  Z_hat = -meanForecast / sdForecast
   if (cond.dist == "norm") {
     proba = pnorm(Z_hat)
   } else if (cond.dist == "snorm") {
