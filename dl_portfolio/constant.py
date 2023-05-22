@@ -95,6 +95,7 @@ def dataset2_reference_cluster():
                             axis=1)
     assert all(ref_cluster.sum(1) == 1)
     ref_cluster = ref_cluster / np.linalg.norm(ref_cluster, axis=0)
+    ref_cluster.columns = BASE_FACTOR_ORDER_DATASET2_5
     return ref_cluster
 
 
@@ -141,25 +142,6 @@ AVAILABLE_METHODS = [
 METHODS_MAPPING = {k: i for i, k in enumerate(AVAILABLE_METHODS)}
 
 # Cv dates
-val_start = pd.date_range(
-    "2017-06-01", "2023-02-01", freq="1MS"
-)
-start = [d - dt.timedelta(days=365) for d in val_start]
-start = [str(d.date()) for d in start]
-val_start = [str(d.date()) for d in val_start]
-
-end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
-end = [str(d.date()) for d in end]
-
-data_specs = {}
-for i in range(len(val_start)):
-    data_specs[i] = {
-        "start": start[i],
-        "val_start": val_start[i],
-        "end": end[i],
-    }
-DATA_SPECS_NMF_DATASET1 = data_specs.copy()
-
 val_start = pd.date_range("2017-05-01", "2023-01-01", freq="1MS")
 test_start = pd.date_range("2017-06-01", "2023-02-01", freq="1MS")
 end = pd.date_range("2017-06-01", "2023-03-01", freq="M")
@@ -171,7 +153,7 @@ end = [str(d.date()) for d in end]
 data_specs = {}
 for i in range(len(val_start)):
     data_specs[i] = {
-        "start": "2016-06-30",
+        "start": "2015-09-01",
         "val_start": val_start[i],
         "test_start": test_start[i],
         "end": end[i],
