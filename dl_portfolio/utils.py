@@ -294,8 +294,9 @@ def get_linear_encoder(
         boundary = {c: float(boundary[i]) for i, c in enumerate(base_order)}
     else:
         boundary = {i: float(boundary[i]) for i in range(len(boundary))}
+        new_order = None
 
-    return model, test_features, lin_activation, intercept, boundary
+    return model, test_features, lin_activation, intercept, boundary, new_order
 
 
 def get_features_order(loadings: pd.DataFrame, ref_cluster: pd.DataFrame):

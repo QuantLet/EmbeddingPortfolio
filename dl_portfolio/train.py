@@ -17,9 +17,6 @@ def build_model_input(
 ) -> Union[np.ndarray, List]:
     assert model_type in [
         "ae_model",
-        "ae_model2",
-        "pca_ae_model",
-        "nl_pca_ae_model",
     ]
     if features:
         data = [data, features]

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
 from dl_portfolio.custom_layer import UncorrelatedFeaturesLayer
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
@@ -68,7 +69,6 @@ def build_model(model_type, input_dim, encoding_dim, **kwargs):
         model, encoder, extra_features = ae_model(
             input_dim, encoding_dim, **kwargs
         )
-
     else:
         raise NotImplementedError()
 
@@ -84,7 +84,7 @@ def ae_model(
     encoding_dim: int,
     n_features: int = None,
     extra_features_dim: int = 1,
-    activation: str = "linear",
+    activation: str = "relu",
     kernel_initializer: str = "glorot_uniform",
     activity_regularizer=None,
     kernel_constraint=None,

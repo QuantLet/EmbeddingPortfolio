@@ -10,7 +10,7 @@ from dl_portfolio.utils import get_linear_encoder
 from dl_portfolio.logger import LOGGER
 
 
-def create_linear_features(base_dir, reorder_features, layer="batch_norm"):
+def create_linear_features(base_dir, reorder_features=False, layer="encoder"):
     sys.path.append(base_dir)
     import ae_config as config
 
@@ -28,16 +28,16 @@ def create_linear_features(base_dir, reorder_features, layer="batch_norm"):
     for cv in cvs:
         LOGGER.info(f"Saving to: 'activationProba/data/{config.dataset}/{cv}'")
         os.mkdir(f"activationProba/data/{config.dataset}/{cv}")
-        _, _, train_act, intercept, boundary = get_linear_encoder(
+        _, _, train_act, intercept, boundary, new_order = get_linear_encoder(
             config, "train", data, assets, base_dir, cv, layer=layer,
             reorder_features=reorder_features,
         )
-        _, _, val_act, _, boundary = get_linear_encoder(
+        _, _, val_act, _, boundary, new_order = get_linear_encoder(
             config, "val", data, assets, base_dir, cv, layer=layer,
             reorder_features=reorder_features,
         )
         if include_test:
-            _, _, test_act, _, boundary = get_linear_encoder(
+            _, _, test_act, _, boundary, new_order = get_linear_encoder(
                 config, "test", data, assets, base_dir, cv, layer=layer,
                 reorder_features=reorder_features,
             )
@@ -57,7 +57,11 @@ def create_linear_features(base_dir, reorder_features, layer="batch_norm"):
             )
             test_lin_activation = pd.concat([test_lin_activation, test_act])
         loading = pd.read_pickle(f"{base_dir}/{cv}/decoder_weights.p")
+        if new_order:
+            loading = loading.iloc[:, new_order]
+            loading.columns = range(loading.shape[-1])
         cluster_assignment, _ = get_cluster_labels(loading)
+
         json.dump(cluster_assignment,
                   open(f"activationProba/data/{config.dataset}/{cv}/"
                        f"cluster_assignment.json", "w"))
@@ -67,11 +71,11 @@ def create_linear_features(base_dir, reorder_features, layer="batch_norm"):
                                   f"{cv}/boundary.json", "w"))
 
     if config.encoding_dim is not None:
-        _, _, train_lin_activation, intercept, boundary = get_linear_encoder(
+        _, _, train_lin_activation, intercept, boundary, new_order = get_linear_encoder(
             config, "train", data, assets, base_dir, 0, layer=layer,
             reorder_features=reorder_features,
         )
-        _, _, val_lin_activation, _, boundary = get_linear_encoder(
+        _, _, val_lin_activation, _, boundary, new_order = get_linear_encoder(
             config, "val", data, assets, base_dir, 0, layer=layer,
             reorder_features=reorder_features,
         )
@@ -102,7 +106,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--layer",
         type=str,
-        default="batch_norm",
+        default="encoder",
         help="Name of the layer from which to compute output",
     )
     args = parser.parse_args()
