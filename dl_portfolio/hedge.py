@@ -1,49 +1,183 @@
 import json
+import os
 
 import numpy as np
 import pandas as pd
 from typing import List, Dict, Union, Optional
 
+from sklearn import metrics
+
 from dl_portfolio.logger import LOGGER
-from dl_portfolio.constant import AVAILABLE_METHODS
+from dl_portfolio.constant import AVAILABLE_METHODS, DATASET1_REF_CLUSTER, \
+    BASE_FACTOR_ORDER_DATASET1_4, DATASET2_REF_CLUSTER, \
+    BASE_FACTOR_ORDER_DATASET2_5
+from dl_portfolio.utils import get_features_order
+
+
+def load_activation(garch_data_dir, ae_dir, garch_dir, perf_ae_dir, dataset):
+    cvs = sorted(
+        [int(cv) for cv in os.listdir(garch_data_dir) if cv.isdigit()]
+    )
+    # Load tail events data
+    train_activation = pd.DataFrame()
+    test_activation = pd.DataFrame()
+    train_probas = pd.DataFrame()
+    test_probas = pd.DataFrame()
+    cv_predictions = pd.read_pickle(f"{perf_ae_dir}/predictions.p")
+    predictions = pd.DataFrame()
+
+    if dataset == "dataset1":
+        ref_cluster = DATASET1_REF_CLUSTER
+        columns = BASE_FACTOR_ORDER_DATASET1_4
+    elif dataset == "dataset2":
+        ref_cluster = DATASET2_REF_CLUSTER
+        columns = BASE_FACTOR_ORDER_DATASET2_5
+    else:
+        raise NotImplementedError()
+
+    for cv in cvs:
+        t = pd.read_csv(f"{garch_data_dir}/{cv}/train_linear_activation.csv",
+                        index_col=0)
+        t.index = pd.to_datetime(t.index)
+        # reorder features
+        loading = pd.read_pickle(f"{ae_dir}/{cv}/decoder_weights.p")
+        new_order = get_features_order(loading, ref_cluster)
+        t = t.iloc[:, new_order]
+        if cv > 0:
+            last_date = train_activation.index[-1]
+            t = t[t.index > last_date]
+        train_activation = pd.concat([train_activation, t])
+
+        t = pd.read_csv(f"{garch_data_dir}/{cv}/test_linear_activation.csv",
+                        index_col=0)
+        t = t.iloc[:, new_order]
+        test_activation = pd.concat([test_activation, t])
+
+        t = pd.read_csv(f"{garch_dir}/{cv}/train_activation_probas.csv",
+                        index_col=0, parse_dates=True)
+        t = t.iloc[:, new_order]
+        if cv > 0:
+            t = t[t.index > last_date]
+        train_probas = pd.concat([train_probas, t])
+
+        t = pd.read_csv(f"{garch_dir}/{cv}/activation_probas.csv",
+                        index_col=0, parse_dates=True)
+        t = t.iloc[:, new_order]
+        test_probas = pd.concat([test_probas, t])
+
+        t = cv_predictions[cv].iloc[:, new_order].copy()
+        predictions = pd.concat([predictions, t])
+
+    train_activation.columns = columns
+    test_activation.columns = columns
+    train_probas.columns = columns
+    test_probas.columns = columns
+    predictions.columns = columns
+
+    test_activation.index = pd.to_datetime(test_activation.index)
+
+    return (train_activation, test_activation, train_probas, test_probas,
+            predictions)
 
 
 def hedged_portfolio_weights_wrapper(
     cv: int,
     returns: pd.DataFrame,
-    cv_garch_dir: str,
-    cv_data_dir: str,
+    garch_dir: str,
+    data_dir: str,
     or_port_weights: Dict,
     strats: List[str] = ["ae_rp_c", "aeaa", "aerp", "aeerc"],
     window: Optional[int] = None,
-    method: Optional[str] = "hedged_strat_cum_excess_return_cluster",
+    method: Optional[str] = "calibrated_exceedance",
+    use_test_probas: bool = False,
 ):
     LOGGER.info(f"CV: {cv}")
     assets = list(returns.columns)
-    # Load target
-    train_target = pd.read_csv(
-        f"{cv_data_dir}/train_linear_activation.csv", index_col=0,
-        parse_dates=True
-    )
-    train_target = (train_target <= 0).astype(int)
+    # Load target and predicted probas
+    if use_test_probas:
+        # Calibrate the threshold on previous test sets
+        if cv == 0:
+            # Load target
+            prev_target = pd.read_csv(
+                f"{data_dir}/{cv}/train_linear_activation.csv", index_col=0,
+                parse_dates=True
+            )
+            # Load prediction
+            prev_probas = pd.read_csv(
+                f"{garch_dir}/{cv}/train_activation_probas.csv", index_col=0,
+                parse_dates=True
+            )
+        else:
+            # load first target
+            prev_target = [
+                pd.read_csv(
+                    f"{data_dir}/0/train_linear_activation.csv", index_col=0,
+                    parse_dates=True
+                )
+            ]
+            # Load first prediction
+            prev_probas = [
+                pd.read_csv(
+                    f"{garch_dir}/0/train_activation_probas.csv", index_col=0,
+                    parse_dates=True
+                )
+            ]
+            window_size = len(prev_target)
 
-    # Load prediction
-    train_probas = pd.read_csv(
-        f"{cv_garch_dir}/train_activation_probas.csv", index_col=0,
-        parse_dates=True
-    )
-    train_probas.index = pd.to_datetime(
-        [pd.to_datetime(d).date() for d in train_probas.index]
+            # Include previous target and preds from previous test sets
+            for i in range(cv):
+                prev_target.append(
+                    pd.read_csv(
+                        f"{data_dir}/{i}/test_linear_activation.csv", index_col=0,
+                        parse_dates=True
+                    )
+                )
+                prev_probas.append(
+                    pd.read_csv(
+                        f"{garch_dir}/{i}/activation_probas.csv", index_col=0,
+                        parse_dates=True
+                    )
+                )
+            prev_probas = pd.concat(prev_probas)
+            prev_target = pd.concat(prev_target)
+            # remove duplicates if any
+            assert isinstance(prev_probas.index,
+                              pd.pandas.core.indexes.datetimes.DatetimeIndex)
+            assert isinstance(prev_target.index,
+                              pd.pandas.core.indexes.datetimes.DatetimeIndex)
+            assert not prev_probas.index.duplicated().any()
+            assert not prev_target.index.duplicated().any()
+
+            # now take only the window
+            # sort just in case
+            prev_probas = prev_probas.sort_index().iloc[-window_size:]
+            prev_target = prev_target.sort_index().iloc[-window_size:]
+    else:
+        # Calibrate the threshold on train set
+        # Load target
+        prev_target = pd.read_csv(
+            f"{data_dir}/{cv}/train_linear_activation.csv", index_col=0,
+            parse_dates=True
+        )
+        # Load prediction
+        prev_probas = pd.read_csv(
+            f"{garch_dir}/{cv}/train_activation_probas.csv", index_col=0,
+            parse_dates=True
+        )
+
+    prev_target = (prev_target <= 0).astype(int)
+    prev_probas.index = pd.to_datetime(
+        [pd.to_datetime(d).date() for d in prev_probas.index]
     )
 
-    probas = pd.read_csv(f"{cv_garch_dir}/activation_probas.csv", index_col=0)
+    probas = pd.read_csv(f"{garch_dir}/{cv}/activation_probas.csv", index_col=0)
     probas.index = pd.to_datetime(
         [pd.to_datetime(d).date() for d in probas.index]
     )
     n_cluster = probas.shape[-1]
     # Load clusters
     cluster_assignment = json.load(open(
-        f"{cv_data_dir}/cluster_assignment.json", "r"))
+        f"{data_dir}/{cv}/cluster_assignment.json", "r"))
     cluster = pd.Series(index=assets)
     for k in cluster_assignment:
         e = cluster_assignment[k]
@@ -51,18 +185,21 @@ def hedged_portfolio_weights_wrapper(
     cluster = cluster.astype(int)
     # Remove unassigned assets
     cluster[cluster >= n_cluster] = np.nan
+    # cluster = cluster.apply(lambda x: train_probas.columns[x])
 
     # Handle renaming of columns from R
-    probas = probas[train_probas.columns]  # Just to be sure
-    columns = list(train_probas.columns)
+    probas = probas[prev_probas.columns]  # Just to be sure
+    columns = list(prev_probas.columns)
     columns = [c.replace(".", "-") for c in columns]
     columns = [c.replace("X", "") for c in columns]
-    columns = [int(c) for c in columns]
-    train_target.columns = columns
-    train_probas.columns = columns
+
+    if all([c.isdigit() for c in columns]):
+        columns = [int(c) for c in columns]
+    prev_target.columns = columns
+    prev_probas.columns = columns
     probas.columns = columns
 
-    train_returns = returns.loc[train_probas.index]
+    train_returns = returns.loc[prev_probas.index]
     test_returns = returns.loc[probas.index]
 
     if window is not None:
@@ -72,20 +209,21 @@ def hedged_portfolio_weights_wrapper(
     res = {"port": {}, "signal": {}}
     for strat in strats:
         original_weights = or_port_weights[strat].iloc[cv][assets]
-        signals, hedged_weights = hedged_portfolio_weights(
+        signals, hedged_weights, pred = hedged_portfolio_weights(
             train_returns,
-            train_probas,
+            prev_probas,
             probas,
             cluster,
             assets,
             original_weights,
-            target=train_target,
+            target=prev_target,
             method=method,
         )
         res["port"][strat] = hedged_weights
         res["signal"][strat] = signals
     res["train_returns"] = train_returns
     res["returns"] = test_returns
+    res["pred"] = pred
 
     return cv, res
 
@@ -98,7 +236,7 @@ def hedged_portfolio_weights(
     assets,
     original_weights,
     target: Optional[pd.DataFrame] = None,
-    method: Optional[str] = "hedged_strat_cum_excess_return_cluster",
+    method: Optional[str] = "calibrated_exceedance",
 ) -> Union[pd.DataFrame, pd.DataFrame]:
     """
     Get the best threshold based on method evaluated on train_returns with train_probas. Then apply threshold on probas
@@ -118,6 +256,7 @@ def hedged_portfolio_weights(
     unnassigned = cluster.index[cluster.isna()]
     weights = pd.DataFrame()
     signals = pd.DataFrame()
+    pred = pd.DataFrame()
     for cluster_name in cluster_names:
         train_w = pd.DataFrame(
             np.repeat(
@@ -146,6 +285,8 @@ def hedged_portfolio_weights(
             target=target,
             method=method,
         )
+        pred = pd.concat([pred, (probas.loc[:, cluster_name] >=
+                                 optimal_t).astype(int)], axis=1)
         signal_c, temp_w_c = get_hedged_weight_cluster(
             test_w, probas, cluster, cluster_name, optimal_t
         )
@@ -158,7 +299,7 @@ def hedged_portfolio_weights(
     signals[unnassigned] = np.nan
     signals = signals[assets]
 
-    return signals, weights
+    return signals, weights, pred
 
 
 def get_signals(
@@ -372,6 +513,13 @@ def get_best_threshold(
             target.loc[:, cluster_name], probas.loc[:, cluster_name],
             thresholds
         )
+    elif method == "roc_curve":
+        # distance top left
+        temp = probas.loc[:, cluster_name].dropna()
+        fpr, tpr, t = metrics.roc_curve(target.loc[temp.index, cluster_name],
+                                        temp)
+        squred_distance = fpr ** 2 + (tpr - 1) ** 2
+        optimal_t = t[np.argmin(squred_distance)]
     else:
         raise NotImplementedError(method)
 

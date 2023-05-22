@@ -12,18 +12,13 @@ from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
-DATA_BASE_DIR_1 = "activationProba/data/dataset1"
-# GARCH_BASE_DIR_1 = "activationProba/output/dataset1/final"
-# PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230220_110629"
+DATA_BASE_DIR_1 = "activationProba/data/dataset1_relu_encoding_4"
+GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230501034824_encoding_4"
+PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230522_193559"
 
-GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230407134753"
-PERF_DIR_1 = "./performance/test_final_models/ae/dataset1_20230418_203337"
-
-DATA_BASE_DIR_2 = "./activationProba/data/dataset2"
-# GARCH_BASE_DIR_2 = "activationProba/output/dataset2/final"
-# PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230220_111557"
-PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230417_234323"
-GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230407170225"
+DATA_BASE_DIR_2 = "./activationProba/data/dataset2_relu_encoding_5"
+PERF_DIR_2 = "./performance/test_final_models/ae/dataset2_20230522_194420"
+GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230501043839_encoding_5"
 
 if __name__ == "__main__":
     import argparse
@@ -114,7 +109,7 @@ if __name__ == "__main__":
     strats = [
         s for s in list(port_weights.keys()) if s in ["aerp", "rb_factor"]
     ]
-    cv_folds = range(sum([cv.isdigit() for cv in os.listdir(data_base_dir)]))
+    cv_folds = range(sum([cv.isdigit() for cv in os.listdir(garch_base_dir)]))
     LOGGER.info(f"Method for optimal threshold is: {args.method}")
     if args.n_jobs > 1:
         LOGGER.info(f"Compute weights with {args.n_jobs} jobs...")
@@ -123,8 +118,8 @@ if __name__ == "__main__":
                 delayed(hedged_portfolio_weights_wrapper)(
                     cv,
                     returns,
-                    f"{garch_base_dir}/{cv}",
-                    f"{data_base_dir}/{cv}",
+                    garch_base_dir,
+                    data_base_dir,
                     port_weights,
                     strats=strats,
                     method=args.method,
@@ -139,8 +134,8 @@ if __name__ == "__main__":
             _, cv_results[cv] = hedged_portfolio_weights_wrapper(
                 cv,
                 returns,
-                f"{garch_base_dir}/{cv}",
-                f"{data_base_dir}/{cv}",
+                garch_base_dir,
+                data_base_dir,
                 port_weights,
                 strats=strats,
                 method=args.method,
@@ -192,6 +187,7 @@ if __name__ == "__main__":
         strat: {cv: cv_results[cv]["signal"][strat] for cv in cv_results}
         for strat in strats
     }
+    predictions = {cv: cv_results[cv]["pred"] for cv in cv_results}
 
     if args.save:
         LOGGER.info("Saving results... ")
@@ -205,6 +201,13 @@ if __name__ == "__main__":
             signals,
             open(
                 f"{perf_dir}/hedging_signals_{METHODS_MAPPING[args.method]}.p",
+                "wb",
+            ),
+        )
+        pickle.dump(
+            predictions,
+            open(
+                f"{perf_dir}/predictions.p",
                 "wb",
             ),
         )
