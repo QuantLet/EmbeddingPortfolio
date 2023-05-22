@@ -1,3 +1,4 @@
+import glob
 import json
 import os
 
@@ -34,6 +35,7 @@ def load_activation(garch_data_dir, ae_dir, garch_dir, perf_ae_dir, dataset):
         columns = BASE_FACTOR_ORDER_DATASET2_5
     else:
         raise NotImplementedError()
+    models = {c: pd.DataFrame() for c in columns}
 
     for cv in cvs:
         t = pd.read_csv(f"{garch_data_dir}/{cv}/train_linear_activation.csv",
@@ -68,6 +70,19 @@ def load_activation(garch_data_dir, ae_dir, garch_dir, perf_ae_dir, dataset):
         t = cv_predictions[cv].iloc[:, new_order].copy()
         predictions = pd.concat([predictions, t])
 
+        model_files = glob.glob(f"{garch_dir}/{cv}/**_model.json")
+        temp = {
+            int(f.split("/")[-1].split("_")[0][1:]): json.load(
+                open(f, "r")
+            ) for f in model_files}
+        temp = pd.DataFrame(temp)
+        cols = sorted(list(temp.columns))
+        temp = temp[cols]
+        temp = temp.iloc[:, new_order]
+        temp.columns = columns
+        for c in columns:
+            models[c] = pd.concat([models[c], temp[c]], axis=1)
+
     train_activation.columns = columns
     test_activation.columns = columns
     train_probas.columns = columns
@@ -76,8 +91,12 @@ def load_activation(garch_data_dir, ae_dir, garch_dir, perf_ae_dir, dataset):
 
     test_activation.index = pd.to_datetime(test_activation.index)
 
+    for c in columns:
+        models[c].columns = cvs
+        models[c] = models[c].T
+
     return (train_activation, test_activation, train_probas, test_probas,
-            predictions)
+            predictions, models)
 
 
 def hedged_portfolio_weights_wrapper(
