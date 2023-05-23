@@ -97,6 +97,7 @@ def load_result_wrapper(
             decoder_bias,
             _,
             _,
+            _,
         ) = load_result(
             config, test_set, data, assets, base_dir, cv, reorder_features
         )
@@ -551,18 +552,26 @@ def load_result(
     if "ae" in model_type:
         if config.batch_normalization:
             batch_norm_layer = model.layers[2]
-            u_relu = np.array(
+            u_batchnorm = np.array(
                 batch_norm_layer.gamma * (
                         - batch_norm_layer.moving_mean /
                         np.sqrt(
                             batch_norm_layer.moving_variance + batch_norm_layer.epsilon)
                 ) + batch_norm_layer.beta
             )
-            u_relu = pd.DataFrame(
-                np.repeat(u_relu.reshape(1, -1), len(test_data), axis=0),
+            u_batchnorm = pd.DataFrame(
+                np.repeat(u_batchnorm.reshape(1, -1), len(test_data), axis=0),
                 index=test_features.index,
                 columns=test_features.columns)
+        else:
+            u_batchnorm = None
+        u_relu = model.layers[1].get_weights()[-1]
+        u_relu = pd.DataFrame(
+            np.repeat(u_relu.reshape(1, -1), len(test_data), axis=0),
+            index=test_features.index,
+            columns=test_features.columns)
     else:
+        u_batchnorm = None
         u_relu = None
 
     return (
@@ -577,6 +586,7 @@ def load_result(
         relu_activation,
         decoder_bias,
         u_relu,
+        u_batchnorm,
         new_order,
     )
 

@@ -962,6 +962,7 @@ def one_cv(
             decoder_bias,
             _,
             _,
+            _,
         ) = load_result(
                 ae_config,
                 test_set,
