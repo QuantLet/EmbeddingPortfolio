@@ -124,9 +124,9 @@ fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=
   # Select mean model
   if (is.null(formula)) {
     if (arima) {
-      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, 
-                                      max.p = 3, max.q = 3, seasonal = FALSE, 
-                                      parallel=TRUE, num.cores = parallel::detectCores() - 1)
+      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 0, start.q = 0, 
+                                      max.p = 2, max.q = 2, seasonal = FALSE, max.order = 0,
+                                      max.d = 0, parallel=TRUE, num.cores = parallel::detectCores() - 1)
       arima.order = unname(forecast::arimaorder(ARIMAfit))
       if (arima.order[2] > 0) {
         data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
