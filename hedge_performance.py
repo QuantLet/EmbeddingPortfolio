@@ -12,12 +12,12 @@ from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
-DATA_BASE_DIR_1 = "activationProba/data/dataset1_relu_encoding_4"
-GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230501034824_encoding_4"
+DATA_BASE_DIR_1 = "activationProba/data/dataset1"
+GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230523121255"
 PERF_DIR_1 = "performance/test_final_models/ae/dataset1_20230522_193559"
 
-DATA_BASE_DIR_2 = "activationProba/data/dataset2_relu_encoding_5"
-GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230501043839_encoding_5"
+DATA_BASE_DIR_2 = "activationProba/data/dataset2"
+GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230523122848"
 PERF_DIR_2 = "performance/test_final_models/ae/dataset2_20230522_194420"
 
 if __name__ == "__main__":
