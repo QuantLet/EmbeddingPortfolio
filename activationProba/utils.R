@@ -119,27 +119,24 @@ load_data = function(path, end_date = NULL, start_date = NULL, window_size = NUL
   return(data)
 }
 
-fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=TRUE) {
+fit_model = function(data, cond.dist, p = NULL, q = NULL, formula = NULL, arima=TRUE, diff.order = 0) {
   n = nrow(data)
   # Select mean model
   if (is.null(formula)) {
     if (arima) {
-      ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 0, start.q = 0, 
-                                      max.p = 2, max.q = 2, seasonal = FALSE, max.order = 0,
-                                      max.d = 0, parallel=TRUE, num.cores = parallel::detectCores() - 1)
+      start.p = 0
+      start.q = 0
+      max.p = 2
+      max.q = 2
+      ARIMAfit = forecast::auto.arima(data, start.p = start.p, start.q = start.q,
+                                      max.d = 0, max.p = max.p, max.q = max.q,
+                                      seasonal = FALSE)
       arima.order = unname(forecast::arimaorder(ARIMAfit))
-      if (arima.order[2] > 0) {
-        data = diff(data, lag = 1, differences = arima.order[2], na.pad = FALSE)
-        ARIMAfit = forecast::auto.arima(data, method = "CSS-ML", start.p = 1, start.q = 1, seasonal = FALSE)  # stepwise=FALSE, parallel=TRUE, num.cores = parallel::detectCores() - 1)
-        arima.order = unname(forecast::arimaorder(ARIMAfit))
-      }
-      stopifnot(arima.order[2] == 0)
       formula = substitute(~ arma(a, b) + garch(p, q),
                            list(a = arima.order[1], b = arima.order[3], p = p, q = q))
     } else {
       formula = substitute(~ garch(p, q), list(p = p, q = q))
     }
-    
   }
   garch.model = tryCatch(
   {
