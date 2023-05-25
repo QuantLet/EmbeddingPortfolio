@@ -120,7 +120,7 @@ def get_features(
     rescale=None,
     scaler: Union[str, Dict] = "StandardScaler",
     resample=None,
-    excess_ret=True,
+    excess_ret=False,
     **kwargs,
 ):
     """

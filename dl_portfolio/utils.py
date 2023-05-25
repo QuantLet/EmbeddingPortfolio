@@ -311,7 +311,7 @@ def get_features_order(loadings: pd.DataFrame, ref_cluster: pd.DataFrame):
     dist = metrics.pairwise_distances(pd.concat([loadings.T, ref_cluster.T]))
     # Keep only the distances between loadings and ref_cluster
     dist = dist[:encoding_dim, encoding_dim:]
-    return np.argmin(dist, axis=1).tolist()
+    return np.argmin(dist, axis=0).tolist()
 
 
 def get_average_factor_loadings_over_runs(weights: pd.DataFrame,

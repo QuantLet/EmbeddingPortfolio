@@ -13,7 +13,7 @@ from shutil import copyfile
 from typing import Optional
 from sklearn.cluster import KMeans
 
-from dl_portfolio.cluster import get_optimal_p_silhouette, gap_optimal_cluster
+from dl_portfolio.cluster import get_optimal_p_silhouette
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.pca_ae import get_layer_by_name, heat_map, build_model
 from dl_portfolio.data import get_features
