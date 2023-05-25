@@ -102,7 +102,8 @@ def bb_silhouette(
         plt.fill_between(
             range(len(bb_criteria)), lower_b, upper_b, alpha=0.2, color="grey"
         )
-        plt.xticks(range(len(bb_criteria)), range(min_p, len(bb_criteria) + 1))
+        plt.xticks(range(len(bb_criteria)), range(min_p, len(bb_criteria) +
+                                                  min_p))
         plt.scatter(best_p - min_p, mean_[best_p - min_p], s=40, c="red")
         if savepath:
             plt.savefig(savepath, transparent=True, bbox_inches="tight")
