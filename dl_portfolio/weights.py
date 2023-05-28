@@ -3,7 +3,7 @@ import numpy as np
 
 import riskfolio as rf
 
-from typing import Union, Optional
+from typing import Union, Optional, List
 from sklearn.cluster import KMeans
 from sklearn.covariance import shrunk_covariance
 
@@ -23,7 +23,9 @@ from scipy.optimize import minimize
 def portfolio_weights(
     returns,
     loading=None,
-    portfolio=["markowitz", "shrink_markowitz", "ivp", "aerp", "erc"],
+    portfolio: List[str] = ["markowitz", "shrink_markowitz", "ivp", "aerp",
+                            "erc"],
+    alpha: List[float] = [0.01, 0.025, 0.05],
 ):
     assert all([p in PORTFOLIOS for p in portfolio]), [
         p for p in portfolio if p not in PORTFOLIOS
@@ -43,11 +45,17 @@ def portfolio_weights(
 
     if "erc_es" in portfolio:
         LOGGER.info("Computing ERC ES weights...")
-        port_w["erc_es"] = riskparity_weights(returns, risk_measure="CVaR")
+        for a in alpha:
+            port_w[f"erc_es_{a}"] = riskparity_weights(returns,
+                                                       risk_measure="CVaR",
+                                                       alpha=a)
 
     if "erc_cdar" in portfolio:
         LOGGER.info("Computing ERC CDaR weights...")
-        port_w["erc_cdar"] = riskparity_weights(returns, risk_measure="CDaR")
+        for a in alpha:
+            port_w[f"erc_cdar_{a}"] = riskparity_weights(returns,
+                                                         risk_measure="CDaR",
+                                                         alpha=a)
 
     if "aerp" in portfolio:
         LOGGER.info("Computing AE Risk Parity weights...")
@@ -68,11 +76,17 @@ def portfolio_weights(
 
     if 'herc_es' in portfolio:
         LOGGER.info('Computing HERC ES weights...')
-        port_w['herc_es'] = herc_weights(returns, risk_measure="CVaR")
+        for a in alpha:
+            port_w[f"herc_es_{a}"] = herc_weights(returns,
+                                                  risk_measure="CVaR",
+                                                  alpha=a)
 
     if 'herc_cdar' in portfolio:
         LOGGER.info('Computing HERC CDaR weights...')
-        port_w['herc_cdar'] = herc_weights(returns, risk_measure="CDaR")
+        for a in alpha:
+            port_w[f"herc_cdar_{a}"] = herc_weights(returns,
+                                                    risk_measure="CDaR",
+                                                    alpha=a)
 
     if "rb_factor" in portfolio:
         LOGGER.info('Computing RB factor weights...')
@@ -85,12 +99,15 @@ def portfolio_weights(
 
     if "rb_factor_cdar" in portfolio:
         LOGGER.info('Computing RB factor CDaR weights...')
-        port_w['rb_factor_cdar'] = get_rb_factor_full(
-            returns, loading, risk_measure="CDaR")
+        for a in alpha:
+            port_w[f"rb_factor_cdar_{a}"] = get_rb_factor_full(
+                returns, loading, risk_measure="CDaR", alpha=a)
+
     if "rb_factor_es" in portfolio:
         LOGGER.info('Computing RB factor ES weights...')
-        port_w['rb_factor_es'] = get_rb_factor_full(
-            returns, loading, risk_measure="CVaR")
+        for a in alpha:
+            port_w[f"rb_factor_es_{a}"] = get_rb_factor_full(
+                returns, loading, risk_measure="CDaR", alpha=a)
 
     return port_w
 
@@ -374,11 +391,12 @@ def ivolp_weights(S: Union[pd.DataFrame, np.ndarray]) -> pd.Series:
 def riskparity_weights(returns: pd.DataFrame(),
                        risk_measure: str = "MV",
                        budget: Optional[np.ndarray] = None,
+                       alpha: float = 0.05,
                        **kwargs) -> pd.Series:
     if budget is not None and len(budget.shape) == 1:
         budget = budget.reshape(-1, 1)
 
-    port = rf.Portfolio(returns=returns)
+    port = rf.Portfolio(returns=returns, alpha=alpha)
     port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
     weights = port.rp_optimization(model="Classic", rm=risk_measure,
                                    b=budget, **kwargs)
@@ -426,7 +444,7 @@ def compute_parity_cvar_weights(returns):
 
 
 def get_rb_factor_full(returns, loading, threshold=1e-2, risk_measure="MV",
-                       simple=False):
+                       alpha=0.05, simple=False):
     """
     Compute inner weights with rb_perfect_corr and apply inverse volatility
     at the factor level
@@ -449,15 +467,14 @@ def get_rb_factor_full(returns, loading, threshold=1e-2, risk_measure="MV",
 
     for i in range(n_components):
         c_assets = cluster_ind[cluster_ind == i].index
-
-        port = rf.Portfolio(returns=returns[c_assets])
-        port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
-
         budget = loading.loc[c_assets, i].copy()
         if simple:
             budget.values[:] = 1
         budget = budget / np.linalg.norm(budget)
         budget = budget ** 2  # Must sum to 1, also is interpretable as
+
+        port = rf.Portfolio(returns=returns[c_assets], alpha=alpha)
+        port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
         w = port.rp_optimization(model="Classic", rm=risk_measure,
                                  b=budget.values.reshape(-1, 1))
         inner_weights.loc[c_assets, i] = w["weights"]
@@ -468,7 +485,7 @@ def get_rb_factor_full(returns, loading, threshold=1e-2, risk_measure="MV",
             n_components)])
     if factor_returns.shape[0] > 1:
         factor_returns = pd.DataFrame(factor_returns).T
-        port = rf.Portfolio(returns=factor_returns)
+        port = rf.Portfolio(returns=factor_returns, alpha=alpha)
         port.assets_stats(method_mu="hist", method_cov="hist", d=0.94)
         cluster_weights = port.rp_optimization(model="Classic", rm=risk_measure)
         cluster_weights = cluster_weights["weights"]
@@ -670,8 +687,8 @@ def getHRP(cov, corr, index):
 
 
 def herc_weights(returns: pd.DataFrame, linkage: str = 'single',
-                 risk_measure: str = "equal", **kwargs):
-    port = HCPortfolio(returns=returns)
+                 risk_measure: str = "equal", alpha: float = 0.05, **kwargs):
+    port = HCPortfolio(returns=returns, alpha=alpha)
     weights = port.optimization(model="HERC", rm=risk_measure,
                                 linkage=linkage, **kwargs)
     weights = weights.loc[returns.columns, "weights"]
