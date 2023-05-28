@@ -698,7 +698,6 @@ def cv_portfolio_perf_df(
     :param train_weights: Dictionary with keys (cv: 0, 1, 2, ...), each containing a pd.DataFrame of weights
     :return:
     """
-    assert all([p in PORTFOLIOS for p in portfolios])
     prices, assets = load_data(dataset)
     port_perf = {}
     leverage = {}
@@ -1065,7 +1064,7 @@ def get_cv_portfolio_weights(
     config,
     test_set,
     portfolios,
-    market_budget,
+    cv_loading,
     window: Optional[int] = 250,
     n_jobs: int = 1,
     dataset="dataset2",
@@ -1077,29 +1076,10 @@ def get_cv_portfolio_weights(
     cvs = sorted([int(cv) for cv in os.listdir(f"{dirs[0]}") if cv.isdigit()])
 
     def worker(
-            config,
             data: pd.DataFrame,
-            assets: List,
-            dirs: List,
             cv: int,
-            portfolios: List,
-            window: Optional[int] = 250,
-            **kwargs,
     ):
         try:
-            # First get average factor loadings
-            if len(dirs) > 1:
-                loading = pd.concat(
-                    [pd.read_pickle(f"{d}/{cv}/decoder_weights.p").T for d in
-                     dirs],
-                    ignore_index=True
-                )
-                encoding_dim = int(len(loading) / len(dirs))
-                loading = get_average_factor_loadings_over_runs(loading,
-                                                                encoding_dim)
-            else:
-                loading = pd.read_pickle(f"{dirs[0]}/{cv}/decoder_weights.p")
-
             # Get train returns
             data_spec = config.data_specs[cv]
             _, _, _, _, dates = get_features(
@@ -1120,7 +1100,7 @@ def get_cv_portfolio_weights(
                 train_returns = train_returns.iloc[-window:]
             port = portfolio_weights(
                 train_returns,
-                loading=loading,
+                loading=cv_loading[cv],
                 portfolio=portfolios,
                 **kwargs,
             )
@@ -1135,14 +1115,8 @@ def get_cv_portfolio_weights(
         with Parallel(n_jobs=n_jobs) as _parallel_pool:
             cv_port = _parallel_pool(
                 delayed(worker)(
-                    config,
                     data,
-                    assets,
-                    dirs,
                     cv,
-                    portfolios,
-                    window=window,
-                    **kwargs,
                 )
                 for cv in cvs
             )
@@ -1156,15 +1130,8 @@ def get_cv_portfolio_weights(
         cv_port = {}
         for cv in cvs:
             _, cv_port[cv] = worker(
-                config,
                 data,
-                assets,
-                dirs,
                 cv,
-                portfolios,
-                market_budget,
-                window=window,
-                **kwargs,
             )
 
     return cv_port

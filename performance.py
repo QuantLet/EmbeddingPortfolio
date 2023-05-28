@@ -43,22 +43,32 @@ from dl_portfolio.constant import (
     BASE_FACTOR_ORDER_DATASET2_5,
 )
 
+ALPHA = [0.01, 0.025, 0.05]
 PORTFOLIOS = [
     "equal",
     "equal_class",
     "hrp",
-    # "hcaa",
     "herc_vol",
-    # "herc_cdar",
-    # "herc_es",
+    "herc_cdar",
+    "herc_es",
     "aerp",
     "erc",
-    # "erc_cdar",
-    # "erc_es",
+    "erc_cdar",
+    "erc_es",
     "rb_factor",
-    # "rb_factor_cdar",
-    # "rb_factor_es",
+    "rb_factor_cdar",
+    "rb_factor_es",
 ]
+STRATEGY_NAMES = []
+if ALPHA is not None:
+    for p in PORTFOLIOS:
+        if "_es" in p or "_cdar" in p:
+            for a in ALPHA:
+                STRATEGY_NAMES.append(f"{p}_{a}")
+        else:
+            STRATEGY_NAMES.append(p)
+else:
+    STRATEGY_NAMES = PORTFOLIOS
 
 np.random.seed(0) # there is some variance with HCAA...
 
@@ -225,18 +235,21 @@ if __name__ == "__main__":
 
     N_EXP = len(paths)
 
+    # Get loadings for each training
     cv_loading = get_cv_loadings(args.base_dir)
+    # Get portfolio weights
     cv_port_weights = get_cv_portfolio_weights(
         args.base_dir,
         config,
         args.test_set,
         PORTFOLIOS,
-        market_budget,
+        cv_loading,
         window=args.window,
         n_jobs=args.n_jobs,
         dataset=config.dataset,
+        alpha=ALPHA,
     )
-
+    # Get all results, prediciton, etc.
     for i, path in enumerate(paths):
         LOGGER.info(len(paths) - i)
         cv_results[i] = get_cv_results(
@@ -592,7 +605,7 @@ if __name__ == "__main__":
 
         port_perf, leverage = cv_portfolio_perf_df(
             cv_portfolio_df,
-            portfolios=PORTFOLIOS,
+            portfolios=STRATEGY_NAMES,
             volatility_target=args.volatility_target,
             market_budget=market_budget,
             dataset=config.dataset,
@@ -601,13 +614,13 @@ if __name__ == "__main__":
 
         # Get portfolio weights time series
         # port_weights = {}
-        # for p in PORTFOLIOS:
+        # for p in STRATEGY_NAMES:
         #     if p not in ['equal', 'equal_class']:
         #         port_weights[p] = get_ts_weights(cv_results, port=p)
         port_weights = get_ts_weights(port_weights)
         # Get average perf across runs
         ann_perf = pd.DataFrame()
-        for p in PORTFOLIOS:
+        for p in STRATEGY_NAMES:
             ann_perf[p] = port_perf[p]["total"].iloc[:, 0]
 
         LOGGER.info("Saving backtest performance and plots...")
@@ -620,7 +633,7 @@ if __name__ == "__main__":
             )
             plot_perf(
                 ann_perf,
-                strategies=PORTFOLIOS,
+                strategies=STRATEGY_NAMES,
                 save_path=f"{save_dir}/performance_all.png",
                 show=args.show,
                 legend=args.legend,
