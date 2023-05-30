@@ -97,16 +97,16 @@ def portfolio_weights(
         port_w['rb_factor_full_vol'] = get_rb_factor_full(
             returns, loading, risk_measure="MV")
 
-    if "rb_factor_cdar" in portfolio:
-        LOGGER.info('Computing RB factor CDaR weights...')
-        for a in alpha:
-            port_w[f"rb_factor_cdar_{a}"] = get_rb_factor_full(
-                returns, loading, risk_measure="CDaR", alpha=a)
-
     if "rb_factor_es" in portfolio:
         LOGGER.info('Computing RB factor ES weights...')
         for a in alpha:
             port_w[f"rb_factor_es_{a}"] = get_rb_factor_full(
+                returns, loading, risk_measure="CVaR", alpha=a)
+
+    if "rb_factor_cdar" in portfolio:
+        LOGGER.info('Computing RB factor CDaR weights...')
+        for a in alpha:
+            port_w[f"rb_factor_cdar_{a}"] = get_rb_factor_full(
                 returns, loading, risk_measure="CDaR", alpha=a)
 
     return port_w
