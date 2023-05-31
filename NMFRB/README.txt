@@ -1,0 +1,3 @@
+- Install the "dl_portfolio" package with the setup.py
+- Read the setup.py!
+- Read the Wiki on this repo!
