@@ -122,11 +122,14 @@ def backtest_stats(
             if strat not in bench_names:
                 if "hedge" in strat:
                     sspw_value = np.mean(
-                        [np.mean(
-                            weights[strat][k].apply(herfindahl_index, axis=1)
-                        )
-                    for k in weights[strat]]
+                        [
+                            np.mean(pw[strat][k].apply(herfindahl_index,
+                                                       normalize=False,
+                                                       axis=1))
+                            for k in pw[strat]
+                        ]
                     )
+
                     raise NotImplementedError("You must verify logic for tto!")
                     tto_value = np.mean(
                         [
@@ -184,6 +187,7 @@ def backtest_stats(
         stats["ES-5%"] = stats["ES-5%"] * 100
         stats["MDD"] = stats["MDD"] * 100
         stats["CEQ"] = stats["CEQ"] * 100
+        stats["Volatility"] = stats["Volatility"] * 100
         if sspw_tto:
             stats["TTO"] = stats["TTO"] * 100
     if kwargs.get("round", False):
@@ -484,11 +488,10 @@ def sharpe_ratio(perf, period: int = 1):
     return perf.mean() / perf.std() * np.sqrt(period)
 
 
-def get_mdd(performance: [pd.Series, np.ndarray]):
-    assert len(performance.shape) == 1
+def get_mdd(performance: [pd.Series, pd.DataFrame]):
     dd = performance / performance.cummax() - 1.0
     mdd = dd.cummin()
-    mdd = abs(min(mdd))
+    mdd = abs(mdd.min())
     return mdd
 
 

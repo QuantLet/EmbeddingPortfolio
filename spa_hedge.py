@@ -12,10 +12,10 @@ from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 
 PERF_DIR_1 = "performance/test_final_models/ae_paper/ae" \
-             "/dataset1_20230528_123124"
+             "/dataset1_20230530_093818"
 
 PERF_DIR_2 = "performance/test_final_models/ae_paper/ae" \
-             "/dataset2_20230528_135044"
+             "/dataset2_20230530_101417"
 
 STRATS = ["rb_factor", "rb_factor_es_0.01", "rb_factor_cdar_0.01"]
 

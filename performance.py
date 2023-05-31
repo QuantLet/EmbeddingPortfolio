@@ -43,7 +43,7 @@ from dl_portfolio.constant import (
     BASE_FACTOR_ORDER_DATASET2_5,
 )
 
-ALPHA = [0.01, 0.025, 0.05]
+# List of portfolios to compute
 PORTFOLIOS = [
     "equal",
     "equal_class",
@@ -51,7 +51,6 @@ PORTFOLIOS = [
     "herc_vol",
     "herc_cdar",
     "herc_es",
-    "aerp",
     "erc",
     "erc_cdar",
     "erc_es",
@@ -59,6 +58,10 @@ PORTFOLIOS = [
     "rb_factor_cdar",
     "rb_factor_es",
 ]
+# Risk levels
+ALPHA = [0.01]
+
+# ------------------
 STRATEGY_NAMES = []
 if ALPHA is not None:
     for p in PORTFOLIOS:

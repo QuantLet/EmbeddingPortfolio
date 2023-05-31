@@ -14,11 +14,13 @@ from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
 
 DATA_BASE_DIR_1 = "activationProba/data/dataset1"
 GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230523121255"
-PERF_DIR_1 = "performance/test_final_models/ae/dataset1_20230522_193559"
+PERF_DIR_1 = "performance/test_final_models/ae_paper/ae" \
+             "/dataset1_20230530_093818"
 
 DATA_BASE_DIR_2 = "activationProba/data/dataset2"
 GARCH_BASE_DIR_2 = "activationProba/output/dataset2/20230523122848"
-PERF_DIR_2 = "performance/test_final_models/ae/dataset2_20230522_194420"
+PERF_DIR_2 = "performance/test_final_models/ae_paper/ae" \
+             "/dataset2_20230530_101417"
 
 if __name__ == "__main__":
     import argparse
@@ -107,7 +109,8 @@ if __name__ == "__main__":
     returns = data.pct_change(1).dropna()
 
     strats = [
-        s for s in list(port_weights.keys()) if s in ["aerp", "rb_factor"]
+        s for s in list(port_weights.keys()) if "aerp" in s or
+                                                "rb_factor" in s
     ]
     cv_folds = range(sum([cv.isdigit() for cv in os.listdir(garch_base_dir)]))
     LOGGER.info(f"Method for optimal threshold is: {args.method}")
