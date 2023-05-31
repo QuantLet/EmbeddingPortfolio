@@ -28,7 +28,9 @@ from .ridge import NonnegativeRidge
 from .ridge import nonnegative_ridge_regression
 
 
-__all__ = ['NonnegativeLinear',
-           'NonnegativeRidge',
-           'nonnegative_regression',
-           'nonnegative_ridge_regression']
+__all__ = [
+    "NonnegativeLinear",
+    "NonnegativeRidge",
+    "nonnegative_regression",
+    "nonnegative_ridge_regression",
+]

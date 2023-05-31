@@ -3,7 +3,7 @@ import logging
 
 class ColorFormatter(logging.Formatter):
     grey = "\x1b[38;20m"
-    blue = '\x1b[38;5;39m'
+    blue = "\x1b[38;5;39m"
     green = "\x1b[32;20m"
     yellow = "\x1b[33;20m"
     red = "\x1b[31;20m"
@@ -16,7 +16,7 @@ class ColorFormatter(logging.Formatter):
         logging.INFO: green + format + reset,
         logging.WARNING: yellow + format + reset,
         logging.ERROR: red + format + reset,
-        logging.CRITICAL: bold_red + format + reset
+        logging.CRITICAL: bold_red + format + reset,
     }
 
     def format(self, record):
@@ -25,25 +25,28 @@ class ColorFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def get_logger(name_logger, level="debug"):
-    logger_to_ret = logging.getLogger(name_logger)
+def get_logger(name, level="debug"):
+    logger = logging.getLogger(name)
     if level == "debug":
         level = logging.DEBUG
     elif level == "info":
         level = logging.INFO
     elif level == "warning":
         level = logging.WARNING
+    elif level == "error":
+        level = logging.ERROR
+    elif level == "notset":
+        level = logging.NOTSET
     else:
         raise NotImplementedError()
-    logger_to_ret.setLevel(level)
+    logger.setLevel(level)
 
     stdout_logger = logging.StreamHandler()
-    stdout_logger.setLevel(level)
     stdout_logger.setFormatter(ColorFormatter())
-    logger_to_ret.addHandler(stdout_logger)
-    logger_to_ret.propagate = False
+    logger.addHandler(stdout_logger)
+    logger.propagate = False
 
-    return logger_to_ret
+    return logger
 
 
 LOGGER = get_logger("DL-Portfolio-Logger")

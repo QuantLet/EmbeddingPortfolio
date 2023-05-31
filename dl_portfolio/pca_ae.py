@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+
 from dl_portfolio.custom_layer import UncorrelatedFeaturesLayer
 from dl_portfolio.constraints import NonNegAndUnitNorm
 from dl_portfolio.regularizers import WeightsOrthogonality
@@ -7,29 +8,36 @@ from typing import List, Optional
 import tensorflow as tf
 import seaborn as sns
 from tensorflow.keras.utils import CustomObjectScope
+import sys
 
 
 def create_linear_encoder_with_constraint(input_dim, encoding_dim):
-    asset_input = tf.keras.layers.Input(input_dim, dtype=tf.float32, name='asset_input')
-    kernel_constraint = NonNegAndUnitNorm(max_value=1., axis=0)  # tf.keras.constraints.NonNeg()#
+    asset_input = tf.keras.layers.Input(
+        input_dim, dtype=tf.float32, name="asset_input"
+    )
+    kernel_constraint = NonNegAndUnitNorm(
+        max_value=1.0, axis=0
+    )  # tf.keras.constraints.NonNeg()#
     kernel_regularizer = WeightsOrthogonality(
         encoding_dim,
         weightage=1,
         axis=0,
-        regularizer={'name': 'l2', 'params': {'l2': 1e-3}}
+        regularizer={"name": "l2", "params": {"l2": 1e-3}},
     )
-    encoder_layer = tf.keras.layers.Dense(encoding_dim,
-                                          activation='linear',
-                                          kernel_initializer=tf.keras.initializers.HeNormal(),
-                                          kernel_regularizer=kernel_regularizer,
-                                          kernel_constraint=kernel_constraint,
-                                          use_bias=True,
-                                          name='encoder',
-                                          dtype=tf.float32)
+    encoder_layer = tf.keras.layers.Dense(
+        encoding_dim,
+        activation="linear",
+        kernel_initializer=tf.keras.initializers.HeNormal(),
+        kernel_regularizer=kernel_regularizer,
+        kernel_constraint=kernel_constraint,
+        use_bias=True,
+        name="encoder",
+        dtype=tf.float32,
+    )
     encoder = tf.keras.models.Model(asset_input, encoder_layer(asset_input))
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
-    encoder.compile(optimizer, 'mse')
+    encoder.compile(optimizer, "mse")
 
     return encoder
 
@@ -38,11 +46,13 @@ def create_decoder(pca_ae_model, weights: Optional[List[np.ndarray]] = None):
     output_dim = pca_ae_model.layers[0].input_shape[0][-1]
     encoding_dim = pca_ae_model.layers[1].output_shape[-1]
 
-    factors = tf.keras.layers.Input(encoding_dim, dtype=tf.float32, name='relu_factor')
+    factors = tf.keras.layers.Input(
+        encoding_dim, dtype=tf.float32, name="relu_factor"
+    )
     batch_norm = pca_ae_model.layers[2]
-    output = tf.keras.layers.Dense(output_dim,
-                                   activation='linear',
-                                   dtype=tf.float32)
+    output = tf.keras.layers.Dense(
+        output_dim, activation="linear", dtype=tf.float32
+    )
     if weights is None:
         W = pca_ae_model.layers[1].get_weights()[0].T
         b = pca_ae_model.layers[-1].get_weights()[0]
@@ -55,12 +65,10 @@ def create_decoder(pca_ae_model, weights: Optional[List[np.ndarray]] = None):
 
 
 def build_model(model_type, input_dim, encoding_dim, **kwargs):
-    if model_type == 'ae_model':
-        model, encoder, extra_features = ae_model(input_dim,
-                                                  encoding_dim,
-                                                  **kwargs
-                                                  )
-
+    if model_type == "ae_model":
+        model, encoder, extra_features = ae_model(
+            input_dim, encoding_dim, **kwargs
+        )
     else:
         raise NotImplementedError()
 
@@ -71,51 +79,70 @@ def get_layer_by_name(name, model):
     return [l for l in model.layers if l.name == name][0]
 
 
-def ae_model(input_dim: int,
-             encoding_dim: int,
-             n_features: int = None,
-             extra_features_dim: int = 1,
-             activation: str = 'linear',
-             kernel_initializer: str = 'glorot_uniform',
-             activity_regularizer=None,
-             kernel_constraint=None,
-             kernel_regularizer=None,
-             **kwargs
-             ):
-    uncorrelated_features = kwargs.get('uncorrelated_features', True)
-    batch_size = kwargs.get('batch_size', None)
-    weightage = kwargs.get('weightage', 1.)
-    batch_normalization = kwargs.get('batch_normalization', False)
-    dropout = kwargs.get('dropout', None)
+def ae_model(
+    input_dim: int,
+    encoding_dim: int,
+    n_features: int = None,
+    extra_features_dim: int = 1,
+    activation: str = "relu",
+    kernel_initializer: str = "glorot_uniform",
+    activity_regularizer=None,
+    kernel_constraint=None,
+    kernel_regularizer=None,
+    encoder_bias=True,
+    decoder_bias=True,
+    **kwargs,
+):
+    uncorrelated_features = kwargs.get("uncorrelated_features", True)
+    batch_size = kwargs.get("batch_size", None)
+    weightage = kwargs.get("weightage", 1.0)
+    batch_normalization = kwargs.get("batch_normalization", False)
+    dropout = kwargs.get("dropout", None)
 
     if type(kernel_regularizer).__name__ == "WeightsOrthogonality":
+        reg_params = kernel_regularizer.regularizer.get_config()
+        reg_name = list(reg_params.keys())[0]
+        assert reg_name in ["l1", "l2"]
         dkernel_regularizer = WeightsOrthogonality(
             input_dim,
             weightage=kernel_regularizer.weightage,
-            axis=0)
+            axis=0,
+            regularizer={"name": reg_name, "params": reg_params},
+        )
         dkernel_regularizer.regularizer = dkernel_regularizer.regularizer
 
     if type(kernel_constraint).__name__ == "NonNegAndUnitNorm":
-        dkernel_constraint = NonNegAndUnitNorm(max_value=1., axis=1)
+        dkernel_constraint = NonNegAndUnitNorm(max_value=1.0, axis=1)
 
-    with CustomObjectScope({'MyActivityRegularizer': activity_regularizer}):  # required for Keras to recognize
-        asset_input = tf.keras.layers.Input(input_dim, batch_size=batch_size, dtype=tf.float32, name='asset_input')
-        encoder_layer = tf.keras.layers.Dense(encoding_dim,
-                                              activation=activation,
-                                              kernel_initializer=kernel_initializer,
-                                              activity_regularizer=activity_regularizer,
-                                              kernel_constraint=kernel_constraint,
-                                              use_bias=True,
-                                              name='encoder',
-                                              dtype=tf.float32)
-        decoder_layer = tf.keras.layers.Dense(input_dim,
-                                              activation='linear',
-                                              kernel_initializer=kernel_initializer,
-                                              kernel_regularizer=dkernel_regularizer,
-                                              kernel_constraint=dkernel_constraint,
-                                              use_bias=True,
-                                              name='decoder',
-                                              dtype=tf.float32)
+    with CustomObjectScope(
+        {"MyActivityRegularizer": activity_regularizer}
+    ):  # required for Keras to recognize
+        asset_input = tf.keras.layers.Input(
+            input_dim,
+            batch_size=batch_size,
+            dtype=tf.float32,
+            name="asset_input",
+        )
+        encoder_layer = tf.keras.layers.Dense(
+            encoding_dim,
+            activation=activation,
+            kernel_initializer=kernel_initializer,
+            activity_regularizer=activity_regularizer,
+            kernel_constraint=kernel_constraint,
+            use_bias=encoder_bias,
+            name="encoder",
+            dtype=tf.float32,
+        )
+        decoder_layer = tf.keras.layers.Dense(
+            input_dim,
+            activation="linear",
+            kernel_initializer=kernel_initializer,
+            kernel_regularizer=dkernel_regularizer,
+            kernel_constraint=dkernel_constraint,
+            use_bias=decoder_bias,
+            name="decoder",
+            dtype=tf.float32,
+        )
         encoding = encoder_layer(asset_input)
 
         if dropout is not None:
@@ -127,24 +154,36 @@ def ae_model(input_dim: int,
             encoding = batch_norm_layer(encoding)
 
         if uncorrelated_features:
-            activity_regularizer_layer = UncorrelatedFeaturesLayer(encoding_dim, norm='1', use_cov=True,
-                                                                   weightage=weightage)
+            activity_regularizer_layer = UncorrelatedFeaturesLayer(
+                encoding_dim, norm="1", use_cov=True, weightage=weightage
+            )
 
             encoding = activity_regularizer_layer(encoding)
         encoder = tf.keras.models.Model(asset_input, encoding)
 
         # Extra input
         if n_features is not None:
-            extra_input = tf.keras.layers.Input(n_features, batch_size=batch_size, dtype=tf.float32, name='extra_input')
-            extra_features_layer = tf.keras.layers.Dense(extra_features_dim,
-                                                         activation='linear',
-                                                         use_bias=True,
-                                                         name='extra_features',
-                                                         dtype=tf.float32)
+            extra_input = tf.keras.layers.Input(
+                n_features,
+                batch_size=batch_size,
+                dtype=tf.float32,
+                name="extra_input",
+            )
+            extra_features_layer = tf.keras.layers.Dense(
+                extra_features_dim,
+                activation="linear",
+                use_bias=True,
+                name="extra_features",
+                dtype=tf.float32,
+            )
             extra_features = extra_features_layer(extra_input)
-            hidden_layer = tf.keras.layers.concatenate([encoding, extra_features])
+            hidden_layer = tf.keras.layers.concatenate(
+                [encoding, extra_features]
+            )
             output = decoder_layer(hidden_layer)
-            autoencoder = tf.keras.models.Model([asset_input, extra_input], output)
+            autoencoder = tf.keras.models.Model(
+                [asset_input, extra_input], output
+            )
         else:
             output = decoder_layer(encoding)
             autoencoder = tf.keras.models.Model(asset_input, output)
@@ -160,9 +199,63 @@ def heat_map(encoder_weights, show=False, save_dir=None, **kwargs):
     fig, axs = plt.subplots(1, n_clusters, figsize=(10, 10), sharey=True)
 
     for j, c in enumerate(list(encoder_weights.columns)):
-        ax = sns.heatmap(encoder_weights[c].values.reshape(-1, 1), xticklabels=[c], yticklabels=yticks,
-                         ax=axs[j], cbar=j == n_clusters - 1, **kwargs)
+        ax = sns.heatmap(
+            encoder_weights[c].values.reshape(-1, 1),
+            xticklabels=[c],
+            yticklabels=yticks,
+            ax=axs[j],
+            cbar=j == n_clusters - 1,
+            **kwargs,
+        )
     if save_dir:
-        plt.savefig(f'{save_dir}/clusters_heatmap.png', bbox_inches='tight', pad_inches=0, transparent=True)
+        plt.savefig(
+            f"{save_dir}/clusters_heatmap.png",
+            bbox_inches="tight",
+            pad_inches=0,
+            transparent=True,
+        )
     if show:
         plt.show()
+
+
+def load_model_from_config(base_dir, cv, input_dim, encoding_dim=None):
+    sys.path.append(base_dir)
+    import ae_config as config
+    if config.encoding_dim is None:
+        assert encoding_dim is not None
+    else:
+        encoding_dim = config.encoding_dim
+
+    kernel_regularizer = config.kernel_regularizer
+    kernel_regularizer.encoding_dim = encoding_dim
+
+    model, encoder, extra_features = build_model(
+        config.model_type,
+        input_dim,
+        encoding_dim,
+        n_features=None,
+        extra_features_dim=1,
+        activation=config.activation,
+        batch_normalization=config.batch_normalization,
+        kernel_initializer=config.kernel_initializer,
+        kernel_constraint=config.kernel_constraint,
+        kernel_regularizer=kernel_regularizer,
+        activity_regularizer=config.activity_regularizer,
+        loss=config.loss,
+        uncorrelated_features=config.uncorrelated_features,
+        weightage=config.weightage,
+        encoder_bias=config.encoder_bias,
+        decoder_bias=config.decoder_bias,
+    )
+    model.load_weights(f"{base_dir}/{cv}/model.h5")
+    layer_name = list(
+        filter(
+            lambda x: "uncorrelated_features_layer" in x,
+            [l.name for l in model.layers],
+        )
+    )[0]
+    encoder = tf.keras.Model(
+        inputs=model.input, outputs=model.get_layer(layer_name).output
+    )
+
+    return model, encoder

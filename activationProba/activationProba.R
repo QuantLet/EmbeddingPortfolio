@@ -1,14 +1,14 @@
 rm(list = ls(all = TRUE))
 graphics.off()
 source("run.R")
-library(rjson)
+if (!require(rjson)) install.packages("rjson")
 
 # ------------------------ Input ------------------------
 # Input
 config_path = "./config/config.json"
 save = TRUE
 save_dir = "output"
-do.debug = FALSE
+do.debug = TRUE
 
 # ------------------------ Script ------------------------
 
@@ -44,8 +44,10 @@ if (save) {
 t2 = Sys.time()
 print(paste("Total time:", t2 - t1))
 
-# Finally
-if (save) {
-  write.zoo(result$train, file = train_save_path, sep = ",")
-  write.zoo(result$test, file = save_path, sep = ",")
+if (!is.null(config$n_factors)){
+  # Finally
+  if (save) {
+    write.zoo(result$train, file = train_save_path, sep = ",")
+    write.zoo(result$test, file = save_path, sep = ",")
+  }
 }

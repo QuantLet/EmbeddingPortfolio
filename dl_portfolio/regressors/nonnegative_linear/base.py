@@ -17,8 +17,10 @@ from sklearn.utils import check_consistent_length
 
 def _solve_nnls(X, y):
     if X.ndim != 2 or y.ndim != 2:
-        raise ValueError("X and y must be 2d arrays! May have to reshape "
-                         "X.reshape(-1, 1) or y.reshape(-1, 1).")
+        raise ValueError(
+            "X and y must be 2d arrays! May have to reshape "
+            "X.reshape(-1, 1) or y.reshape(-1, 1)."
+        )
 
     n_features = X.shape[1]
     n_targets = y.shape[1]
@@ -77,8 +79,10 @@ def nonnegative_regression(X, y, sample_weight=None):
     n_samples_, n_targets = y.shape
 
     if n_samples != n_samples_:
-        raise ValueError("Number of samples in X and y does not correspond:"
-                         " %d != %d" % (n_samples, n_samples_))
+        raise ValueError(
+            "Number of samples in X and y does not correspond:"
+            " %d != %d" % (n_samples, n_samples_)
+        )
 
     has_sw = sample_weight is not None
 
@@ -154,12 +158,14 @@ class NonnegativeLinear(LinearModel, RegressorMixin):
         if X.ndim == 1:
             X = X.reshape(-1, 1)
 
-        if ((sample_weight is not None) and
-                np.atleast_1d(sample_weight).ndim > 1):
+        if (sample_weight is not None) and np.atleast_1d(
+            sample_weight
+        ).ndim > 1:
             raise ValueError("Sample weights must be 1D array or scalar")
 
         # fit weights
         self.coef_, self.res_ = nonnegative_regression(
-            X, y, sample_weight=sample_weight)
+            X, y, sample_weight=sample_weight
+        )
 
         return self

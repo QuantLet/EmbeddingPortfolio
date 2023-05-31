@@ -46,7 +46,9 @@ def ann_estimated_sharpe_ratio(returns=None, periods=261, *, sr=None):
     return sr
 
 
-def estimated_sharpe_ratio_stdev(returns=None, *, n=None, skew=None, kurtosis=None, sr=None):
+def estimated_sharpe_ratio_stdev(
+    returns=None, *, n=None, skew=None, kurtosis=None, sr=None
+):
     """
     Calculate the standard deviation of the sharpe ratio estimation.
 
@@ -88,11 +90,17 @@ def estimated_sharpe_ratio_stdev(returns=None, *, n=None, skew=None, kurtosis=No
     if skew is None:
         skew = pd.Series(scipy_stats.skew(_returns), index=_returns.columns)
     if kurtosis is None:
-        kurtosis = pd.Series(scipy_stats.kurtosis(_returns, fisher=False), index=_returns.columns)
+        kurtosis = pd.Series(
+            scipy_stats.kurtosis(_returns, fisher=False),
+            index=_returns.columns,
+        )
     if sr is None:
         sr = estimated_sharpe_ratio(_returns)
 
-    sr_std = np.sqrt((1 + (0.5 * sr ** 2) - (skew * sr) + (((kurtosis - 3) / 4) * sr ** 2)) / (n - 1))
+    sr_std = np.sqrt(
+        (1 + (0.5 * sr ** 2) - (skew * sr) + (((kurtosis - 3) / 4) * sr ** 2))
+        / (n - 1)
+    )
 
     if type(returns) == pd.DataFrame:
         sr_std = pd.Series(sr_std, index=returns.columns)
@@ -102,7 +110,9 @@ def estimated_sharpe_ratio_stdev(returns=None, *, n=None, skew=None, kurtosis=No
     return sr_std
 
 
-def probabilistic_sharpe_ratio(returns=None, sr_benchmark=0.0, *, sr=None, sr_std=None):
+def probabilistic_sharpe_ratio(
+    returns=None, sr_benchmark=0.0, *, sr=None, sr_std=None
+):
     """
     Calculate the Probabilistic Sharpe Ratio (PSR).
 
@@ -149,7 +159,9 @@ def probabilistic_sharpe_ratio(returns=None, sr_benchmark=0.0, *, sr=None, sr_st
     return psr
 
 
-def min_track_record_length(returns=None, sr_benchmark=0.0, prob=0.95, *, n=None, sr=None, sr_std=None):
+def min_track_record_length(
+    returns=None, sr_benchmark=0.0, prob=0.95, *, n=None, sr=None, sr_std=None
+):
     """
     Calculate the MIn Track Record Length (minTRL).
 
@@ -196,7 +208,11 @@ def min_track_record_length(returns=None, sr_benchmark=0.0, prob=0.95, *, n=None
     if sr_std is None:
         sr_std = estimated_sharpe_ratio_stdev(returns, sr=sr)
 
-    min_trl = 1 + (sr_std ** 2 * (n - 1)) * (scipy_stats.norm.ppf(prob) / (sr - sr_benchmark)) ** 2
+    min_trl = (
+        1
+        + (sr_std ** 2 * (n - 1))
+        * (scipy_stats.norm.ppf(prob) / (sr - sr_benchmark)) ** 2
+    )
 
     if type(returns) == pd.DataFrame:
         min_trl = pd.Series(min_trl, index=returns.columns)
@@ -230,7 +246,9 @@ def num_independent_trials(trials_returns=None, *, m=None, p=None):
 
     if p is None:
         corr_matrix = trials_returns.corr()
-        p = corr_matrix.values[np.triu_indices_from(corr_matrix.values, 1)].mean()
+        p = corr_matrix.values[
+            np.triu_indices_from(corr_matrix.values, 1)
+        ].mean()
 
     n = p + (1 - p) * m
 
@@ -239,7 +257,13 @@ def num_independent_trials(trials_returns=None, *, m=None, p=None):
     return n
 
 
-def expected_maximum_sr(trials_returns=None, expected_mean_sr=0.0, *, independent_trials=None, trials_sr_std=None):
+def expected_maximum_sr(
+    trials_returns=None,
+    expected_mean_sr=0.0,
+    *,
+    independent_trials=None,
+    trials_sr_std=None,
+):
     """
     Compute the expected maximum Sharpe ratio (Analytically)
 
@@ -272,14 +296,21 @@ def expected_maximum_sr(trials_returns=None, expected_mean_sr=0.0, *, independen
         srs = estimated_sharpe_ratio(trials_returns)
         trials_sr_std = srs.std()
 
-    maxZ = (1 - emc) * scipy_stats.norm.ppf(1 - 1. / independent_trials) + emc * scipy_stats.norm.ppf(
-        1 - 1. / (independent_trials * np.e))
+    maxZ = (1 - emc) * scipy_stats.norm.ppf(
+        1 - 1.0 / independent_trials
+    ) + emc * scipy_stats.norm.ppf(1 - 1.0 / (independent_trials * np.e))
     expected_max_sr = expected_mean_sr + (trials_sr_std * maxZ)
 
     return expected_max_sr
 
 
-def deflated_sharpe_ratio(trials_returns=None, returns_selected=None, expected_mean_sr=0.0, *, expected_max_sr=None):
+def deflated_sharpe_ratio(
+    trials_returns=None,
+    returns_selected=None,
+    expected_mean_sr=0.0,
+    *,
+    expected_max_sr=None,
+):
     """
     Calculate the Deflated Sharpe Ratio (PSR).
 
@@ -313,7 +344,8 @@ def deflated_sharpe_ratio(trials_returns=None, returns_selected=None, expected_m
     if expected_max_sr is None:
         expected_max_sr = expected_maximum_sr(trials_returns, expected_mean_sr)
 
-    dsr = probabilistic_sharpe_ratio(returns=returns_selected, sr_benchmark=expected_max_sr)
+    dsr = probabilistic_sharpe_ratio(
+        returns=returns_selected, sr_benchmark=expected_max_sr
+    )
 
     return dsr
-

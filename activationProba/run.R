@@ -1,6 +1,6 @@
 source("utils.R")
 
-run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
+run = function(config, save_dir=NULL, debug=FALSE){
   if (is.null(save_dir)){
     save = FALSE
   } else {
@@ -39,33 +39,79 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
       #   break
       # }
       factor.name = factors[ind]
-      print(factor.name)
       train_data = data$train[, ind]
       test_data = data$test[, ind]
       
+      if (config$evt) {
+        # Take loss series
+        train_data = - train_data
+        test_data = - test_data
+      }
+      
       # Model selection
-      best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = arima)
-      if (save){
-        model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
-        if (debug) {
-          print(paste("Saving model to", model_path))
+      if (is.null(config$selected_model)) {
+        best_model = model_selection(train_data, config$model.params, fit_model, parallel = !debug, arima = config$arima)
+        garch.model = best_model$model
+        if (save){
+          model_path = file.path(cv_save_dir, paste0(factor.name, "_model.rds"))
+          if (debug) {
+            print(paste("Saving model to", model_path))
+          }
+          saveRDS(garch.model, file = model_path)
         }
-        saveRDS(best_model$model, file = model_path)
+      } else {
+        garch.model = readRDS(file.path(config$selected_model, cv, paste0(factor.name, "_model.rds")))
       }
       # Now get probas
-      if (!is.null(best_model$model)) {
+      if (!is.null(garch.model)) {
         # First get proba on train set for proba threshold tuning
-        dist_func = get_dist_functon(best_model$model@fit$params$cond.dist)
-        n.fitted = length(best_model$model@fitted)
-        train_probas = unname(sapply(-best_model$model@fitted / best_model$model@sigma.t, dist_func))
+        if (config$evt) {
+          if (garch.model@fit$params$cond.dist == "QMLE"){
+            evt_res = fit_evt(train_data, formula=NULL, garch.model=garch.model, threshold=0.)
+            EVTmodel = evt_res$EVTmodel
+            if (save){
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
+              if (debug) {
+                print(paste("Saving model to", model_path))
+              }
+              saveRDS(EVTmodel, file = model_path)
+            }
+          } else {
+            evt_res = fit_evt(train_data, formula(garch.model), threshold=0.)
+            EVTmodel = evt_res$EVTmodel
+            garch.model = evt_res$GARCHmodel
+            if (save){
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_qmle_garchmodel.rds"))
+              if (debug) {
+                print(paste("Saving model to", model_path))
+              }
+              saveRDS(garch.model, file = model_path)
+              model_path = file.path(cv_save_dir, paste0(factor.name, "_evtmodel.rds"))
+              saveRDS(EVTmodel, file = model_path)
+            }
+          }
+          if (is.null(garch.model) | is.null(evt_res$EVTmodel)) {
+            train_probas = rep(NaN, length(index(train_data)))
+          } else {
+            train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, get_proba_evt_model, evt_res$EVTmodel)) 
+          }
+        } else {
+          EVTmodel = NULL
+          dist_func = get_dist_functon(garch.model@fit$params$cond.dist)
+          train_probas = unname(sapply(-garch.model@fitted / garch.model@sigma.t, dist_func))
+        }
         nans = nrow(train_data) - length(train_probas)
         if (nans > 0) {
-          train_probas = c(rep(NaN, nans), train_probas) # c(rep(NaN, nans), as.vector(train_probas[,1]))
+          train_probas = c(rep(NaN, nans), train_probas)
         }
         # Now predict probas on test set
-        probas = predict_proba(train_data, test_data, config$window_size, best_model$model,
-                               fit_model, next_proba, parallel = !debug, arima=arima)
-        probas = probas$proba
+        if (is.null(garch.model)) {
+          probas = rep(NaN, length(index(test_data)))
+        } else {
+          probas = predict_proba(train_data, test_data, config$window_size, garch.model,
+                                 fit_model, next_proba, parallel = !debug, arima=config$arima, EVTmodel=EVTmodel)
+          probas = probas$proba
+        }
       } else {
         train_probas = rep(NaN, length(index(train_data)))
         probas = rep(NaN, length(index(test_data)))
@@ -80,7 +126,7 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
     }
     cv_train_activation_probas = xts(cv_train_activation_probas, order.by = index(train_data))
     cv_activation_probas = xts(cv_activation_probas, order.by = index(test_data))
-    
+
     if (save){
       write.zoo(cv_train_activation_probas,
                 file = file.path(cv_save_dir, "train_activation_probas.csv"),
@@ -90,26 +136,30 @@ run = function(config, save_dir=NULL, debug=FALSE, arima = TRUE){
                 sep = ",")
     }
     
-    # Update with only the latest train dates (last month)
-    if (nrow(train_activation_probas) > 0) {
-      cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
+    if (!is.null(config$n_factors)){
+      # Update with only the latest train dates (last month)
+      if (nrow(train_activation_probas) > 0) {
+        cv_train_activation_probas = cv_train_activation_probas[index(cv_train_activation_probas) > last_train_date,]
+      }
+      train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
+      train_activation_probas = as.xts(train_activation_probas)
+      
+      activation_probas = rbind(activation_probas, cv_activation_probas)
+      activation_probas = as.xts(activation_probas)
+      print("Train probas")
+      print(tail(train_activation_probas))
+      print("Test probas")
+      print(tail(activation_probas))
+      print("NaNs CV:")
+      print(paste("Train:", sum(is.na(cv_train_activation_probas))))
+      print(paste("Test:", sum(is.na(cv_activation_probas))))
+      
+      last_train_date = index(data$train)[nrow(data$train)]
     }
-    train_activation_probas = rbind(train_activation_probas, cv_train_activation_probas)
-    train_activation_probas = as.xts(train_activation_probas)
-
-    activation_probas = rbind(activation_probas, cv_activation_probas)
-    activation_probas = as.xts(activation_probas)
-    print("Train probas")
-    print(tail(train_activation_probas))
-    print("Test probas")
-    print(tail(activation_probas))
-    print("NaNs CV:")
-    print(paste("Train:", sum(is.na(cv_train_activation_probas))))
-    print(paste("Test:", sum(is.na(cv_activation_probas))))
-
+    
     # Finally
     counter = counter + 1
-    last_train_date = index(data$train)[nrow(data$train)]
+    
   }
   return (list(train=train_activation_probas, test=activation_probas))
 }
