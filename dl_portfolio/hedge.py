@@ -69,8 +69,10 @@ def load_activation(garch_data_dir, ae_dir, garch_dir, perf_ae_dir, dataset):
 
         t = cv_predictions[cv].iloc[:, new_order].copy()
         predictions = pd.concat([predictions, t])
-
         model_files = glob.glob(f"{garch_dir}/{cv}/**_model.json")
+        assert len(
+            model_files) > 0, "Have you extracted the parameters from " \
+                              "the models? Please run get_model_params.R!"
         temp = {
             int(f.split("/")[-1].split("_")[0][1:]): json.load(
                 open(f, "r")
@@ -225,10 +227,10 @@ def hedged_portfolio_weights_wrapper(
         assert isinstance(window, int)
         train_returns = train_returns.iloc[-window:]
 
-    res = {"port": {}, "signal": {}}
+    res = {"port": {}, "signal": {}, "optimal_t": {}}
     for strat in strats:
         original_weights = or_port_weights[strat].iloc[cv][assets]
-        signals, hedged_weights, pred = hedged_portfolio_weights(
+        signals, hedged_weights, pred, optimal_t = hedged_portfolio_weights(
             train_returns,
             prev_probas,
             probas,
@@ -240,6 +242,7 @@ def hedged_portfolio_weights_wrapper(
         )
         res["port"][strat] = hedged_weights
         res["signal"][strat] = signals
+        res["optimal_t"][strat] = optimal_t
     res["train_returns"] = train_returns
     res["returns"] = test_returns
     res["pred"] = pred
@@ -276,6 +279,7 @@ def hedged_portfolio_weights(
     weights = pd.DataFrame()
     signals = pd.DataFrame()
     pred = pd.DataFrame()
+    proba_threshold = {}
     for cluster_name in cluster_names:
         train_w = pd.DataFrame(
             np.repeat(
@@ -304,6 +308,7 @@ def hedged_portfolio_weights(
             target=target,
             method=method,
         )
+        proba_threshold[cluster_name] = optimal_t
         pred = pd.concat([pred, (probas.loc[:, cluster_name] >=
                                  optimal_t).astype(int)], axis=1)
         signal_c, temp_w_c = get_hedged_weight_cluster(
@@ -318,7 +323,7 @@ def hedged_portfolio_weights(
     signals[unnassigned] = np.nan
     signals = signals[assets]
 
-    return signals, weights, pred
+    return signals, weights, pred, proba_threshold
 
 
 def get_signals(
