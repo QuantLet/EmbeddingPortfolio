@@ -16,12 +16,13 @@ from dl_portfolio.constant import (
     DATA_SPECS_AE_DATASET2
 )
 
-dataset = "dataset1"
-window_size = 250
+
 config = json.load(open('dl_portfolio/varspread/config.json', 'r'))
 comments = config['comments']
 datenow = str(dt.datetime.now()).split('.')[0].replace('-', '').replace(':', '').replace(' ', '')
 
+dataset = config["dataset"]
+window_size = config["window_size"]
 
 save_dir = 'varspread/%s_c-%s' % (datenow, comments)
 # save dir
@@ -36,20 +37,25 @@ coefs = np.arange(config['coefs'][0], config['coefs'][1], config['coefs'][2])
 lags = range(config['lags'][0], config['lags'][1])
 
 result = {}
-
 if dataset == "dataset1":
     data_specs = DATA_SPECS_AE_DATASET1
+    data = pd.read_csv(
+            "performance/test_final_models/ae_paper/ae"
+            "/dataset1_20230530_093818/20230607112758_prediction_qfit_rb_factor_0.05.csv",
+            index_col=0,
+            parse_dates=True
+        )
 elif dataset == "dataset2":
     data_specs = DATA_SPECS_AE_DATASET2
+    data = pd.read_csv(
+            "performance/test_final_models/ae_paper/ae"
+            "/dataset2_20230530_101417/20230607165807_prediction_qfit_rb_factor_0.05.csv",
+            index_col=0,
+            parse_dates=True
+        )
 else:
     raise NotImplementedError(dataset)
 
-# Load econ data
-data = pd.read_csv(
-    "/Users/brunospilak/Documents/HU/quantlet/MLvsGARCH/MLvsGARCHecon/saved_models/20230607112758_prediction_qfit_0.05.csv",
-    index_col=0,
-    parse_dates=True
-)
 data['returns_t+1'] = - data['std_losses']
 
 # Rescale estimates

@@ -7,5 +7,7 @@
   ],
   "qfit": "05",
   "lags": [3, 48],
-  "coefs": [0, 20.025, 0.025]
+  "coefs": [0, 20.025, 0.025],
+  "dataset": "dataset2",
+  "window_size": 250
 }
