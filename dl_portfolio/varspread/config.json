@@ -9,5 +9,6 @@
   "lags": [3, 48],
   "coefs": [0, 20.025, 0.025],
   "dataset": "dataset2",
+  "file_path": "performance/test_final_models/ae_paper/ae/dataset2_20230530_101417/20230607165807_prediction_qfit_rb_factor_0.05.csv",
   "window_size": 250
 }

@@ -40,16 +40,14 @@ result = {}
 if dataset == "dataset1":
     data_specs = DATA_SPECS_AE_DATASET1
     data = pd.read_csv(
-            "performance/test_final_models/ae_paper/ae"
-            "/dataset1_20230530_093818/20230607112758_prediction_qfit_rb_factor_0.05.csv",
+            config["file_path"],
             index_col=0,
             parse_dates=True
         )
 elif dataset == "dataset2":
     data_specs = DATA_SPECS_AE_DATASET2
     data = pd.read_csv(
-            "performance/test_final_models/ae_paper/ae"
-            "/dataset2_20230530_101417/20230607165807_prediction_qfit_rb_factor_0.05.csv",
+            config["file_path"],
             index_col=0,
             parse_dates=True
         )
