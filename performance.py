@@ -11,6 +11,7 @@ import pandas as pd
 import seaborn as sns
 from sklearn import metrics, preprocessing
 
+from dl_portfolio.pathconfig import DATA_DIR
 from dl_portfolio.backtest import (
     bar_plot_weights,
     backtest_stats,
@@ -190,7 +191,7 @@ if __name__ == "__main__":
     # Load Market budget
     if config.dataset == "dataset1":
         market_budget = pd.read_csv(
-            "data/dataset1/market_budget_dataset1.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset1.csv", index_col=0
         )
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat(
@@ -207,7 +208,7 @@ if __name__ == "__main__":
         market_budget["rc"] = market_budget["rc"].astype(int)
     elif config.dataset == "dataset2":
         market_budget = pd.read_csv(
-            "data/dataset2/market_budget_dataset2.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset2.csv", index_col=0
         )
         market_budget["rc"] = market_budget["rc"].astype(int)
     else:

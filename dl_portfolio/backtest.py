@@ -15,6 +15,7 @@ from dl_portfolio.data import (
     load_risk_free,
     impute_missing_risk_free, get_features,
 )
+from dl_portfolio.pathconfig import DATA_DIR, WORKING_DIR
 from dl_portfolio.utils import load_result, \
     get_average_factor_loadings_over_runs
 from dl_portfolio.constant import (
@@ -49,7 +50,7 @@ def backtest_stats(
     :return:
     """
     benchmark = pd.read_csv(
-        "data/benchmarks.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/benchmarks.csv", index_col=0, parse_dates=True
     )
     bench_names = list(benchmark.columns)
     benchmark = benchmark.pct_change().dropna()
@@ -202,14 +203,14 @@ def get_target_vol_other_weights(portfolio: str, window_size=250, fee=2e-4,
     if portfolio == "GMV_robust_dataset1":
         dataset = "dataset1"
         weights = pd.read_csv(
-            "./final_models/run_11_dataset1_20230408_145352/weights_GMV_robust.csv",
+            f"{WORKING_DIR}/final_models/run_11_dataset1_20230408_145352/weights_GMV_robust.csv",
             index_col=0,
         )
         data_specs = DATA_SPECS_AE_DATASET1
     elif portfolio == "MeanVar_dataset1":
         dataset = "dataset1"
         weights = pd.read_csv(
-            "./final_models/run_11_dataset1_20230408_145352/weights_MeanVar_long.csv",
+            f"{WORKING_DIR}/final_models/run_11_dataset1_20230408_145352/weights_MeanVar_long.csv",
             index_col=0,
         )
         data_specs = DATA_SPECS_AE_DATASET1
@@ -217,14 +218,14 @@ def get_target_vol_other_weights(portfolio: str, window_size=250, fee=2e-4,
         dataset = "dataset2"
         data_specs = DATA_SPECS_AE_DATASET2
         weights = pd.read_csv(
-            "./final_models/run_12_dataset2_20230408_145946/weights_GMV_robust.csv",
+            f"{WORKING_DIR}/final_models/run_12_dataset2_20230408_145946/weights_GMV_robust.csv",
             index_col=0,
         )
     elif portfolio == "MeanVar_dataset2":
         dataset = "dataset2"
         data_specs = DATA_SPECS_AE_DATASET2
         weights = pd.read_csv(
-            "./final_models/run_12_dataset2_20230408_145946/weights_MeanVar_long.csv",
+            f"{WORKING_DIR}/final_models/run_12_dataset2_20230408_145946/weights_MeanVar_long.csv",
             index_col=0,
         )
     else:
