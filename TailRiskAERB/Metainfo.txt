@@ -1,10 +1,10 @@
-Name of Quantlet: 'TailRiskAERB'
+Name of Quantlet: 'NMFRB'
 
 Published in: 'Portfolio tail-risk protection with non-linear latent factors'
 
 Description: 'We provide results for "Portfolio tail-risk protection with non-linear latent factors", Spilak, WK Härdle (2023). Please refer to github Wiki for a detailed description on how to use the code!'
 
-Keywords: 'NMF, autoencoder, portfolio, tail risk, tail-risk protection,
-cryptocurrency, deep learning, machine learning, econometrics'
+Keywords: 'NMF, Autoencoder, portfolio, tail-risk, trading strategy,
+cryptocurrency, deep learning, machine learning, econometrics, GARCH'
 
 Author: 'Bruno Spilak'
