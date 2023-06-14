@@ -11,6 +11,7 @@ from dl_portfolio.hedge import hedged_portfolio_weights_wrapper
 from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
 from dl_portfolio.constant import METHODS_MAPPING, AVAILABLE_METHODS
+from dl_portfolio.pathconfig import DATA_DIR
 
 DATA_BASE_DIR_1 = "activationProba/data/dataset1"
 GARCH_BASE_DIR_1 = "activationProba/output/dataset1/20230523121255"
@@ -75,7 +76,7 @@ if __name__ == "__main__":
         # Load data
         data, assets = load_data(dataset="dataset1")
         market_budget = pd.read_csv(
-            "data/dataset1/market_budget_dataset1.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset1.csv", index_col=0
         )
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat(
@@ -99,7 +100,7 @@ if __name__ == "__main__":
         # Load data
         data, assets = load_data(dataset="dataset2")
         market_budget = pd.read_csv(
-            "data/dataset2/market_budget_dataset2.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset2.csv", index_col=0
         )
         market_budget["rc"] = market_budget["rc"].astype(int)
     else:

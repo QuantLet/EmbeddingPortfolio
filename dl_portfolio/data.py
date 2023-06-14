@@ -1,9 +1,12 @@
 import pandas as pd
-from dl_portfolio.logger import LOGGER
+
 from typing import List, Dict, Union, Optional
 from sklearn import preprocessing
 import numpy as np
 import datetime as dt
+
+from dl_portfolio.pathconfig import DATA_DIR
+from dl_portfolio.logger import LOGGER
 from dl_portfolio.sample import id_nb_bootstrap
 
 DATASETS = ["dataset1", "dataset2"]
@@ -25,7 +28,7 @@ def load_data(dataset):
 
 def load_dataset1():
     data = pd.read_csv(
-        "data/dataset1/dataset1.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/dataset1.csv", index_col=0, parse_dates=True
     )
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float64)
@@ -37,7 +40,7 @@ def load_dataset1():
 
 def load_dataset2():
     data = pd.read_csv(
-        "data/dataset2/dataset2.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/dataset2.csv", index_col=0, parse_dates=True
     )
     data = data.interpolate(method="polynomial", order=2)
     data = data.astype(np.float32)
@@ -56,7 +59,7 @@ def load_risk_free():
     daily_rate = load_bill_rates()
 
     ann_monthly_rate_yahoo = pd.read_csv(
-        "data/irx_yahoo.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/irx_yahoo.csv", index_col=0, parse_dates=True
     ).sort_index()
     ann_monthly_rate_yahoo = ann_monthly_rate_yahoo[["Adj Close"]] / 100
     ann_monthly_rate_yahoo = ann_monthly_rate_yahoo.loc[
@@ -75,7 +78,7 @@ def load_bill_rates():
     :return:
     """
     ann_monthly_rate = pd.read_csv(
-        "data/bill-rates-2002-2023.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/bill-rates-2002-2023.csv", index_col=0, parse_dates=True
     )
     ann_monthly_rate = ann_monthly_rate.sort_index()
     ann_monthly_rate = ann_monthly_rate[["4 WEEKS BANK DISCOUNT"]] / 100
