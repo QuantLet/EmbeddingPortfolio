@@ -4,7 +4,7 @@
 
 Welcome to the EmbeddingPortfolio wiki!
 
-In this repo will find two quantlets: NMFRB and AERB. Please read the 
+In this repo will find two quantlets: NMFRB and TailRiskAERB. Please read the 
 corresponding papers. To reproduce the analysis please refer to the 
 corresponding quantlet.
 
