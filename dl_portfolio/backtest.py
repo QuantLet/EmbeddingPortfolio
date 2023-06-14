@@ -15,6 +15,7 @@ from dl_portfolio.data import (
     load_risk_free,
     impute_missing_risk_free, get_features,
 )
+from dl_portfolio.pathconfig import DATA_DIR
 from dl_portfolio.utils import load_result, \
     get_average_factor_loadings_over_runs
 from dl_portfolio.constant import (
@@ -49,7 +50,7 @@ def backtest_stats(
     :return:
     """
     benchmark = pd.read_csv(
-        "data/benchmarks.csv", index_col=0, parse_dates=True
+        f"{DATA_DIR}/benchmarks.csv", index_col=0, parse_dates=True
     )
     bench_names = list(benchmark.columns)
     benchmark = benchmark.pct_change().dropna()

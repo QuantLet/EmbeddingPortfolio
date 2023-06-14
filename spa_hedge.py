@@ -10,6 +10,7 @@ from joblib import Parallel, delayed
 from dl_portfolio.data import load_data
 from dl_portfolio.backtest import cv_portfolio_perf_df
 from dl_portfolio.logger import LOGGER
+from dl_portfolio.pathconfig import DATA_DIR
 
 PERF_DIR_1 = "performance/test_final_models/ae_paper/ae" \
              "/dataset1_20230530_093818"
@@ -110,7 +111,7 @@ if __name__ == "__main__":
         # Load data
         data, assets = load_data(dataset="dataset1")
         market_budget = pd.read_csv(
-            "data/dataset1/market_budget_dataset1.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset1.csv", index_col=0
         )
         cryptos = ["BTC", "DASH", "ETH", "LTC", "XRP"]
         market_budget = pd.concat(
@@ -132,7 +133,7 @@ if __name__ == "__main__":
         # Load data
         data, assets = load_data(dataset="dataset2")
         market_budget = pd.read_csv(
-            "data/dataset2/market_budget_dataset2.csv", index_col=0
+            f"{DATA_DIR}/market_budget_dataset2.csv", index_col=0
         )
         market_budget["rc"] = market_budget["rc"].astype(int)
     else:
