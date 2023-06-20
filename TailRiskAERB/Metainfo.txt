@@ -1,4 +1,4 @@
-Name of Quantlet: 'NMFRB'
+Name of Quantlet: 'TailRiskAERB'
 
 Published in: 'Portfolio tail-risk protection with non-linear latent factors'
 
