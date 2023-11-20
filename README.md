@@ -25,15 +25,12 @@ pip install . --upgrade
 
 ## Data
 
-The data is available here: https://drive.google.com/drive/folders/1HEou7cOtJDuAnXwWnZVuiLpwJYsc-cQ-?usp=sharing
+The data that support the findings of this study are available from Bloomberg and the Blockchain
+Research Center (BRC). Restrictions apply to the availability of these data, which were used
+under license for this study. Data are available on request from the corresponding authors with
+the permission of Bloomberg and BRC.
 
-- Download the data folder at the root. It contains the price data: `data/dataset1/dataset1.csv` and 
-`data/dataset1/dataset2.csv`.
-- To reproduce the result you need to additionally download the folders:
-  - `final_models` where you will find the 
-  autoencoder and convex NMF models as well as the Markowitz and Robust Markowitz portfolio allocation.
-  - `activationProba` where you will find the input and output from ARMA-GARCH modelling for the activations
-- Finally, our portfolio weights and corresponding evaluation used for the paper are saved in the `performance` folder.
+Our results are available: https://drive.google.com/drive/folders/1oIGQeLlQi6rZ6L-dpxTj9A0TtjICTR6X?usp=drive_link
 
 ## AE and NMF training
 
