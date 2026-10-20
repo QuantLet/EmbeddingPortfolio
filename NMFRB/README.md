@@ -9,9 +9,9 @@ Name of Quantlet: NMFRB
 
 Published in: Risk budget portfolios with convex Non-negative Matrix  Factorization
 
-Description: We provide results for "Risk budget portfolios with convex
+Description: We provide results for "Risk budget portfolios with convex Non-negative Matrix  Factorization", Spilak, WK Härdle (2023). Please refer to github Wiki for a detailed description on how to use the code!
 
-Keywords: NMF, portfolio, tail-risk, trading strategy, cryptocurrency, deep
+Keywords: NMF, portfolio, tail-risk, trading strategy, cryptocurrency, deep learning, machine learning, econometrics
 
 Author: Bruno Spilak
 
